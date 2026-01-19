@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <title>GPX 路線與高度檢視工具</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont;
+    }
+
+    #header {
+      padding: 10px 14px;
+      background: #f6f6f6;
+      border-bottom: 1px solid #ddd;
+    }
+
+    #map {
+      height: 55vh;
+    }
+
+    #chartContainer {
+      height: 45vh;
+      padding: 10px;
+    }
+
+    canvas {
+      max-height: 100%;
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <input type="file" id="gpxInput" accept=".gpx" />
+  <span style="margin-left: 10px;">
+    上傳 GPX｜滑鼠移到高度圖或路線顯示座標與時間（UTC+8）
+  </span>
+</div>
+
+<div id="map"></div>
+<div id="chartContainer">
+  <canvas id="elevationChart"></canvas>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
