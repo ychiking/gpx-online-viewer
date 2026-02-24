@@ -35,15 +35,33 @@
     canvas {
       max-height: 100%;
     }
+    
+    .upload-row {
+  		display: flex;
+  		align-items: center;
+ 		 gap: 8px;
+		}
+
+.subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #555;
+  line-height: 1.4;
+}
   </style>
 </head>
 <body>
 
 <div id="header">
-  <input type="file" id="gpxInput" accept=".gpx" />
-  <span style="margin-left: 10px;">
-    上傳 GPX｜滑鼠移到高度圖或路線顯示座標與時間（UTC+8）(YCHiking簡易版)
-  </span>
+  <div class="upload-row">
+    <label for="gpxInput"><strong>上傳 GPX:</strong></label>
+    <input type="file" id="gpxInput" accept=".gpx" />
+  </div>
+
+  <div class="subtitle">
+    滑鼠移到高度圖或路線顯示座標與時間（UTC+8）<br>
+    <strong>YCHiking 簡易版</strong>
+  </div>
 </div>
 
 <div id="map"></div>
