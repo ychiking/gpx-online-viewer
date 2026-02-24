@@ -42,19 +42,24 @@
  		 gap: 8px;
 		}
 
-.subtitle {
-  margin-top: 8px;
-  font-size: 14px;
-  color: #555;
-  line-height: 1.4;
-}
+		.subtitle {
+		  margin-top: 8px;
+ 		  font-size: 14px;
+  		color: #555;
+  		line-height: 1.4;
+		}
+		
+		.upload-label {
+ 			font-size: 13px;   /* 想更小可以 12px */
+  		color: #444;
+		}
   </style>
 </head>
 <body>
 
 <div id="header">
   <div class="upload-row">
-    <label for="gpxInput"><strong>上傳 GPX:</strong></label>
+		<label for="gpxInput" class="upload-label"><strong>上傳 GPX:</strong></label>
     <input type="file" id="gpxInput" accept=".gpx" />
   </div>
 
