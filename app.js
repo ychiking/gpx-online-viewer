@@ -1,5 +1,7 @@
 // ================= 地圖初始化 =================
-const map = L.map("map").setView([25.03, 121.56], 12);
+const map = L.map("map", {
+  tap: true
+}).setView([25.03, 121.56], 12);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "© OpenStreetMap",
@@ -44,7 +46,6 @@ function loadGPX(text) {
       lat,
       lon,
       ele,
-      timeUTC,
       timeLocal: formatDate(local),
       distance: 0
     });
@@ -87,42 +88,22 @@ function drawMap() {
 
   map.fitBounds(polyline.getBounds());
 
-  // 起點
-  L.marker([trackPoints[0].lat, trackPoints[0].lon], {
-    icon: L.icon({
-      iconUrl: "https://maps.gstatic.com/mapfiles/ms2/micons/green-dot.png",
-      iconSize: [32, 32]
-    })
-  }).addTo(map).bindPopup("起點");
-
-  // 終點
+  const first = trackPoints[0];
   const last = trackPoints.at(-1);
-  L.marker([last.lat, last.lon], {
-    icon: L.icon({
-      iconUrl: "https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png",
-      iconSize: [32, 32]
-    })
-  }).addTo(map).bindPopup("終點");
 
-  hoverMarker = L.circleMarker([0, 0], {
+  L.marker([first.lat, first.lon]).addTo(map).bindPopup("起點");
+  L.marker([last.lat, last.lon]).addTo(map).bindPopup("終點");
+
+  hoverMarker = L.circleMarker([first.lat, first.lon], {
     radius: 6,
     color: "blue",
     fillOpacity: 1
   }).addTo(map);
 
-  // ⭐⭐ 新增：點擊地圖同步圖表
+  // 點擊同步（支援手機 tap）
   polyline.on("click", e => {
     const index = findClosestPointIndex(e.latlng);
-    if (index === -1) return;
-
-    const p = trackPoints[index];
-
-    // 同步圖表游標
-    chart.setActiveElements([{ datasetIndex: 0, index }]);
-    chart.tooltip.setActiveElements([{ datasetIndex: 0, index }]);
-    chart.update();
-
-    syncMap(p);
+    activatePoint(index);
   });
 }
 
@@ -131,15 +112,36 @@ function findClosestPointIndex(latlng) {
   let minDist = Infinity;
   let closestIndex = -1;
 
-  trackPoints.forEach((p, i) => {
-    const d = map.distance(latlng, L.latLng(p.lat, p.lon));
+  for (let i = 0; i < trackPoints.length; i++) {
+    const d = map.distance(latlng, L.latLng(trackPoints[i].lat, trackPoints[i].lon));
     if (d < minDist) {
       minDist = d;
       closestIndex = i;
     }
-  });
+  }
 
   return closestIndex;
+}
+
+// ================= 啟動某個點 =================
+function activatePoint(index) {
+  if (index < 0) return;
+
+  const p = trackPoints[index];
+
+  hoverMarker.setLatLng([p.lat, p.lon]);
+
+  hoverMarker.bindPopup(`
+    <b>位置資訊</b><br>
+    高度: ${p.ele} m<br>
+    距離: ${p.distance.toFixed(2)} km<br>
+    時間: ${p.timeLocal}<br>
+    座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
+  `).openPopup();
+
+  chart.setActiveElements([{ datasetIndex: 0, index }]);
+  chart.tooltip.setActiveElements([{ datasetIndex: 0, index }]);
+  chart.update();
 }
 
 // ================= 高度圖 =================
@@ -159,24 +161,19 @@ function drawElevationChart() {
       }]
     },
     options: {
+      responsive: true,
       interaction: {
         intersect: false,
         mode: "index"
       },
+      onHover: (event, elements) => {
+        if (elements.length > 0) {
+          activatePoint(elements[0].index);
+        }
+      },
       plugins: {
         tooltip: {
-          callbacks: {
-            label: ctx => {
-              const p = trackPoints[ctx.dataIndex];
-              syncMap(p);
-              return [
-                `高度: ${p.ele} m`,
-                `距離: ${p.distance.toFixed(2)} km`,
-                `時間: ${p.timeLocal}`,
-                `座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`
-              ];
-            }
-          }
+          enabled: true
         }
       },
       scales: {
@@ -185,18 +182,6 @@ function drawElevationChart() {
       }
     }
   });
-}
-
-// ================= 地圖同步 =================
-function syncMap(p) {
-  hoverMarker.setLatLng([p.lat, p.lon]);
-  hoverMarker.bindPopup(`
-    <b>位置資訊</b><br>
-    高度: ${p.ele} m<br>
-    距離: ${p.distance.toFixed(2)} km<br>
-    時間: ${p.timeLocal}<br>
-    座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
-  `).openPopup();
 }
 
 function formatDate(d) {
