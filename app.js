@@ -109,6 +109,37 @@ function drawMap() {
     color: "blue",
     fillOpacity: 1
   }).addTo(map);
+
+  // ⭐⭐ 新增：點擊地圖同步圖表
+  polyline.on("click", e => {
+    const index = findClosestPointIndex(e.latlng);
+    if (index === -1) return;
+
+    const p = trackPoints[index];
+
+    // 同步圖表游標
+    chart.setActiveElements([{ datasetIndex: 0, index }]);
+    chart.tooltip.setActiveElements([{ datasetIndex: 0, index }]);
+    chart.update();
+
+    syncMap(p);
+  });
+}
+
+// ================= 找最近點 =================
+function findClosestPointIndex(latlng) {
+  let minDist = Infinity;
+  let closestIndex = -1;
+
+  trackPoints.forEach((p, i) => {
+    const d = map.distance(latlng, L.latLng(p.lat, p.lon));
+    if (d < minDist) {
+      minDist = d;
+      closestIndex = i;
+    }
+  });
+
+  return closestIndex;
 }
 
 // ================= 高度圖 =================
