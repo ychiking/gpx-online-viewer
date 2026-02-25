@@ -7,23 +7,17 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [];
 const routeSelect = document.getElementById("routeSelect");
 
-// ================= 定義彩色大頭針圖示 (沿用 Leaflet 原本形狀) =================
+// ================= 定義彩色大頭針圖示 =================
 const startIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
 
 const endIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
 
 // ================= GPX 上傳與解析 =================
@@ -40,7 +34,6 @@ function parseGPX(text) {
   allTracks = [];
   routeSelect.innerHTML = "";
   const trks = xml.getElementsByTagName("trk");
-  
   if (trks.length > 0) {
     for (let i = 0; i < trks.length; i++) {
       const nameNode = trks[i].getElementsByTagName("name")[0];
@@ -53,9 +46,7 @@ function parseGPX(text) {
     const points = extractPoints(allPts);
     if (points.length > 0) allTracks.push({ name: "預設路線", points });
   }
-
   if (allTracks.length === 0) return alert("找不到有效點位資料");
-  
   routeSelect.style.display = allTracks.length > 1 ? "inline-block" : "none";
   allTracks.forEach((t, i) => {
     const opt = document.createElement("option"); opt.value = i; opt.textContent = t.name;
@@ -71,13 +62,7 @@ function extractPoints(pts) {
     const ele = p.getElementsByTagName("ele")[0], time = p.getElementsByTagName("time")[0];
     if (!isNaN(lat) && !isNaN(lon) && ele && time) {
       const utc = new Date(time.textContent);
-      res.push({ 
-        lat, lon, 
-        ele: parseFloat(ele.textContent), 
-        timeUTC: utc, 
-        timeLocal: formatDate(new Date(utc.getTime() + 8*3600*1000)), 
-        distance: 0 
-      });
+      res.push({ lat, lon, ele: parseFloat(ele.textContent), timeUTC: utc, timeLocal: formatDate(new Date(utc.getTime() + 8*3600*1000)), distance: 0 });
     }
   }
   return res;
@@ -92,7 +77,6 @@ function loadRoute(index) {
   markers.forEach(m => map.removeLayer(m));
   markers = [];
   if (chart) chart.destroy();
-  
   calculateDistance();
   drawMap();
   drawElevationChart();
@@ -112,15 +96,12 @@ function calculateDistance() {
   });
 }
 
-// 核心演算法：4m 門檻 + 3點平滑 (根據您的測試數據校準)
 function calculateElevationGainFiltered() {
   if (trackPoints.length < 3) return { gain: 0, loss: 0 };
-  
   const smoothed = trackPoints.map((p, i, arr) => {
     const start = Math.max(0, i - 1), end = Math.min(arr.length - 1, i + 1);
     return arr.slice(start, end + 1).reduce((s, c) => s + c.ele, 0) / (end - start + 1);
   });
-
   let gain = 0, loss = 0, threshold = 4, lastEle = smoothed[0];
   for (let i = 1; i < smoothed.length; i++) {
     const diff = smoothed[i] - lastEle;
@@ -132,19 +113,15 @@ function calculateElevationGainFiltered() {
   return { gain, loss };
 }
 
-// ================= 畫地圖並套用彩色圖示 =================
 function drawMap() {
   polyline = L.polyline(trackPoints.map(p => [p.lat, p.lon]), { color: "red", weight: 4 }).addTo(map);
   map.fitBounds(polyline.getBounds());
-  
   const f = trackPoints[0], l = trackPoints.at(-1);
-  
-  // 這裡使用了定義好的綠色與紅色大頭針
   markers.push(
     L.marker([f.lat, f.lon], { icon: startIcon }).addTo(map).bindPopup("起點"),
     L.marker([l.lat, l.lon], { icon: endIcon }).addTo(map).bindPopup("終點")
   );
-  
+  // 高度圖同步用的藍色圓點
   hoverMarker = L.circleMarker([f.lat, f.lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
 }
 
@@ -155,13 +132,8 @@ function drawElevationChart() {
     data: {
       labels: trackPoints.map(p => p.distance.toFixed(2)),
       datasets: [{ 
-        label: "高度 (m)", 
-        data: trackPoints.map(p => p.ele), 
-        fill: true, 
-        backgroundColor: 'rgba(54, 162, 235, 0.2)', 
-        borderColor: 'rgba(54, 162, 235, 1)', 
-        tension: 0.1, 
-        pointRadius: 0 
+        label: "高度 (m)", data: trackPoints.map(p => p.ele), fill: true, 
+        backgroundColor: 'rgba(54, 162, 235, 0.2)', borderColor: 'rgba(54, 162, 235, 1)', tension: 0.1, pointRadius: 0 
       }]
     },
     options: {
@@ -170,7 +142,10 @@ function drawElevationChart() {
       onHover: (event, elements) => { 
         if (elements.length) {
           const p = trackPoints[elements[0].index];
-          hoverMarker.setLatLng([p.lat, p.lon]);
+          // 這裡修正了同步顯示資訊 Tip 的功能
+          hoverMarker.setLatLng([p.lat, p.lon])
+                     .bindPopup(`<b>位置資訊</b><br>高度: ${p.ele.toFixed(0)} m<br>距離: ${p.distance.toFixed(2)} km<br>時間: ${p.timeLocal}<br>座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`)
+                     .openPopup();
         }
       }
     }
@@ -183,7 +158,6 @@ function renderRouteInfo() {
   const { gain, loss } = calculateElevationGainFiltered();
   const eles = trackPoints.map(p => p.ele);
   const currentName = allTracks[routeSelect.value] ? allTracks[routeSelect.value].name : "路線";
-  
   document.getElementById("routeSummary").innerHTML = `
     記錄日期：${f.timeLocal.substring(0, 10)}<br>
     路線：${currentName}<br>
