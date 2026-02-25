@@ -293,3 +293,23 @@ function renderRouteInfo() {
 }
 
 function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
+
+// app.js 新增：處理分享進來的檔案
+window.addEventListener('load', async () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  
+  if (urlParams.has('shared')) {
+    const cache = await caches.open('incoming-gpx');
+    const response = await cache.match('/shared.gpx');
+    
+    if (response) {
+      const gpxText = await response.text();
+      // 直接呼叫你原本寫好的 parseGPX 函式
+      parseGPX(gpxText);
+      
+      // 清除快取與網址參數，避免重新整理時重複觸發
+      await cache.delete('/shared.gpx');
+      window.history.replaceState({}, document.title, "/");
+    }
+  }
+});
