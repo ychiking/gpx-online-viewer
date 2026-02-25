@@ -5,9 +5,10 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 }).addTo(map);
 
 let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [], wptMarkers = [];
+let pointA = null, pointB = null, markerA = null, markerB = null; 
 const routeSelect = document.getElementById("routeSelect");
 
-// ================= 定義圖示 =================
+// ================= 圖示定義 =================
 const startIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -26,7 +27,10 @@ const wptIcon = new L.Icon({
   iconSize: [15, 25], iconAnchor: [7, 25], popupAnchor: [1, -20], shadowSize: [25, 25]
 });
 
-// ================= GPX 解析與處理 =================
+const blueIconHtml = `<div style="background:#007bff;color:white;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;border:2px solid white;box-shadow: 0 0 5px rgba(0,0,0,0.3)">A</div>`;
+const pinkIconHtml = `<div style="background:#e83e8c;color:white;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;border:2px solid white;box-shadow: 0 0 5px rgba(0,0,0,0.3)">B</div>`;
+
+// ================= GPX 解析 =================
 document.getElementById("gpxInput").addEventListener("change", e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -39,7 +43,6 @@ function parseGPX(text) {
   const xml = new DOMParser().parseFromString(text, "application/xml");
   allTracks = [];
   routeSelect.innerHTML = "";
-
   const wpts = xml.getElementsByTagName("wpt");
   let waypoints = [];
   for (let w of wpts) {
@@ -49,31 +52,15 @@ function parseGPX(text) {
     const localTime = time ? formatDate(new Date(new Date(time).getTime() + 8*3600000)) : "無時間資訊";
     waypoints.push({ lat, lon, name, localTime });
   }
-
   const trks = xml.getElementsByTagName("trk");
-  if (trks.length > 0) {
-    for (let i = 0; i < trks.length; i++) {
-      const nameNode = trks[i].getElementsByTagName("name")[0];
-      const pts = trks[i].getElementsByTagName("trkpt");
-      const points = extractPoints(pts);
-      if (points.length > 0) allTracks.push({ name: nameNode ? nameNode.textContent : `路線 ${i + 1}`, points, waypoints });
-    }
-  } else {
-    const allPts = xml.getElementsByTagName("trkpt");
-    const points = extractPoints(allPts);
-    if (points.length > 0) allTracks.push({ name: "預設路線", points, waypoints });
+  for (let i = 0; i < trks.length; i++) {
+    const nameNode = trks[i].getElementsByTagName("name")[0];
+    const pts = trks[i].getElementsByTagName("trkpt");
+    const points = extractPoints(pts);
+    if (points.length > 0) allTracks.push({ name: nameNode ? nameNode.textContent : `路線 ${i + 1}`, points, waypoints });
   }
-
-  if (allTracks.length === 0) return alert("找不到有效點位資料");
-  
-  const container = document.getElementById("routeSelectContainer");
-  if (allTracks.length > 1) {
-    container.style.display = "block";
-    routeSelect.style.display = "inline-block";
-  } else {
-    container.style.display = "none";
-  }
-
+  if (allTracks.length === 0) return alert("找不到有效資料");
+  document.getElementById("routeSelectContainer").style.display = allTracks.length > 1 ? "block" : "none";
   allTracks.forEach((t, i) => {
     const opt = document.createElement("option"); opt.value = i; opt.textContent = t.name;
     routeSelect.appendChild(opt);
@@ -101,11 +88,11 @@ function loadRoute(index) {
   trackPoints = selectedRoute.points;
   if (polyline) map.removeLayer(polyline);
   if (hoverMarker) map.removeLayer(hoverMarker);
+  clearSpecificPoint('A'); clearSpecificPoint('B');
   markers.forEach(m => map.removeLayer(m));
   wptMarkers.forEach(m => map.removeLayer(m));
   markers = []; wptMarkers = [];
   if (chart) chart.destroy();
-  
   calculateDistance();
   drawMap(selectedRoute.waypoints);
   drawElevationChart();
@@ -125,31 +112,30 @@ function calculateDistance() {
   });
 }
 
-function calculateElevationGainFiltered() {
-  if (trackPoints.length < 3) return { gain: 0, loss: 0 };
+// ================= 原始計算邏輯 (全線與區間通用) =================
+function calculateElevationStats(points) {
+  if (points.length < 3) return { gain: 0, loss: 0 };
 
   // 第一步：防呆過濾 (剔除跳點)
   let cleanPoints = [];
-  cleanPoints.push(trackPoints[0]);
-
-  for (let i = 1; i < trackPoints.length; i++) {
-    const prevEle = trackPoints[i-1].ele;
-    const currEle = trackPoints[i].ele;
-    
-    // 如果高度瞬間變化超過 100 公尺 (可依需求調整)，視為雜訊，沿用上一點高度
+  cleanPoints.push(points[0]);
+  for (let i = 1; i < points.length; i++) {
+    const prevEle = points[i-1].ele;
+    const currEle = points[i].ele;
     if (Math.abs(currEle - prevEle) > 100) {
-      cleanPoints.push({ ...trackPoints[i], ele: prevEle });
+      cleanPoints.push({ ...points[i], ele: prevEle });
     } else {
-      cleanPoints.push(trackPoints[i]);
+      cleanPoints.push(points[i]);
     }
   }
 
-  // 第二步：原本的平滑與計算邏輯 (使用過濾後的 cleanPoints)
+  // 第二步：移動平均平滑
   const smoothed = cleanPoints.map((p, i, arr) => {
     const start = Math.max(0, i - 1), end = Math.min(arr.length - 1, i + 1);
     return arr.slice(start, end + 1).reduce((s, c) => s + c.ele, 0) / (end - start + 1);
   });
 
+  // 第三步：累積爬升與下降 (閾值 4m)
   let gain = 0, loss = 0, threshold = 4, lastEle = smoothed[0];
   for (let i = 1; i < smoothed.length; i++) {
     const diff = smoothed[i] - lastEle;
@@ -163,20 +149,14 @@ function calculateElevationGainFiltered() {
 
 function drawMap(waypoints = []) {
   polyline = L.polyline(trackPoints.map(p => [p.lat, p.lon]), { color: "red", weight: 6, opacity: 0.7 }).addTo(map);
-  map.fitBounds(polyline.getBounds());
-  
+
   polyline.on('click', (e) => {
     let minD = Infinity, idx = 0;
     trackPoints.forEach((p, i) => {
-      const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2);
+      const d = Math.sqrt((e.latlng.lat - p.lat)**2 + (e.latlng.lng - p.lon)**2);
       if (d < minD) { minD = d; idx = i; }
     });
-    if (chart) {
-      chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
-      chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
-      chart.update();
-      updateHoverMarker(idx);
-    }
+    showPointPopup(idx, "位置資訊");
   });
 
   const f = trackPoints[0], l = trackPoints.at(-1);
@@ -187,34 +167,111 @@ function drawMap(waypoints = []) {
 
   waypoints.forEach(w => {
     const wm = L.marker([w.lat, w.lon], { icon: wptIcon }).addTo(map);
-    wm.bindTooltip(`<b>${w.name}</b><br>時間: ${w.localTime}`, { direction: 'top', offset: [0, -10] });
-    wptMarkers.push(wm);
+    let minD = Infinity, trackIdx = 0;
+    trackPoints.forEach((tp, i) => {
+      const d = Math.sqrt((w.lat - tp.lat)**2 + (w.lon - tp.lon)**2);
+      if (d < minD) { minD = d; trackIdx = i; }
+    });
+    wm.on('click', () => { showPointPopup(trackIdx, w.name, w.localTime); });
+    wptMarkers.push({ marker: wm, lat: w.lat, lon: w.lon, name: w.name, time: w.localTime, idx: trackIdx });
   });
   
   hoverMarker = L.circleMarker([f.lat, f.lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
+  map.fitBounds(polyline.getBounds());
 }
 
-// 跳轉到航點功能
-function focusWaypoint(lat, lon, name) {
-  // 1. 讓網頁捲軸平滑捲動回頂部地圖位置
-  window.scrollTo({
-    top: 0,
-    behavior: 'smooth' // 平滑捲動
-  });
-
-  // 2. 讓地圖位移並彈出資訊
-  map.setView([lat, lon], 16); 
-  L.popup()
-   .setLatLng([lat, lon])
-   .setContent(`<b>${name}</b>`)
-   .openOn(map);
-}
-
-function updateHoverMarker(index) {
+function showPointPopup(index, title, timeLabel = null) {
   const p = trackPoints[index];
-  hoverMarker.setLatLng([p.lat, p.lon])
-             .bindPopup(`<b>位置資訊</b><br>高度: ${p.ele.toFixed(0)} m<br>距離: ${p.distance.toFixed(2)} km<br>時間: ${p.timeLocal}<br>座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`)
-             .openPopup();
+  const displayTime = timeLabel || p.timeLocal;
+  const content = `
+    <div style="min-width:160px; font-family: sans-serif;">
+      <b style="font-size:1.1em; color:#333;">${title}</b><br>
+      高度: ${p.ele.toFixed(0)} m<br>里程: ${p.distance.toFixed(2)} km<br>時間: ${displayTime}<hr style="margin:8px 0; border-top:1px solid #ddd;">
+      <div style="display:flex; gap:6px;">
+        <button onclick="setPoint('A', ${index})" style="flex:1; background:#007bff; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">設 A 點</button>
+        <button onclick="setPoint('B', ${index})" style="flex:1; background:#e83e8c; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">設 B 點</button>
+      </div>
+    </div>`;
+  hoverMarker.setLatLng([p.lat, p.lon]).bindPopup(content).openPopup();
+}
+
+window.setPoint = function(type, idx) {
+  const p = trackPoints[idx];
+  const info = `高度: ${p.ele.toFixed(0)}m, 里程: ${p.distance.toFixed(2)}km<br>時間: ${p.timeLocal}`;
+  if (type === 'A') {
+    pointA = { ...p, index: idx };
+    if (markerA) map.removeLayer(markerA);
+    markerA = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html: blueIconHtml, iconSize:[24,24], iconAnchor:[12,12] }) }).addTo(map);
+    document.getElementById("pointAInfo").innerHTML = `
+      <div style="border-left:4px solid #007bff; padding-left:10px; position:relative;">
+        <b>A 點</b> <button onclick="clearSpecificPoint('A')" style="padding:6px 14px; position:absolute; right:0; top:0; background:#f0f0f0; border:1px solid #bbb; border-radius:4px; cursor:pointer; font-weight:bold; font-size:12px;">✘ 清除</button><br>${info}
+      </div>`;
+  } else {
+    pointB = { ...p, index: idx };
+    if (markerB) map.removeLayer(markerB);
+    markerB = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html: pinkIconHtml, iconSize:[24,24], iconAnchor:[12,12] }) }).addTo(map);
+    document.getElementById("pointBInfo").innerHTML = `
+      <div style="border-left:4px solid #e83e8c; padding-left:10px; position:relative;">
+        <b>B 點 (請確認B點時間在A點之後)</b> <button onclick="clearSpecificPoint('B')" style="padding:6px 14px; position:absolute; right:0; top:0; background:#f0f0f0; border:1px solid #bbb; border-radius:4px; cursor:pointer; font-weight:bold; font-size:12px;">✘ 清除</button><br>${info}
+      </div>`;
+  }
+  calculateSection();
+  map.closePopup();
+};
+
+window.clearSpecificPoint = function(type) {
+  if (type === 'A') { pointA = null; if (markerA) map.removeLayer(markerA); document.getElementById("pointAInfo").innerHTML = "A 點：尚未設定"; }
+  else { pointB = null; if (markerB) map.removeLayer(markerB); document.getElementById("pointBInfo").innerHTML = "B 點：尚未設定(請確認B點時間在A點之後)"; }
+  calculateSection();
+};
+
+window.swapAB = function() {
+  if (!pointA || !pointB) return;
+  const tA = pointA.index, tB = pointB.index;
+  setPoint('A', tB); setPoint('B', tA);
+};
+
+function calculateSection() {
+  const resDiv = document.getElementById("measureResult");
+  if (!pointA || !pointB) { resDiv.innerHTML = "區間測量：請設定 A 點、B 點"; return; }
+  
+  const startIdx = Math.min(pointA.index, pointB.index);
+  const endIdx = Math.max(pointA.index, pointB.index);
+  const sectionPoints = trackPoints.slice(startIdx, endIdx + 1);
+  
+  // 區間分析同樣採用原始算法
+  const { gain, loss } = calculateElevationStats(sectionPoints);
+  const dist = Math.abs(pointB.distance - pointA.distance).toFixed(2);
+  const timeMs = Math.abs(pointB.timeUTC.getTime() - pointA.timeUTC.getTime());
+  const hh = Math.floor(timeMs / 3600000), mm = Math.floor((timeMs % 3600000) / 60000);
+
+  resDiv.innerHTML = `
+    <div style="background:#f0f8ff; padding:12px; border-radius:8px; border:1px solid #36a2eb;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <strong style="color:#007bff; font-size:1.1em;">區間分析 (A ↔ B)</strong>
+        <button onclick="swapAB()" style="padding:2px 8px; cursor:pointer; font-weight:bold;">⇄ 對調</button>
+      </div>
+      區間總爬升：${gain.toFixed(0)} m<br>
+      區間總下降：${loss.toFixed(0)} m<br>
+      距離差：${dist} km<br>
+      時間差：${hh} 小時 ${mm} 分鐘
+    </div>`;
+}
+
+function focusWaypoint(lat, lon, name) {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  map.setView([lat, lon], 16);
+  // 找出該航點對應的軌跡點資訊
+  let minD = Infinity, trackIdx = 0, wptTime = "";
+  trackPoints.forEach((tp, i) => {
+    const d = Math.sqrt((lat - tp.lat)**2 + (lon - tp.lon)**2);
+    if (d < minD) { minD = d; trackIdx = i; }
+  });
+  // 嘗試從 wptMarkers 找回該點的時間
+  const found = wptMarkers.find(w => w.name === name);
+  if (found) wptTime = found.time;
+
+  showPointPopup(trackIdx, name, wptTime);
 }
 
 function drawElevationChart() {
@@ -223,21 +280,12 @@ function drawElevationChart() {
     type: "line",
     data: {
       labels: trackPoints.map(p => p.distance.toFixed(2)),
-      datasets: [{ 
-        label: "高度 (m)", data: trackPoints.map(p => p.ele), fill: true, 
-        backgroundColor: 'rgba(54, 162, 235, 0.2)', borderColor: 'rgba(54, 162, 235, 1)', tension: 0.1, pointRadius: 0 
-      }]
+      datasets: [{ label: "高度 (m)", data: trackPoints.map(p => p.ele), fill: true, backgroundColor: 'rgba(54, 162, 235, 0.2)', borderColor: 'rgba(54, 162, 235, 1)', tension: 0.1, pointRadius: 0 }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { ticks: { autoSkip: true, maxTicksLimit: 10, maxRotation: 0, font: { size: 10 } } },
-        y: { ticks: { font: { size: 10 } } }
-      },
       interaction: { intersect: false, mode: "index" },
-      onHover: (event, elements) => { 
-        if (elements.length) updateHoverMarker(elements[0].index);
-      }
+      onHover: (event, elements) => { if (elements.length) showPointPopup(elements[0].index, "位置資訊"); }
     }
   });
 }
@@ -245,51 +293,28 @@ function drawElevationChart() {
 function renderRouteInfo() {
   const f = trackPoints[0], l = trackPoints.at(-1);
   const dur = l.timeUTC.getTime() - f.timeUTC.getTime();
-  const { gain, loss } = calculateElevationGainFiltered();
+  const { gain, loss } = calculateElevationStats(trackPoints);
   const eles = trackPoints.map(p => p.ele);
-  const selectedIndex = routeSelect.value || 0;
-  const currentRoute = allTracks[selectedIndex];
-  const currentName = currentRoute ? currentRoute.name : "路線";
+  const currentRoute = allTracks[routeSelect.value || 0];
 
   document.getElementById("routeSummary").innerHTML = `
     記錄日期：${f.timeLocal.substring(0, 10)}<br>
-    路線：${currentName}<br>
+    路線：${currentRoute.name}<br>
     里程：${l.distance.toFixed(2)} km<br>
     花費時間：${Math.floor(dur/3600000)} 小時 ${Math.floor((dur%3600000)/60000)} 分鐘<br>
     最高海拔：${Math.max(...eles).toFixed(0)} m<br>
     最低海拔：${Math.min(...eles).toFixed(0)} m<br>
     總爬升：${gain.toFixed(0)} m<br>
-    總下降：${loss.toFixed(0)} m
-  `;
+    總下降：${loss.toFixed(0)} m`;
 
   const wptListContainer = document.getElementById("wptList");
   if (currentRoute.waypoints && currentRoute.waypoints.length > 0) {
-    let tableHtml = `
-      <table class="wpt-table">
-        <thead>
-          <tr>
-            <th style="width: 8%;">#</th>
-            <th style="width: 42%;">期與時間</th>
-            <th style="width: 50%;">航點名稱</th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
+    let html = `<table class="wpt-table"><thead><tr><th style="width:40px;">#</th><th>日期與時間</th><th>航點名稱</th></tr></thead><tbody>`;
     currentRoute.waypoints.forEach((w, i) => {
-      // 在序號加上 onclick 事件，呼叫 focusWaypoint
-      tableHtml += `
-        <tr>
-          <td><span class="wpt-link" onclick="focusWaypoint(${w.lat}, ${w.lon}, '${w.name}')">${i + 1}</span></td>
-          <td>${w.localTime}</td>
-          <td>${w.name}</td> 
-        </tr>
-      `;
+      html += `<tr><td><span class="wpt-link" onclick="focusWaypoint(${w.lat}, ${w.lon}, '${w.name}')">${i + 1}</span></td><td>${w.localTime}</td><td>${w.name}</td></tr>`;
     });
-    tableHtml += `</tbody></table>`;
-    wptListContainer.innerHTML = `<h4 style="margin: 20px 0 10px 0;">航點列表 (點擊序號查看位置)</h4>` + tableHtml;
-  } else {
-    wptListContainer.innerHTML = "";
-  }
+    wptListContainer.innerHTML = `<h4 style="margin:20px 0 10px 0;">航點列表</h4>` + html + `</tbody></table>`;
+  } else { wptListContainer.innerHTML = ""; }
 }
 
 function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
