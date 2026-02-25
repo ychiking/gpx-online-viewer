@@ -12,9 +12,11 @@
   
   <link rel="manifest" href="manifest.json">
 	<script>
- 		 if ('serviceWorker' in navigator) {
- 		   navigator.serviceWorker.register('sw.js');
- 			 }
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/gpx-online-viewer/sw.js', { scope: '/gpx-online-viewer/' })
+    .then(() => console.log('Service Worker 註冊成功'))
+    .catch(err => console.log('註冊失敗', err));
+}
 	</script>
   
   <style>
