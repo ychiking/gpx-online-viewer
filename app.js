@@ -269,8 +269,8 @@ function renderRouteInfo() {
         <thead>
           <tr>
             <th style="width: 8%;">#</th>
-            <th style="width: 32%;">期與時間</th>
-            <th style="width: 60%;">航點名稱</th>
+            <th style="width: 42%;">期與時間</th>
+            <th style="width: 50%;">航點名稱</th>
           </tr>
         </thead>
         <tbody>
