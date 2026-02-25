@@ -68,6 +68,8 @@
   		color: #444;
 		}
 		
+
+
 @media (max-width: 768px) {
 
   #map {
@@ -88,9 +90,11 @@
   <div class="upload-row">
 		<label for="gpxInput" class="upload-label"><strong>上傳 GPX:</strong></label>
     <input type="file" id="gpxInput" accept=".gpx" />
+
   </div>
 
   <div class="subtitle">
+  	    <select id="routeSelect" style="display:none; padding: 4px; border-radius: 4px;"></select><br>
     滑鼠移到高度圖或路線顯示座標與時間（UTC+8）<br>
     <strong>YCHiking 簡易版</strong>
   </div>

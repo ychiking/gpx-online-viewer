@@ -1,270 +1,199 @@
 // ================= 地圖初始化 =================
 const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "© OpenStreetMap",
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { 
+  attribution: "© OpenStreetMap" 
 }).addTo(map);
 
-let trackPoints = [];
-let polyline;
-let hoverMarker;
-let chart;
+let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [];
+const routeSelect = document.getElementById("routeSelect");
 
-// ================= GPX 上傳 =================
+// ================= 定義彩色大頭針圖示 (沿用 Leaflet 原本形狀) =================
+const startIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const endIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+// ================= GPX 上傳與解析 =================
 document.getElementById("gpxInput").addEventListener("change", e => {
   const file = e.target.files[0];
   if (!file) return;
-
   const reader = new FileReader();
-  reader.onload = () => loadGPX(reader.result);
+  reader.onload = () => parseGPX(reader.result);
   reader.readAsText(file);
 });
 
-// ================= 解析 GPX =================
-function loadGPX(text) {
+function parseGPX(text) {
+  const xml = new DOMParser().parseFromString(text, "application/xml");
+  allTracks = [];
+  routeSelect.innerHTML = "";
+  const trks = xml.getElementsByTagName("trk");
+  
+  if (trks.length > 0) {
+    for (let i = 0; i < trks.length; i++) {
+      const nameNode = trks[i].getElementsByTagName("name")[0];
+      const pts = trks[i].getElementsByTagName("trkpt");
+      const points = extractPoints(pts);
+      if (points.length > 0) allTracks.push({ name: nameNode ? nameNode.textContent : `路線 ${i + 1}`, points });
+    }
+  } else {
+    const allPts = xml.getElementsByTagName("trkpt");
+    const points = extractPoints(allPts);
+    if (points.length > 0) allTracks.push({ name: "預設路線", points });
+  }
+
+  if (allTracks.length === 0) return alert("找不到有效點位資料");
+  
+  routeSelect.style.display = allTracks.length > 1 ? "inline-block" : "none";
+  allTracks.forEach((t, i) => {
+    const opt = document.createElement("option"); opt.value = i; opt.textContent = t.name;
+    routeSelect.appendChild(opt);
+  });
+  loadRoute(0);
+}
+
+function extractPoints(pts) {
+  let res = [];
+  for (let p of pts) {
+    const lat = parseFloat(p.getAttribute("lat")), lon = parseFloat(p.getAttribute("lon"));
+    const ele = p.getElementsByTagName("ele")[0], time = p.getElementsByTagName("time")[0];
+    if (!isNaN(lat) && !isNaN(lon) && ele && time) {
+      const utc = new Date(time.textContent);
+      res.push({ 
+        lat, lon, 
+        ele: parseFloat(ele.textContent), 
+        timeUTC: utc, 
+        timeLocal: formatDate(new Date(utc.getTime() + 8*3600*1000)), 
+        distance: 0 
+      });
+    }
+  }
+  return res;
+}
+
+routeSelect.addEventListener("change", (e) => loadRoute(parseInt(e.target.value)));
+
+function loadRoute(index) {
+  trackPoints = allTracks[index].points;
   if (polyline) map.removeLayer(polyline);
   if (hoverMarker) map.removeLayer(hoverMarker);
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
   if (chart) chart.destroy();
-
-  trackPoints = [];
-
-  const xml = new DOMParser().parseFromString(text, "application/xml");
-  const pts = xml.getElementsByTagName("trkpt");
-
-  for (const p of pts) {
-    const lat = parseFloat(p.getAttribute("lat"));
-    const lon = parseFloat(p.getAttribute("lon"));
-
-    const eleNode = p.getElementsByTagName("ele")[0];
-    if (!eleNode) continue;
-
-    const ele = parseFloat(eleNode.textContent);
-    if (isNaN(ele)) continue;
-
-    const timeNode = p.getElementsByTagName("time")[0];
-    if (!timeNode) continue;
-
-    const utcDate = new Date(timeNode.textContent);
-    // 雖然顯示用 UTC+8，但計算時間差建議用原始 UTC Date
-    const localDate = new Date(utcDate.getTime() + 8 * 3600 * 1000);
-
-    trackPoints.push({
-      lat,
-      lon,
-      ele,
-      timeUTC: utcDate,
-      timeLocal: formatDate(localDate),
-      distance: 0
-    });
-  }
-
-  if (trackPoints.length === 0) {
-    alert("沒有讀到有效的高度資料");
-    return;
-  }
-
+  
   calculateDistance();
   drawMap();
   drawElevationChart();
   renderRouteInfo();
 }
 
-// ================= 距離計算 =================
-function haversine(a, b) {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLon = (b.lon - a.lon) * Math.PI / 180;
-
-  const x =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(a.lat * Math.PI / 180) *
-    Math.cos(b.lat * Math.PI / 180) *
-    Math.sin(dLon / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(x));
-}
-
 function calculateDistance() {
   let total = 0;
   trackPoints.forEach((p, i) => {
-    if (i > 0) total += haversine(trackPoints[i - 1], p);
+    if (i > 0) {
+      const a = trackPoints[i-1], b = p;
+      const R = 6371, dLat = (b.lat-a.lat)*Math.PI/180, dLon = (b.lon-a.lon)*Math.PI/180;
+      const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+      total += 2 * R * Math.asin(Math.sqrt(x));
+    }
     p.distance = total;
   });
 }
 
-// ================= 計算總爬升（加入閾值過濾以接近專業 App） =================
+// 核心演算法：4m 門檻 + 3點平滑 (根據您的測試數據校準)
 function calculateElevationGainFiltered() {
-  let gain = 0;
-  let loss = 0;
+  if (trackPoints.length < 3) return { gain: 0, loss: 0 };
   
-  // 閾值設定：通常 3~5m 能有效過濾 GPS 噪點
-  // 若數值仍比 OruxMaps 高，可將此值調大至 5
-  const threshold = 3.5; 
+  const smoothed = trackPoints.map((p, i, arr) => {
+    const start = Math.max(0, i - 1), end = Math.min(arr.length - 1, i + 1);
+    return arr.slice(start, end + 1).reduce((s, c) => s + c.ele, 0) / (end - start + 1);
+  });
 
-  if (trackPoints.length === 0) return { gain, loss };
-
-  let lastEle = trackPoints[0].ele;
-
-  for (let i = 1; i < trackPoints.length; i++) {
-    const currentEle = trackPoints[i].ele;
-    const diff = currentEle - lastEle;
-
-    // 只有當高度變化超過閾值，才計入統計
+  let gain = 0, loss = 0, threshold = 4, lastEle = smoothed[0];
+  for (let i = 1; i < smoothed.length; i++) {
+    const diff = smoothed[i] - lastEle;
     if (Math.abs(diff) >= threshold) {
-      if (diff > 0) {
-        gain += diff;
-      } else {
-        loss += Math.abs(diff);
-      }
-      lastEle = currentEle; 
+      if (diff > 0) gain += diff; else loss += Math.abs(diff);
+      lastEle = smoothed[i];
     }
   }
-
   return { gain, loss };
 }
 
-// ================= 時間格式轉換 (總毫秒 -> X小時Y分鐘) =================
-function formatDuration(ms) {
-  const totalMinutes = Math.floor(ms / (1000 * 60));
-  const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
-  
-  if (hours > 0) {
-    return `${hours} 小時 ${mins} 分鐘`;
-  }
-  return `${mins} 分鐘`;
-}
-
-// ================= 畫地圖 =================
+// ================= 畫地圖並套用彩色圖示 =================
 function drawMap() {
-  polyline = L.polyline(trackPoints.map(p => [p.lat, p.lon]), {
-    color: "red",
-    weight: 4
-  }).addTo(map);
-
+  polyline = L.polyline(trackPoints.map(p => [p.lat, p.lon]), { color: "red", weight: 4 }).addTo(map);
   map.fitBounds(polyline.getBounds());
-
-  const first = trackPoints[0];
-  const last = trackPoints.at(-1);
-
-  L.marker([first.lat, first.lon]).addTo(map).bindPopup("起點");
-  L.marker([last.lat, last.lon]).addTo(map).bindPopup("終點");
-
-  hoverMarker = L.circleMarker([first.lat, first.lon], {
-    radius: 6,
-    color: "blue",
-    fillOpacity: 1
-  }).addTo(map);
-
-  polyline.on("click", e => {
-    const index = findClosestPointIndex(e.latlng);
-    activatePoint(index);
-  });
+  
+  const f = trackPoints[0], l = trackPoints.at(-1);
+  
+  // 這裡使用了定義好的綠色與紅色大頭針
+  markers.push(
+    L.marker([f.lat, f.lon], { icon: startIcon }).addTo(map).bindPopup("起點"),
+    L.marker([l.lat, l.lon], { icon: endIcon }).addTo(map).bindPopup("終點")
+  );
+  
+  hoverMarker = L.circleMarker([f.lat, f.lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
 }
 
-function findClosestPointIndex(latlng) {
-  let minDist = Infinity;
-  let closestIndex = -1;
-
-  for (let i = 0; i < trackPoints.length; i++) {
-    const d = map.distance(
-      latlng,
-      L.latLng(trackPoints[i].lat, trackPoints[i].lon)
-    );
-    if (d < minDist) {
-      minDist = d;
-      closestIndex = i;
-    }
-  }
-  return closestIndex;
-}
-
-function activatePoint(index) {
-  if (index < 0 || !trackPoints[index]) return;
-
-  const p = trackPoints[index];
-  hoverMarker.setLatLng([p.lat, p.lon]);
-
-  hoverMarker.bindPopup(`
-    <b>位置資訊</b><br>
-    高度: ${p.ele.toFixed(0)} m<br>
-    距離: ${p.distance.toFixed(2)} km<br>
-    時間: ${p.timeLocal}<br>
-    座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
-  `).openPopup();
-
-  if (chart) {
-    chart.setActiveElements([{ datasetIndex: 0, index }]);
-    chart.tooltip.setActiveElements([{ datasetIndex: 0, index }]);
-    chart.update();
-  }
-}
-
-// ================= 畫高度圖 =================
 function drawElevationChart() {
   const ctx = document.getElementById("elevationChart").getContext("2d");
-
   chart = new Chart(ctx, {
     type: "line",
     data: {
       labels: trackPoints.map(p => p.distance.toFixed(2)),
-      datasets: [{
-        label: "高度 (m)",
-        data: trackPoints.map(p => p.ele),
-        fill: true,
-        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        tension: 0.2,
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHoverRadius: 6
+      datasets: [{ 
+        label: "高度 (m)", 
+        data: trackPoints.map(p => p.ele), 
+        fill: true, 
+        backgroundColor: 'rgba(54, 162, 235, 0.2)', 
+        borderColor: 'rgba(54, 162, 235, 1)', 
+        tension: 0.1, 
+        pointRadius: 0 
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       interaction: { intersect: false, mode: "index" },
-      onHover: (event, elements) => {
-        if (!elements.length) return;
-        activatePoint(elements[0].index);
-      },
-      scales: {
-        x: { title: { display: true, text: '距離 (km)' } },
-        y: { title: { display: true, text: '高度 (m)' } }
+      onHover: (event, elements) => { 
+        if (elements.length) {
+          const p = trackPoints[elements[0].index];
+          hoverMarker.setLatLng([p.lat, p.lon]);
+        }
       }
     }
   });
 }
 
-// ================= 路線資訊渲染 =================
 function renderRouteInfo() {
-  const first = trackPoints[0];
-  const last = trackPoints.at(-1);
-
-  const totalDistance = last.distance;
-  
-  // 計算時間差（毫秒）
-  const durationMs = last.timeUTC.getTime() - first.timeUTC.getTime();
-  const durationStr = formatDuration(durationMs);
-
-  // 使用過濾後的算法計算爬升與下降
+  const f = trackPoints[0], l = trackPoints.at(-1);
+  const dur = l.timeUTC.getTime() - f.timeUTC.getTime();
   const { gain, loss } = calculateElevationGainFiltered();
-
-  const maxEle = Math.max(...trackPoints.map(p => p.ele));
-  const minEle = Math.min(...trackPoints.map(p => p.ele));
-
+  const eles = trackPoints.map(p => p.ele);
+  const currentName = allTracks[routeSelect.value] ? allTracks[routeSelect.value].name : "路線";
+  
   document.getElementById("routeSummary").innerHTML = `
-    記錄日期：${first.timeLocal.substring(0,10)}<br>
-    里程：${totalDistance.toFixed(2)} km<br>
-    花費時間：${durationStr}<br>
-    最高海拔：${maxEle.toFixed(0)} m<br>
-    最低海拔：${minEle.toFixed(0)} m<br>
+    記錄日期：${f.timeLocal.substring(0, 10)}<br>
+    路線：${currentName}<br>
+    里程：${l.distance.toFixed(2)} km<br>
+    花費時間：${Math.floor(dur/3600000)} 小時 ${Math.floor((dur%3600000)/60000)} 分鐘<br>
+    最高海拔：${Math.max(...eles).toFixed(0)} m<br>
+    最低海拔：${Math.min(...eles).toFixed(0)} m<br>
     總爬升：${gain.toFixed(0)} m<br>
     總下降：${loss.toFixed(0)} m
   `;
 }
 
-// ================= 格式化時間 =================
-function formatDate(d) {
-  return d.toISOString().replace("T", " ").substring(0, 19);
-}
+function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
