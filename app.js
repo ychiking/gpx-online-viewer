@@ -4,10 +4,10 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "© OpenStreetMap" 
 }).addTo(map);
 
-let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [];
+let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [], wptMarkers = [];
 const routeSelect = document.getElementById("routeSelect");
 
-// ================= 定義彩色大頭針圖示 =================
+// ================= 定義圖示 =================
 const startIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -18,6 +18,12 @@ const endIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+});
+
+const wptIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [15, 25], iconAnchor: [7, 25], popupAnchor: [1, -20], shadowSize: [25, 25]
 });
 
 // ================= GPX 上傳與解析 =================
@@ -33,27 +39,34 @@ function parseGPX(text) {
   const xml = new DOMParser().parseFromString(text, "application/xml");
   allTracks = [];
   routeSelect.innerHTML = "";
+
+  const wpts = xml.getElementsByTagName("wpt");
+  let waypoints = [];
+  for (let w of wpts) {
+    const lat = parseFloat(w.getAttribute("lat")), lon = parseFloat(w.getAttribute("lon"));
+    const name = w.getElementsByTagName("name")[0]?.textContent || "未命名航點";
+    const time = w.getElementsByTagName("time")[0]?.textContent;
+    const localTime = time ? formatDate(new Date(new Date(time).getTime() + 8*3600000)) : "無時間資訊";
+    waypoints.push({ lat, lon, name, localTime });
+  }
+
   const trks = xml.getElementsByTagName("trk");
-  
-  
-  
   if (trks.length > 0) {
     for (let i = 0; i < trks.length; i++) {
       const nameNode = trks[i].getElementsByTagName("name")[0];
       const pts = trks[i].getElementsByTagName("trkpt");
       const points = extractPoints(pts);
-      if (points.length > 0) allTracks.push({ name: nameNode ? nameNode.textContent : `路線 ${i + 1}`, points });
+      if (points.length > 0) allTracks.push({ name: nameNode ? nameNode.textContent : `路線 ${i + 1}`, points, waypoints });
     }
   } else {
     const allPts = xml.getElementsByTagName("trkpt");
     const points = extractPoints(allPts);
-    if (points.length > 0) allTracks.push({ name: "預設路線", points });
+    if (points.length > 0) allTracks.push({ name: "預設路線", points, waypoints });
   }
 
   if (allTracks.length === 0) return alert("找不到有效點位資料");
   
-  // 修改這裡：當有多條路線時，才顯示選單與「路線:」標籤
-  const container = routeSelect.parentElement;
+  const container = document.getElementById("routeSelectContainer");
   if (allTracks.length > 1) {
     container.style.display = "block";
     routeSelect.style.display = "inline-block";
@@ -84,14 +97,17 @@ function extractPoints(pts) {
 routeSelect.addEventListener("change", (e) => loadRoute(parseInt(e.target.value)));
 
 function loadRoute(index) {
-  trackPoints = allTracks[index].points;
+  const selectedRoute = allTracks[index];
+  trackPoints = selectedRoute.points;
   if (polyline) map.removeLayer(polyline);
   if (hoverMarker) map.removeLayer(hoverMarker);
   markers.forEach(m => map.removeLayer(m));
-  markers = [];
+  wptMarkers.forEach(m => map.removeLayer(m));
+  markers = []; wptMarkers = [];
   if (chart) chart.destroy();
+  
   calculateDistance();
-  drawMap();
+  drawMap(selectedRoute.waypoints);
   drawElevationChart();
   renderRouteInfo();
 }
@@ -126,15 +142,46 @@ function calculateElevationGainFiltered() {
   return { gain, loss };
 }
 
-function drawMap() {
-  polyline = L.polyline(trackPoints.map(p => [p.lat, p.lon]), { color: "red", weight: 4 }).addTo(map);
+function drawMap(waypoints = []) {
+  polyline = L.polyline(trackPoints.map(p => [p.lat, p.lon]), { color: "red", weight: 6, opacity: 0.7 }).addTo(map);
   map.fitBounds(polyline.getBounds());
+  
+  // 修正：增加點擊地圖路徑聯動高度圖的功能
+  polyline.on('click', (e) => {
+    let minD = Infinity, idx = 0;
+    trackPoints.forEach((p, i) => {
+      const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2);
+      if (d < minD) { minD = d; idx = i; }
+    });
+    // 讓高度圖顯示該點的 Tooltip
+    if (chart) {
+      chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+      chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
+      chart.update();
+      updateHoverMarker(idx);
+    }
+  });
+
   const f = trackPoints[0], l = trackPoints.at(-1);
   markers.push(
     L.marker([f.lat, f.lon], { icon: startIcon }).addTo(map).bindPopup("起點"),
     L.marker([l.lat, l.lon], { icon: endIcon }).addTo(map).bindPopup("終點")
   );
+
+  waypoints.forEach(w => {
+    const wm = L.marker([w.lat, w.lon], { icon: wptIcon }).addTo(map);
+    wm.bindTooltip(`<b>${w.name}</b><br>時間: ${w.localTime}`, { direction: 'top', offset: [0, -10] });
+    wptMarkers.push(wm);
+  });
+  
   hoverMarker = L.circleMarker([f.lat, f.lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
+}
+
+function updateHoverMarker(index) {
+  const p = trackPoints[index];
+  hoverMarker.setLatLng([p.lat, p.lon])
+             .bindPopup(`<b>位置資訊</b><br>高度: ${p.ele.toFixed(0)} m<br>距離: ${p.distance.toFixed(2)} km<br>時間: ${p.timeLocal}<br>座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`)
+             .openPopup();
 }
 
 function drawElevationChart() {
@@ -153,10 +200,7 @@ function drawElevationChart() {
       interaction: { intersect: false, mode: "index" },
       onHover: (event, elements) => { 
         if (elements.length) {
-          const p = trackPoints[elements[0].index];
-          hoverMarker.setLatLng([p.lat, p.lon])
-                     .bindPopup(`<b>位置資訊</b><br>高度: ${p.ele.toFixed(0)} m<br>距離: ${p.distance.toFixed(2)} km<br>時間: ${p.timeLocal}<br>座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`)
-                     .openPopup();
+          updateHoverMarker(elements[0].index);
         }
       }
     }
@@ -168,7 +212,8 @@ function renderRouteInfo() {
   const dur = l.timeUTC.getTime() - f.timeUTC.getTime();
   const { gain, loss } = calculateElevationGainFiltered();
   const eles = trackPoints.map(p => p.ele);
-  const currentName = allTracks[routeSelect.value] ? allTracks[routeSelect.value].name : "路線";
+  const currentIndex = routeSelect.value || 0;
+  const currentName = allTracks[currentIndex] ? allTracks[currentIndex].name : "路線";
   document.getElementById("routeSummary").innerHTML = `
     記錄日期：${f.timeLocal.substring(0, 10)}<br>
     路線：${currentName}<br>

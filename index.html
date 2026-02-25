@@ -5,10 +5,9 @@
   <title>YCHiking - GPX 路線與高度檢視工具</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
-  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -23,99 +22,78 @@
       border-bottom: 1px solid #ddd;
     }
 
-		#map {
-  		height: 450px;     /* 電腦舒適高度 */
-		}
-
-		#chartContainer {
-      height:  40vh;
-      padding: 16px;
-		}
-
-		#elevationChart {
-			/* width:  100%	!important;
-  		height: 350px !important; */
-		} 
-
-		#routeInfo {
-  		margin-top: 20px;
-  		padding: 16px;
-  		background: #fafafa;
-  		border-top: 1px solid #ddd;
-  		font-size: 15px;
-  		line-height: 1.8;
-		}
-
-    canvas {
-      max-height: 100%;
+    #map {
+      height: 450px;
+      cursor: crosshair;
     }
-    
+
+    #chartContainer {
+      height: 40vh;
+      padding: 16px;
+    }
+
+    #routeInfo {
+      margin-top: 20px;
+      padding: 16px;
+      background: #fafafa;
+      border-top: 1px solid #ddd;
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
     .upload-row {
-  		display: flex;
-  		align-items: center;
- 		 gap: 8px;
-		}
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-		.subtitle {
-		  margin-top: 8px;
- 		  font-size: 14px;
-  		color: #555;
-  		line-height: 1.4;
-		}
-		
-		.upload-label {
- 			font-size: 13px;   /* 想更小可以 12px */
-  		color: #444;
-		}
-		
+    .subtitle {
+      margin-top: 8px;
+      font-size: 14px;
+      color: #555;
+      line-height: 1.4;
+    }
 
+    .leaflet-tooltip {
+      font-size: 13px;
+      padding: 8px;
+      border-radius: 4px;
+      box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
+    }
 
-@media (max-width: 768px) {
-
-  #map {
-    height: 50vh;
-  }
-
-  #elevationChart {
-    height: 260px !important;
-  }
-
-}
-		
+    @media (max-width: 768px) {
+      #map { height: 50vh; }
+      #elevationChart { height: 260px !important; }
+    }
   </style>
 </head>
 <body>
 
 <div id="header">
   <div class="upload-row">
-		<label for="gpxInput" class="upload-label"><strong>上傳 GPX:</strong></label>
+    <label for="gpxInput" class="upload-label"><strong>上傳 GPX:</strong></label>
     <input type="file" id="gpxInput" accept=".gpx" />
-
   </div>
 
-<div class="subtitle">
-  滑鼠移到高度圖或路線顯示座標與時間（UTC+8）<br>
-  <strong>YCHiking 簡易版</strong>
-  
-  <div id="routeSelectContainer" style="display:none; margin-top: 5px; margin-bottom: 5px;">
-    <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
-    <select id="routeSelect" style="padding: 6px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; cursor: pointer; outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"></select>
+  <div class="subtitle">
+    滑鼠移到高度圖或點擊地圖路徑可顯示座標與時間<br>
+    <strong>YCHiking 簡易版</strong>
+    
+    <div id="routeSelectContainer" style="display:none; margin-top: 5px; margin-bottom: 0px;">
+      <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
+      <select id="routeSelect" style="padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; cursor: pointer; outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"></select>
+    </div>
   </div>
 </div>
 
 <div id="map"></div>
 <div id="chartContainer">
-	  <canvas id="elevationChart"></canvas>
-	  
-	<div id="routeInfo">
-  <h3>路線資訊</h3>
-  <div id="routeSummary"></div>
-	</div>
-
+  <canvas id="elevationChart"></canvas>
+</div>
+<div id="routeInfo">
+  <div id="routeSummary">尚未上傳檔案</div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="app.js"></script>
-
 </body>
 </html>
