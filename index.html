@@ -11,14 +11,16 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
 <link rel="manifest" href="/gpx-online-viewer/manifest.json">
-<script>
-  if ('serviceWorker' in navigator) {
-    // 明確指定 scope
-    navigator.serviceWorker.register('/gpx-online-viewer/sw.js', { scope: '/gpx-online-viewer/' })
-      .then(reg => console.log('SW Registered'))
-      .catch(err => console.log('SW Failed', err));
-  }
-</script>
+  
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/gpx-online-viewer/sw.js', { scope: '/gpx-online-viewer/' })
+          .then(reg => console.log('SW 註冊成功，範圍為:', reg.scope))
+          .catch(err => console.log('SW 註冊失敗:', err));
+      });
+    }
+  </script>
   
   <style>
     body {

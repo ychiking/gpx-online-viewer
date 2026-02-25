@@ -6,7 +6,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 攔截來自分享的 POST 請求
+  // 接收來自 LINE 或系統分享的檔案
   if (event.request.method === 'POST' && url.pathname === '/gpx-online-viewer/') {
     event.respondWith((async () => {
       const formData = await event.request.formData();
@@ -15,7 +15,7 @@ self.addEventListener('fetch', (event) => {
       const cache = await caches.open('incoming-gpx');
       await cache.put('/shared.gpx', new Response(file));
       
-      // 導回主頁並帶上 shared 參數
+      // 導向回主頁並帶參數
       return Response.redirect('/gpx-online-viewer/?shared=1', 303);
     })());
   }
