@@ -146,14 +146,12 @@ function drawMap(waypoints = []) {
   polyline = L.polyline(trackPoints.map(p => [p.lat, p.lon]), { color: "red", weight: 6, opacity: 0.7 }).addTo(map);
   map.fitBounds(polyline.getBounds());
   
-  // 修正：增加點擊地圖路徑聯動高度圖的功能
   polyline.on('click', (e) => {
     let minD = Infinity, idx = 0;
     trackPoints.forEach((p, i) => {
       const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2);
       if (d < minD) { minD = d; idx = i; }
     });
-    // 讓高度圖顯示該點的 Tooltip
     if (chart) {
       chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
       chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
@@ -196,7 +194,19 @@ function drawElevationChart() {
       }]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
+      maintainAspectRatio: false, // 關鍵：讓圖表隨容器變形而不強制維持比例
+      scales: {
+        x: {
+          ticks: {
+            maxRotation: 0, // 防止標籤旋轉擠壓
+            font: { size: 10 } // 手機版適合的大小
+          }
+        },
+        y: {
+          ticks: { font: { size: 10 } }
+        }
+      },
       interaction: { intersect: false, mode: "index" },
       onHover: (event, elements) => { 
         if (elements.length) {
@@ -216,13 +226,13 @@ function renderRouteInfo() {
   const currentName = allTracks[currentIndex] ? allTracks[currentIndex].name : "路線";
   document.getElementById("routeSummary").innerHTML = `
     記錄日期：${f.timeLocal.substring(0, 10)}<br>
-    路線：${currentName}<br>
-    里程：${l.distance.toFixed(2)} km<br>
+    路　　線：${currentName}<br>
+    里　　程：${l.distance.toFixed(2)} km<br>
     花費時間：${Math.floor(dur/3600000)} 小時 ${Math.floor((dur%3600000)/60000)} 分鐘<br>
     最高海拔：${Math.max(...eles).toFixed(0)} m<br>
     最低海拔：${Math.min(...eles).toFixed(0)} m<br>
-    總爬升：${gain.toFixed(0)} m<br>
-    總下降：${loss.toFixed(0)} m
+    總爬升數：${gain.toFixed(0)} m<br>
+    總下降數：${loss.toFixed(0)} m
   `;
 }
 

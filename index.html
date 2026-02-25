@@ -23,22 +23,22 @@
     }
 
     #map {
-      height: 450px;
+      height: 400px;
       cursor: crosshair;
     }
 
     #chartContainer {
-      height: 40vh;
-      padding: 16px;
+      height: 300px; /* 電腦版預設 */
+      padding: 10px 16px;
     }
 
     #routeInfo {
-      margin-top: 20px;
-      padding: 16px;
+      margin-top: 5px; /* 縮小與圖表之間的間距 */
+      padding: 12px 16px;
       background: #fafafa;
       border-top: 1px solid #ddd;
       font-size: 15px;
-      line-height: 1.8;
+      line-height: 1.6;
     }
 
     .upload-row {
@@ -58,12 +58,24 @@
       font-size: 13px;
       padding: 8px;
       border-radius: 4px;
-      box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
     }
+    
+    .upload-label {
+ 			font-size: 13px;   /* 想更小可以 12px */
+  		color: #444;
+		}
 
+    /* 手機版特別優化 */
     @media (max-width: 768px) {
-      #map { height: 50vh; }
-      #elevationChart { height: 260px !important; }
+      #map { height: 35vh; } /* 稍微縮小地圖比例，留給圖表空間 */
+      #chartContainer {
+        height: 220px; /* 手機版固定高度，避免空白過多 */
+        padding: 5px 10px;
+      }
+      #routeInfo {
+        margin-top: 0;
+        font-size: 14px; /* 手機版字體微調 */
+      }
     }
   </style>
 </head>
@@ -76,12 +88,12 @@
   </div>
 
   <div class="subtitle">
-    滑鼠移到高度圖或點擊地圖路徑可顯示座標與時間<br>
+    滑鼠移到高度圖或點擊地圖路徑顯示資訊<br>
     <strong>YCHiking 簡易版</strong>
     
     <div id="routeSelectContainer" style="display:none; margin-top: 5px; margin-bottom: 0px;">
       <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
-      <select id="routeSelect" style="padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; cursor: pointer; outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"></select>
+      <select id="routeSelect" style="padding: 6px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; outline: none;"></select>
     </div>
   </div>
 </div>
