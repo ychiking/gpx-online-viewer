@@ -26,7 +26,7 @@ const wptIcon = new L.Icon({
   iconSize: [15, 25], iconAnchor: [7, 25], popupAnchor: [1, -20], shadowSize: [25, 25]
 });
 
-// ================= GPX 上傳與解析 =================
+// ================= GPX 解析與處理 =================
 document.getElementById("gpxInput").addEventListener("change", e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -127,10 +127,29 @@ function calculateDistance() {
 
 function calculateElevationGainFiltered() {
   if (trackPoints.length < 3) return { gain: 0, loss: 0 };
-  const smoothed = trackPoints.map((p, i, arr) => {
+
+  // 第一步：防呆過濾 (剔除跳點)
+  let cleanPoints = [];
+  cleanPoints.push(trackPoints[0]);
+
+  for (let i = 1; i < trackPoints.length; i++) {
+    const prevEle = trackPoints[i-1].ele;
+    const currEle = trackPoints[i].ele;
+    
+    // 如果高度瞬間變化超過 100 公尺 (可依需求調整)，視為雜訊，沿用上一點高度
+    if (Math.abs(currEle - prevEle) > 100) {
+      cleanPoints.push({ ...trackPoints[i], ele: prevEle });
+    } else {
+      cleanPoints.push(trackPoints[i]);
+    }
+  }
+
+  // 第二步：原本的平滑與計算邏輯 (使用過濾後的 cleanPoints)
+  const smoothed = cleanPoints.map((p, i, arr) => {
     const start = Math.max(0, i - 1), end = Math.min(arr.length - 1, i + 1);
     return arr.slice(start, end + 1).reduce((s, c) => s + c.ele, 0) / (end - start + 1);
   });
+
   let gain = 0, loss = 0, threshold = 4, lastEle = smoothed[0];
   for (let i = 1; i < smoothed.length; i++) {
     const diff = smoothed[i] - lastEle;
@@ -175,6 +194,22 @@ function drawMap(waypoints = []) {
   hoverMarker = L.circleMarker([f.lat, f.lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
 }
 
+// 跳轉到航點功能
+function focusWaypoint(lat, lon, name) {
+  // 1. 讓網頁捲軸平滑捲動回頂部地圖位置
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth' // 平滑捲動
+  });
+
+  // 2. 讓地圖位移並彈出資訊
+  map.setView([lat, lon], 16); 
+  L.popup()
+   .setLatLng([lat, lon])
+   .setContent(`<b>${name}</b>`)
+   .openOn(map);
+}
+
 function updateHoverMarker(index) {
   const p = trackPoints[index];
   hoverMarker.setLatLng([p.lat, p.lon])
@@ -194,24 +229,14 @@ function drawElevationChart() {
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false, // 關鍵：讓圖表隨容器變形而不強制維持比例
+      responsive: true, maintainAspectRatio: false,
       scales: {
-        x: {
-          ticks: {
-            maxRotation: 0, // 防止標籤旋轉擠壓
-            font: { size: 10 } // 手機版適合的大小
-          }
-        },
-        y: {
-          ticks: { font: { size: 10 } }
-        }
+        x: { ticks: { autoSkip: true, maxTicksLimit: 10, maxRotation: 0, font: { size: 10 } } },
+        y: { ticks: { font: { size: 10 } } }
       },
       interaction: { intersect: false, mode: "index" },
       onHover: (event, elements) => { 
-        if (elements.length) {
-          updateHoverMarker(elements[0].index);
-        }
+        if (elements.length) updateHoverMarker(elements[0].index);
       }
     }
   });
@@ -222,18 +247,49 @@ function renderRouteInfo() {
   const dur = l.timeUTC.getTime() - f.timeUTC.getTime();
   const { gain, loss } = calculateElevationGainFiltered();
   const eles = trackPoints.map(p => p.ele);
-  const currentIndex = routeSelect.value || 0;
-  const currentName = allTracks[currentIndex] ? allTracks[currentIndex].name : "路線";
+  const selectedIndex = routeSelect.value || 0;
+  const currentRoute = allTracks[selectedIndex];
+  const currentName = currentRoute ? currentRoute.name : "路線";
+
   document.getElementById("routeSummary").innerHTML = `
     記錄日期：${f.timeLocal.substring(0, 10)}<br>
-    路　　線：${currentName}<br>
-    里　　程：${l.distance.toFixed(2)} km<br>
+    路線：${currentName}<br>
+    里程：${l.distance.toFixed(2)} km<br>
     花費時間：${Math.floor(dur/3600000)} 小時 ${Math.floor((dur%3600000)/60000)} 分鐘<br>
     最高海拔：${Math.max(...eles).toFixed(0)} m<br>
     最低海拔：${Math.min(...eles).toFixed(0)} m<br>
-    總爬升數：${gain.toFixed(0)} m<br>
-    總下降數：${loss.toFixed(0)} m
+    總爬升：${gain.toFixed(0)} m<br>
+    總下降：${loss.toFixed(0)} m
   `;
+
+  const wptListContainer = document.getElementById("wptList");
+  if (currentRoute.waypoints && currentRoute.waypoints.length > 0) {
+    let tableHtml = `
+      <table class="wpt-table">
+        <thead>
+          <tr>
+            <th style="width: 8%;">#</th>
+            <th style="width: 32%;">期與時間</th>
+            <th style="width: 60%;">航點名稱</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    currentRoute.waypoints.forEach((w, i) => {
+      // 在序號加上 onclick 事件，呼叫 focusWaypoint
+      tableHtml += `
+        <tr>
+          <td><span class="wpt-link" onclick="focusWaypoint(${w.lat}, ${w.lon}, '${w.name}')">${i + 1}</span></td>
+          <td>${w.localTime}</td>
+          <td>${w.name}</td> 
+        </tr>
+      `;
+    });
+    tableHtml += `</tbody></table>`;
+    wptListContainer.innerHTML = `<h4 style="margin: 20px 0 10px 0;">航點列表 (點擊序號查看位置)</h4>` + tableHtml;
+  } else {
+    wptListContainer.innerHTML = "";
+  }
 }
 
 function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
