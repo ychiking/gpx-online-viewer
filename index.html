@@ -23,14 +23,28 @@
       border-bottom: 1px solid #ddd;
     }
 
-    #map {
-      height: 55vh;
-    }
+		#map {
+  		height: 450px;     /* 電腦舒適高度 */
+		}
 
-    #chartContainer {
-      height: 45vh;
-      padding: 10px;
-    }
+		#chartContainer {
+      height:  40vh;
+      padding: 16px;
+		}
+
+		#elevationChart {
+			/* width:  100%	!important;
+  		height: 350px !important; */
+		} 
+
+		#routeInfo {
+  		margin-top: 20px;
+  		padding: 16px;
+  		background: #fafafa;
+  		border-top: 1px solid #ddd;
+  		font-size: 15px;
+  		line-height: 1.8;
+		}
 
     canvas {
       max-height: 100%;
@@ -53,6 +67,19 @@
  			font-size: 13px;   /* 想更小可以 12px */
   		color: #444;
 		}
+		
+@media (max-width: 768px) {
+
+  #map {
+    height: 50vh;
+  }
+
+  #elevationChart {
+    height: 260px !important;
+  }
+
+}
+		
   </style>
 </head>
 <body>
@@ -71,7 +98,13 @@
 
 <div id="map"></div>
 <div id="chartContainer">
-  <canvas id="elevationChart"></canvas>
+	  <canvas id="elevationChart"></canvas>
+	  
+	<div id="routeInfo">
+  <h3>路線資訊</h3>
+  <div id="routeSummary"></div>
+	</div>
+
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
