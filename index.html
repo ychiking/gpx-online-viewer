@@ -9,19 +9,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
-<link rel="manifest" href="/gpx-online-viewer/manifest.json">
-  
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/gpx-online-viewer/sw.js', { scope: '/gpx-online-viewer/' })
-          .then(reg => console.log('SW 註冊成功，範圍為:', reg.scope))
-          .catch(err => console.log('SW 註冊失敗:', err));
-      });
-    }
-  </script>
-  
+
   <style>
     body {
       margin: 0;

@@ -293,25 +293,3 @@ function renderRouteInfo() {
 }
 
 function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
-
-// 處理 Web Share Target 傳進來的檔案
-window.addEventListener('load', async () => {
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.has('shared')) {
-    try {
-      const cache = await caches.open('incoming-gpx');
-      const response = await cache.match('/shared.gpx');
-      if (response) {
-        const gpxText = await response.text();
-        parseGPX(gpxText); // 呼叫你原本的解析函式
-        
-        // 清理
-        await cache.delete('/shared.gpx');
-        // 移除網址參數 ?shared=1
-        window.history.replaceState({}, document.title, "/gpx-online-viewer/");
-      }
-    } catch (err) {
-      console.error("分享讀取失敗:", err);
-    }
-  }
-});
