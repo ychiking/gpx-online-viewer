@@ -34,6 +34,9 @@ function parseGPX(text) {
   allTracks = [];
   routeSelect.innerHTML = "";
   const trks = xml.getElementsByTagName("trk");
+  
+  
+  
   if (trks.length > 0) {
     for (let i = 0; i < trks.length; i++) {
       const nameNode = trks[i].getElementsByTagName("name")[0];
@@ -46,8 +49,18 @@ function parseGPX(text) {
     const points = extractPoints(allPts);
     if (points.length > 0) allTracks.push({ name: "預設路線", points });
   }
+
   if (allTracks.length === 0) return alert("找不到有效點位資料");
-  routeSelect.style.display = allTracks.length > 1 ? "inline-block" : "none";
+  
+  // 修改這裡：當有多條路線時，才顯示選單與「路線:」標籤
+  const container = routeSelect.parentElement;
+  if (allTracks.length > 1) {
+    container.style.display = "block";
+    routeSelect.style.display = "inline-block";
+  } else {
+    container.style.display = "none";
+  }
+
   allTracks.forEach((t, i) => {
     const opt = document.createElement("option"); opt.value = i; opt.textContent = t.name;
     routeSelect.appendChild(opt);
@@ -121,7 +134,6 @@ function drawMap() {
     L.marker([f.lat, f.lon], { icon: startIcon }).addTo(map).bindPopup("起點"),
     L.marker([l.lat, l.lon], { icon: endIcon }).addTo(map).bindPopup("終點")
   );
-  // 高度圖同步用的藍色圓點
   hoverMarker = L.circleMarker([f.lat, f.lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
 }
 
@@ -142,7 +154,6 @@ function drawElevationChart() {
       onHover: (event, elements) => { 
         if (elements.length) {
           const p = trackPoints[elements[0].index];
-          // 這裡修正了同步顯示資訊 Tip 的功能
           hoverMarker.setLatLng([p.lat, p.lon])
                      .bindPopup(`<b>位置資訊</b><br>高度: ${p.ele.toFixed(0)} m<br>距離: ${p.distance.toFixed(2)} km<br>時間: ${p.timeLocal}<br>座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`)
                      .openPopup();
