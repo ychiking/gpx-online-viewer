@@ -10,14 +10,15 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
-  <link rel="manifest" href="manifest.json">
-	<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/gpx-online-viewer/sw.js', { scope: '/gpx-online-viewer/' })
-    .then(() => console.log('Service Worker 註冊成功'))
-    .catch(err => console.log('註冊失敗', err));
-}
-	</script>
+<link rel="manifest" href="/gpx-online-viewer/manifest.json">
+<script>
+  if ('serviceWorker' in navigator) {
+    // 明確指定 scope
+    navigator.serviceWorker.register('/gpx-online-viewer/sw.js', { scope: '/gpx-online-viewer/' })
+      .then(reg => console.log('SW Registered'))
+      .catch(err => console.log('SW Failed', err));
+  }
+</script>
   
   <style>
     body {
