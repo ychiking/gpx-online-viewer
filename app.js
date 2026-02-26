@@ -667,7 +667,13 @@ async function detectPeaksAlongRoute() {
 
     } catch (error) {
         console.error("Overpass API Error:", error);
-        aiSection.innerHTML = `<div style="padding:20px; color:red; font-size:13px;">❌ 山岳偵測連線失敗。</div>`;
+        aiSection.innerHTML = `
+            <div style="padding:20px; color:#721c24; background-color:#f8d7da; border:1px solid #f5c6cb; border-radius:8px; text-align:center; margin:10px 0;">
+                <p style="margin-bottom:10px;">❌ 山岳偵測連線失敗 (API 忙碌中或網路不穩)</p>
+                <button onclick="detectPeaksAlongRoute()" style="padding:8px 16px; background:#d35400; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">
+                    🔄 重新偵測
+                </button>
+            </div>`;
     }
 }
 
