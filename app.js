@@ -250,6 +250,23 @@ function drawElevationChart() {
     }
   });
   
+  // --- 【新增：手機觸控開始】 ---
+  canvas.addEventListener('touchstart', (e) => {
+    isMouseDown = true;
+    if (mapTipTimer) clearTimeout(mapTipTimer);
+    handleSync(e);
+    // 阻止手機頁面捲動，確保能順利觸發圖表連動
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  // --- 【新增：手機觸控移動】 ---
+  canvas.addEventListener('touchmove', (e) => {
+    if (isMouseDown) {
+      handleSync(e);
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
+  
   window.addEventListener('mouseup', () => { 
     if (isMouseDown) {
       isMouseDown = false; 
@@ -262,6 +279,19 @@ function drawElevationChart() {
       chart.update('none'); 
     }
   });
+
+		// --- 【新增：手機觸控結束】 ---
+		  canvas.addEventListener('touchend', () => {
+		    if (isMouseDown) {
+		      isMouseDown = false;
+		      startHeightOnlyTimer();
+		    }
+		    if (chart) {
+		      chart.setActiveElements([]);
+		      chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+		      chart.update('none');
+		    }
+		  });
 
   canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
