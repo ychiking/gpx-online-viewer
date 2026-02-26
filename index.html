@@ -171,16 +171,19 @@
 		    justify-content: center;
 		    pointer-events: none;
 		    border: 1px solid #ccc;
-		    /* 增加動畫效果 */
-		    transition: opacity 0.3s ease, transform 0.3s ease;
-		    visibility: visible;
-		}
-		
-			/* 隱藏狀態 */
-		.map-compass.hidden {
+		/* 預設狀態：完全隱藏 */
 		    opacity: 0;
-		    transform: scale(0.5);
-		    visibility: hidden;
+		    visibility: hidden; 
+		    transform: scale(0.8); /* 稍微縮小，增加彈出的感覺 */
+		    transition: all 0.3s ease; /* 統一動畫時間 */
+				}
+				
+		
+		/* 當有 .show class 時顯示 */
+		.map-compass.show {
+		    opacity: 1;
+		    visibility: visible;
+		    transform: scale(1);
 		}
 		
 		/* N 字標記 (放在 0 刻度上方) */

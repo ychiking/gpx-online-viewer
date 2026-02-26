@@ -278,10 +278,10 @@ function loadRoute(index) {
 
 // --- 指北針顯示/隱藏切換功能 ---
 window.toggleCompass = function() {
-    const compass = document.getElementById("mapCompass");
+		const compass = document.querySelector(".map-compass");
     if (compass) {
         // 使用 classList.toggle 切換隱藏狀態
-        compass.classList.toggle("hidden");
+        compass.classList.toggle("show");
     }
 };
 
