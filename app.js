@@ -1,8 +1,28 @@
 // ================= 地圖初始化 =================
 const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { 
+
+// 1. 定義 OpenStreetMap (預設)
+const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { 
   attribution: "© OpenStreetMap" 
-}).addTo(map);
+});
+
+// 2. 定義 OpenTopoMap (等高線地形圖)
+const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 17,
+  attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+});
+
+// 將預設地圖加入地圖物件
+osm.addTo(map);
+
+// 3. 建立底圖切換選單
+const baseMaps = {
+  "標準地圖 (OSM)": osm,
+  "等高線地形圖 (OpenTopo)": otm
+};
+
+// 將切換按鈕加入地圖右上角
+L.control.layers(baseMaps).addTo(map);
 
 let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [], wptMarkers = [];
 let pointA = null, pointB = null, markerA = null, markerB = null;
@@ -159,6 +179,41 @@ function loadRoute(index) {
     });
     const wm = L.marker([w.lat, w.lon], { icon: wptIcon }).addTo(map);
     wm.on('click', () => { showCustomPopup(tIdx, w.name); });
+    
+    // --- 【修改這裡：增加高度圖連動邏輯】 ---
+    wm.on('click', () => { 
+      // 1. 顯示地圖上的彈窗
+      showCustomPopup(tIdx, w.name); 
+      
+      // 2. 讓地圖上的藍色標記移動到該航點
+      if (hoverMarker) {
+        hoverMarker.setLatLng([w.lat, w.lon]);
+      }
+
+      // 3. 連動高度圖的小藍圓圈
+      if (chart) {
+        const meta = chart.getDatasetMeta(0);
+        const point = meta.data[tIdx];
+        
+        // 顯示小藍圓圈
+        chart.setActiveElements([{ datasetIndex: 0, index: tIdx }]);
+        // 顯示高度圖黑色數據 Tip
+        chart.tooltip.setActiveElements([{ datasetIndex: 0, index: tIdx }], { x: point.x, y: point.y });
+        chart.update('none');
+
+        // 設定 3 秒後黑色數據 Tip 消失，但藍圈留下
+        if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
+        window.chartTipTimer = setTimeout(() => {
+          if (!isMouseDown && chart) {
+            chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+            chart.update();
+          }
+        }, 3000);
+      }
+    });
+    // ------------------------------------
+    
+    
     wptMarkers.push(wm);
   });
 
