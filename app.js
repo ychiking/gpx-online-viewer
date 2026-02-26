@@ -6,46 +6,52 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [], wptMarkers = [];
 let pointA = null, pointB = null, markerA = null, markerB = null;
+let currentPopup = null; 
+let isMouseDown = false; 
+let mapTipTimer = null; // 用於高度圖觸發後的 3 秒自動關閉定時器
+
 const routeSelect = document.getElementById("routeSelect");
 
-// ================= 定義圖示 =================
+// ================= 下拉選單切換事件 =================
+routeSelect.addEventListener("change", (e) => {
+    const selectedIndex = parseInt(e.target.value);
+    loadRoute(selectedIndex);
+});
+
+// ================= 定義圖示 (保持不變) =================
 const startIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
-
 const endIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
-
 const wptIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
   iconSize: [20, 32], iconAnchor: [10, 32], popupAnchor: [1, -28], shadowSize: [32, 32]
 });
 
-// ================= A/B 點清除邏輯 =================
+// ================= A/B 點與解析邏輯 (保持不變) =================
 window.clearABSettings = function() {
-  pointA = null;
-  pointB = null;
+  pointA = null; pointB = null;
   if (markerA) { map.removeLayer(markerA); markerA = null; }
   if (markerB) { map.removeLayer(markerB); markerB = null; }
   updateABUI();
-  // 【關鍵：清除時同時關閉地圖上所有的彈窗】
   map.closePopup(); 
 };
 
-// ================= GPX 解析 =================
 document.getElementById("gpxInput").addEventListener("change", e => {
   const file = e.target.files[0];
   if (!file) return;
   
-  // 上傳新檔案時，強制關閉舊彈窗
-  map.closePopup(); 
+  // 【新增內容】：更新介面上的檔案名稱顯示
+  document.getElementById("fileNameDisplay").textContent = file.name;
   
+  map.closePopup(); 
   const reader = new FileReader();
   reader.onload = () => parseGPX(reader.result);
   reader.readAsText(file);
@@ -55,31 +61,22 @@ function parseGPX(text) {
   const xml = new DOMParser().parseFromString(text, "application/xml");
   allTracks = [];
   routeSelect.innerHTML = "";
-
   const wpts = xml.getElementsByTagName("wpt");
   let waypoints = [];
   for (let w of wpts) {
     const lat = parseFloat(w.getAttribute("lat")), lon = parseFloat(w.getAttribute("lon"));
     const name = w.getElementsByTagName("name")[0]?.textContent || "未命名航點";
     const time = w.getElementsByTagName("time")[0]?.textContent;
-    waypoints.push({ 
-      lat, lon, name, 
-      localTime: time ? formatDate(new Date(new Date(time).getTime() + 8*3600000)) : "無時間資訊" 
-    });
+    waypoints.push({ lat, lon, name, localTime: time ? formatDate(new Date(new Date(time).getTime() + 8*3600000)) : "無時間資訊" });
   }
-
   const trks = xml.getElementsByTagName("trk");
   for (let i = 0; i < trks.length; i++) {
     const pts = trks[i].getElementsByTagName("trkpt");
     const points = extractPoints(pts);
     if (points.length > 0) {
-      allTracks.push({ 
-        name: trks[i].getElementsByTagName("name")[0]?.textContent || `路線 ${i + 1}`, 
-        points, waypoints 
-      });
+      allTracks.push({ name: trks[i].getElementsByTagName("name")[0]?.textContent || `路線 ${i + 1}`, points, waypoints });
     }
   }
-
   if (allTracks.length > 1) {
     document.getElementById("routeSelectContainer").style.display = "block";
     allTracks.forEach((t, i) => {
@@ -111,7 +108,6 @@ function extractPoints(pts) {
   return res;
 }
 
-// ================= 過濾與計算邏輯 =================
 function calculateElevationGainFiltered(points = trackPoints) {
   if (points.length < 3) return { gain: 0, loss: 0 };
   let cleanPoints = [points[0]];
@@ -126,28 +122,20 @@ function calculateElevationGainFiltered(points = trackPoints) {
   let gain = 0, loss = 0, threshold = 4, lastEle = smoothed[0];
   for (let i = 1; i < smoothed.length; i++) {
     const diff = smoothed[i] - lastEle;
-    if (Math.abs(diff) >= threshold) { 
-      if (diff > 0) gain += diff; else loss += Math.abs(diff); 
-      lastEle = smoothed[i]; 
-    }
+    if (Math.abs(diff) >= threshold) { if (diff > 0) gain += diff; else loss += Math.abs(diff); lastEle = smoothed[i]; }
   }
   return { gain, loss };
 }
 
-// ================= 地圖載入與顯示 =================
-routeSelect.addEventListener("change", (e) => {
-  clearABSettings(); // 切換路線自動清除 A/B
-  loadRoute(parseInt(e.target.value));
-});
-
+// ================= 地圖載入與連動 =================
 function loadRoute(index) {
-  // 【關鍵：載入新路線前，關閉所有舊彈窗】
   map.closePopup(); 
-  
+  // 【新增】切換路線時自動清空舊的 A/B 設定
+  window.clearABSettings(); 
+ 
   const sel = allTracks[index]; 
   if (!sel) return;
   trackPoints = sel.points;
-
   if (polyline) map.removeLayer(polyline); 
   markers.forEach(m => map.removeLayer(m)); 
   wptMarkers.forEach(m => map.removeLayer(m));
@@ -158,9 +146,9 @@ function loadRoute(index) {
   map.fitBounds(polyline.getBounds());
 
   const mStart = L.marker([trackPoints[0].lat, trackPoints[0].lon], { icon: startIcon }).addTo(map);
-  mStart.on('click', () => showCustomPopup(0, "起點"));
+  mStart.on('click', () => { showCustomPopup(0, "起點"); });
   const mEnd = L.marker([trackPoints.at(-1).lat, trackPoints.at(-1).lon], { icon: endIcon }).addTo(map);
-  mEnd.on('click', () => showCustomPopup(trackPoints.length-1, "終點"));
+  mEnd.on('click', () => { showCustomPopup(trackPoints.length-1, "終點"); });
   markers.push(mStart, mEnd);
 
   sel.waypoints.forEach(w => {
@@ -170,14 +158,39 @@ function loadRoute(index) {
       if (d < minD) { minD = d; tIdx = i; }
     });
     const wm = L.marker([w.lat, w.lon], { icon: wptIcon }).addTo(map);
-    wm.on('click', () => showCustomPopup(tIdx, w.name));
+    wm.on('click', () => { showCustomPopup(tIdx, w.name); });
     wptMarkers.push(wm);
   });
 
   polyline.on('click', (e) => {
     let minD = Infinity, idx = 0;
-    trackPoints.forEach((p, i) => { const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2); if (d < minD) { minD = d; idx = i; } });
-    showCustomPopup(idx, "位置資訊");
+    trackPoints.forEach((p, i) => { 
+      const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2); 
+      if (d < minD) { minD = d; idx = i; } 
+    });
+    hoverMarker.setLatLng([trackPoints[idx].lat, trackPoints[idx].lon]);
+    showCustomPopup(idx, "位置資訊"); 
+    
+    if (chart) {
+      const meta = chart.getDatasetMeta(0);
+      const point = meta.data[idx];
+      
+      // 顯示高度圖的黑色位置數據 Tip
+      chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+      chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: point.x, y: point.y });
+      chart.update();
+
+      // 【修改點】點擊地圖路徑觸發高度圖 Tip 後，設定 3 秒閒置自動關閉
+      if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
+      window.chartTipTimer = setTimeout(() => {
+        // 如果此時滑鼠沒有在按住拖動，則關閉高度圖 Tip
+        if (!isMouseDown && chart) {
+          chart.setActiveElements([]);
+          chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+          chart.update('none');
+        }
+      }, 3000);
+    }
   });
 
   hoverMarker = L.circleMarker([trackPoints[0].lat, trackPoints[0].lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
@@ -185,38 +198,240 @@ function loadRoute(index) {
   renderRouteInfo();
 }
 
-window.focusWaypoint = function(lat, lon, name) {
-  let minD = Infinity, idx = 0;
-  trackPoints.forEach((p, i) => {
-    const d = Math.sqrt((p.lat - lat)**2 + (p.lon - lon)**2);
-    if (d < minD) { minD = d; idx = i; }
-  });
-
-  map.setView([lat, lon], 16);
-  document.getElementById("map").scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-  setTimeout(() => {
-    showCustomPopup(idx, name);
-  }, 300);
-};
-
 function showCustomPopup(idx, title) {
+  if (!trackPoints[idx]) return;
   const p = trackPoints[idx];
   const content = `
     <div style="min-width:180px; font-size:13px; line-height:1.5;">
       <b style="font-size:14px;">${title}</b><br>
-      高度: ${p.ele.toFixed(0)} m<br>
-      距離: ${p.distance.toFixed(2)} km<br>
-      時間: ${p.timeLocal}<br>
-      座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
+      高度: ${p.ele.toFixed(0)} m<br>距離: ${p.distance.toFixed(2)} km<br>時間: ${p.timeLocal}<br>座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
       <div style="display:flex; margin-top:10px; gap:5px;">
         <button onclick="setAB('A', ${idx})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
         <button onclick="setAB('B', ${idx})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
       </div>
     </div>`;
-  L.popup().setLatLng([p.lat, p.lon]).setContent(content).openOn(map);
+
+  if (currentPopup && map.hasLayer(currentPopup)) {
+    currentPopup.setLatLng([p.lat, p.lon]).setContent(content);
+  } else {
+    currentPopup = L.popup({ autoClose: true, closeOnClick: false, fadeAnimation: false })
+    .setLatLng([p.lat, p.lon]).setContent(content).openOn(map);
+  }
 }
 
+// 專為高度圖觸發設計的關閉定時器
+function startHeightTipTimer() {
+  if (mapTipTimer) clearTimeout(mapTipTimer);
+  mapTipTimer = setTimeout(() => {
+    // 檢查目前 Popup 的內容是否包含「高度圖位置」，若是則關閉
+    if (currentPopup && map.hasLayer(currentPopup)) {
+      const el = currentPopup.getElement();
+      if (el && el.innerText.includes("位置資訊")) {
+        map.closePopup();
+      }
+    }
+  }, 3000);
+}
+
+// ================= 高度圖 =================
+let mouseX = null; 
+
+function drawElevationChart() {
+  const canvas = document.getElementById("elevationChart");
+  const ctx = canvas.getContext("2d");
+  if (chart) chart.destroy();
+
+  canvas.addEventListener('mousedown', (e) => { 
+    if (e.button === 0) { 
+      isMouseDown = true; 
+      // 按住時，如果正在倒數關閉「高度圖位置」tip，立即取消倒數
+      if (mapTipTimer) clearTimeout(mapTipTimer);
+      handleSync(e); 
+    }
+  });
+  
+  window.addEventListener('mouseup', () => { 
+    if (isMouseDown) {
+      isMouseDown = false; 
+      // 【修改點】放開滑鼠停止拖動時，啟動 3 秒倒數關閉
+      startHeightOnlyTimer();
+    }
+    if (chart) {
+      chart.setActiveElements([]);
+      chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+      chart.update('none'); 
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    
+    if (isMouseDown) {
+      handleSync(e);
+    } else {
+      if (chart && chart.getActiveElements().length > 0) {
+        chart.setActiveElements([]);
+        chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+      }
+      chart.update('none');
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => { 
+    mouseX = null; 
+    if (isMouseDown) {
+      isMouseDown = false;
+      // 【修改點】滑鼠移出圖表停止拖動時，啟動 3 秒倒數關閉
+      startHeightOnlyTimer();
+    }
+    if (chart) {
+      chart.setActiveElements([]);
+      chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+      chart.update('none');
+    }
+  });
+
+  function handleSync(e) {
+    const points = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
+    if (points.length) {
+      const idx = points[0].index;
+      const p = trackPoints[idx];
+      hoverMarker.setLatLng([p.lat, p.lon]);
+      showCustomPopup(idx, "位置資訊");
+      
+      chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+      chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
+      chart.update('none');
+
+      // 【關鍵修改】：處理高度圖位置數據 Tip (黑色框) 的 3 秒自動關閉
+      if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
+      
+      // 只有在按住拖移時（isMouseDown 為 true）才啟動這個 3 秒閒置關閉邏輯
+      if (isMouseDown) {
+        window.chartTipTimer = setTimeout(() => {
+          // 如果 3 秒後使用者還沒放開滑鼠（或滑鼠停住沒動），則強制隱藏黑色 Tip
+          if (chart) {
+            chart.setActiveElements([]);
+            chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+            chart.update('none');
+          }
+        }, 3000);
+      }
+    }
+  }
+
+  // Chart 初始化部分維持您提供的內容完全不變...
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: trackPoints.map(p => p.distance.toFixed(2)),
+      datasets: [{ 
+        label: "高度 (m)", 
+        data: trackPoints.map(p => p.ele), 
+        fill: true, 
+        backgroundColor: 'rgba(54, 162, 235, 0.2)', 
+        borderColor: 'rgba(54, 162, 235, 1)', 
+        tension: 0.1, 
+        pointRadius: 0 
+      }]
+    },
+    options: {
+      responsive: true, 
+      maintainAspectRatio: false,
+      events: ['mousedown', 'mouseup', 'click', 'touchstart', 'touchmove', 'touchend'],
+      interaction: { intersect: false, mode: "index" },
+      plugins: {
+        tooltip: {
+          enabled: true,
+          displayColors: false, 
+          // 這裡維持您的邏輯：按住或有 ActiveElements 才顯示位置數據
+          filter: () => isMouseDown || (chart && chart.getActiveElements().length > 0),
+          callbacks: {
+            title: () => "位置資訊", 
+            label: function(context) {
+              const p = trackPoints[context.dataIndex];
+              return [
+                ` \u25A0 距離: ${p.distance.toFixed(2)} km`, 
+                ` \u25A0 高度: ${p.ele.toFixed(0)} m`,       
+                ` \u25A0 時間: ${p.timeLocal.split(' ')[1]}` 
+              ];
+            }
+          }
+        }
+      }
+    },
+    plugins: [{
+      id: 'verticalLine',
+      afterDraw: (chart) => {
+        if (mouseX !== null) {
+          const x = mouseX;
+          const topY = chart.chartArea.top;
+          const bottomY = chart.chartArea.bottom;
+          const _ctx = chart.ctx;
+          _ctx.save();
+          _ctx.beginPath();
+          _ctx.moveTo(x, topY);
+          _ctx.lineTo(x, bottomY);
+          _ctx.lineWidth = 1;
+          _ctx.strokeStyle = isMouseDown ? 'rgba(0, 123, 255, 0.8)' : 'rgba(150, 150, 150, 0.4)';
+          _ctx.setLineDash(isMouseDown ? [] : [5, 5]);
+          _ctx.stroke();
+          if (!isMouseDown) {
+            _ctx.fillStyle = 'rgba(150, 150, 150, 0.8)';
+            _ctx.font = '10px Arial';
+            _ctx.fillText(' 按住拖動 ', x + 5, topY + 15);
+          }
+          _ctx.restore();
+        }
+      }
+    }]
+  });
+}
+
+// 【新增輔助函式】專門用來判斷並關閉「高度圖位置」
+function startHeightOnlyTimer() {
+  if (mapTipTimer) clearTimeout(mapTipTimer);
+  mapTipTimer = setTimeout(() => {
+    if (currentPopup && map.hasLayer(currentPopup)) {
+      const content = currentPopup.getContent();
+      // 只有內容包含 "高度圖位置" 時才關閉
+      if (typeof content === 'string' && content.includes("位置資訊")) {
+        map.closePopup();
+      }
+    }
+  }, 3000);
+}
+
+// ================= 航點導向功能 =================
+window.focusWaypoint = function(lat, lon, name) {
+    // 1. 將地圖中心移動到該航點並放大
+    map.setView([lat, lon], 16);
+    
+    // 2. 尋找最接近該座標的軌跡點索引，以利顯示彈窗數據
+    let minD = Infinity, idx = 0;
+    trackPoints.forEach((tp, i) => {
+        let d = Math.sqrt((lat - tp.lat) ** 2 + (lon - tp.lon) ** 2);
+        if (d < minD) {
+            minD = d;
+            idx = i;
+        }
+    });
+
+    // 3. 更新地圖上的藍色圓圈標記位置
+    if (hoverMarker) {
+        hoverMarker.setLatLng([lat, lon]);
+    }
+
+    // 4. 顯示彈窗資訊
+    showCustomPopup(idx, name);
+    
+    // 5. 滾動頁面回到地圖位置 (確保使用者看到地圖變化)
+    document.getElementById("map").scrollIntoView({ behavior: 'smooth' });
+};
+
+
+// ================= A/B 設定與資訊渲染 (保持不變) =================
 window.setAB = function(type, idx) {
   const p = trackPoints[idx];
   if (type === 'A') {
@@ -229,16 +444,15 @@ window.setAB = function(type, idx) {
     markerB = L.marker([p.lat, p.lon], { icon: L.divIcon({ html: `<div style="background:#e83e8c;color:white;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;border:2px solid white;">B</div>`, iconSize:[24,24], iconAnchor:[12,12], className:'' }) }).addTo(map);
   }
   updateABUI();
+  map.closePopup(); 
 };
 
 function updateABUI() {
   const infoA = document.getElementById("infoA"), infoB = document.getElementById("infoB"), boxRes = document.getElementById("boxRes"), infoRes = document.getElementById("infoRes");
   if (pointA) infoA.innerHTML = `高度: ${pointA.ele.toFixed(0)} m, 里程: ${pointA.distance.toFixed(2)} km<br>時間: ${pointA.timeLocal}`;
   else infoA.innerHTML = "尚未設定";
-  
   if (pointB) infoB.innerHTML = `高度: ${pointB.ele.toFixed(0)} m, 里程: ${pointB.distance.toFixed(2)} km<br>時間: ${pointB.timeLocal}`;
   else infoB.innerHTML = "尚未設定";
-
   if (pointA && pointB) {
     boxRes.style.display = "block";
     const start = Math.min(pointA.idx, pointB.idx), end = Math.max(pointA.idx, pointB.idx);
@@ -249,41 +463,30 @@ function updateABUI() {
   } else if (boxRes) boxRes.style.display = "none";
 }
 
-// ================= 高度圖 =================
-function drawElevationChart() {
-  const ctx = document.getElementById("elevationChart").getContext("2d");
-  chart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: trackPoints.map(p => p.distance.toFixed(2)),
-      datasets: [{ 
-        label: "高度 (m)", data: trackPoints.map(p => p.ele), fill: true, 
-        backgroundColor: 'rgba(54, 162, 235, 0.2)', borderColor: 'rgba(54, 162, 235, 1)', tension: 0.1, pointRadius: 0 
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { intersect: false, mode: "index" },
-      onHover: (event, elements) => { if (elements.length) { const p = trackPoints[elements[0].index]; hoverMarker.setLatLng([p.lat, p.lon]); } },
-      onClick: (event, elements) => { if (elements.length) showCustomPopup(elements[0].index, "高度圖選點"); }
-    }
-  });
-}
-
 function renderRouteInfo() {
   const f = trackPoints[0], l = trackPoints.at(-1), dur = l.timeUTC - f.timeUTC, { gain, loss } = calculateElevationGainFiltered();
   const currentRoute = allTracks[routeSelect.value || 0];
-  document.getElementById("routeSummary").innerHTML = `
-    記錄日期：${f.timeLocal.substring(0, 10)}<br>路線：${currentRoute.name}<br>里程：${l.distance.toFixed(2)} km<br>
-    花費時間：${Math.floor(dur/3600000)} 小時 ${Math.floor((dur%3600000)/60000)} 分鐘<br>
-    最高海拔：${Math.max(...trackPoints.map(p=>p.ele)).toFixed(0)} m<br>最低海拔：${Math.min(...trackPoints.map(p=>p.ele)).toFixed(0)} m<br>
-    總爬升：${gain.toFixed(0)} m<br>總下降：${loss.toFixed(0)} m`;
   
-  let tableHtml = `<table class="wpt-table"><thead><tr><th style="width:10%">#</th><th style="width:40%">日期與時間</th><th style="width:50%">航點名稱</th></tr></thead><tbody>`;
-  currentRoute.waypoints.forEach((w, i) => {
-    tableHtml += `<tr><td><span class="wpt-link" onclick="focusWaypoint(${w.lat}, ${w.lon}, '${w.name}')">${i + 1}</span></td><td>${w.localTime}</td><td>${w.name}</td></tr>`;
-  });
-  document.getElementById("wptList").innerHTML = `<h4 style="margin: 20px 0 10px 0;">航點列表</h4>` + tableHtml + `</tbody></table>`;
+  // 更新路線總結資訊
+  document.getElementById("routeSummary").innerHTML = `記錄日期：${f.timeLocal.substring(0, 10)}<br>路　　線：${currentRoute.name}<br>里　　程：${l.distance.toFixed(2)} km<br>花費時間：${Math.floor(dur/3600000)} 小時 ${Math.floor((dur%3600000)/60000)} 分鐘<br>最高海拔：${Math.max(...trackPoints.map(p=>p.ele)).toFixed(0)} m<br>最低海拔：${Math.min(...trackPoints.map(p=>p.ele)).toFixed(0)} m<br>總爬升數：${gain.toFixed(0)} m<br>總下降數：${loss.toFixed(0)} m`;
+  
+  const wptListContainer = document.getElementById("wptList");
+
+  // 【修改重點】：判斷是否有航點資訊
+  if (currentRoute.waypoints && currentRoute.waypoints.length > 0) {
+    // 有航點時顯示表格
+    let tableHtml = `<table class="wpt-table"><thead><tr><th style="width:10%">#</th><th style="width:40%">日期與時間</th><th style="width:50%">航點名稱</th></tr></thead><tbody>`;
+    currentRoute.waypoints.forEach((w, i) => { 
+      tableHtml += `<tr><td><span class="wpt-link" onclick="focusWaypoint(${w.lat}, ${w.lon}, '${w.name}')">${i + 1}</span></td><td>${w.localTime}</td><td>${w.name}</td></tr>`; 
+    });
+    wptListContainer.innerHTML = `<h4 style="margin: 20px 0 10px 0;">航點列表</h4>` + tableHtml + `</tbody></table>`;
+    wptListContainer.style.display = "block"; // 確保容器是顯示狀態
+  } else { 
+    // 沒有航點時完全清空內容並隱藏容器
+    wptListContainer.innerHTML = ""; 
+    wptListContainer.style.display = "none";
+  }
 }
 
 function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
+

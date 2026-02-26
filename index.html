@@ -110,18 +110,61 @@
 		    width: 100%;
 		  }
     
-    @media (max-width: 768px) { #map { height: 35vh; } #chartContainer { height: 220px; padding: 5px 10px; } #routeInfo { margin-top: 0; font-size: 14px; } }
+    
+	    /* 自定義藍色長方弧形按鈕 */
+			.custom-file-upload {
+			  display: inline-block;
+			  padding: 6px 20px;
+			  cursor: pointer;
+			  background-color: #007bff; /* 藍色 */
+			  color: white;
+			  border-radius: 20px; /* 長方弧形（膠囊型） */
+			  font-size: 14px;
+			  font-weight: bold;
+			  transition: background 0.3s, transform 0.1s;
+			  border: none;
+			  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+			  text-align: center;
+			}
+			
+			.custom-file-upload:hover {
+			  background-color: #0056b3; /* 懸停時加深 */
+			}
+			
+			.custom-file-upload:active {
+			  transform: scale(0.98); /* 點擊按壓效果 */
+			}
+			
+			/* 修飾上傳列 */
+			.upload-row {
+			  display: flex;
+			  align-items: center;
+			  gap: 10px;
+			  padding: 5px 0;
+			}
+			
+			.file-name-text {
+			  font-size: 16px;      /* 放大字體 (原本是 13px) */
+			  font-weight: 600;     /* 加粗 */
+			  color: #333;          /* 深灰色，看起來更有質感 */
+			  margin-left: 12px;    /* 與按鈕保持一點距離 */
+			  word-break: break-all; /* 若檔名太長會自動換行，不會撐破版面 */
+			}
+
+    @media (max-width: 768px) { #map { height: 35vh; } #chartContainer { height: 220px; padding: 5px 10px; } #routeInfo { margin-top: 0; font-size: 14px; } .file-name-text {
+    font-size: 15px;
+  }}
   </style>
 </head>
 <body>
 <div id="header">
-  <div class="upload-row">
-    <label for="gpxInput" class="upload-label"><strong>上傳 GPX:</strong></label>
-    <input type="file" id="gpxInput" accept=".gpx" />
-  </div>
+	<div class="upload-row">
+	  <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
+	  <label for="gpxInput" class="custom-file-upload">匯入 GPX 檔案</label>
+	  <span id="fileNameDisplay" class="file-name-text">尚未選擇檔案</span>
+	</div>
   <div class="subtitle">
-    滑鼠移到高度圖或點擊地圖路徑顯示資訊<br>
-    <strong>YCHiking 簡易版</strong>
+    <strong>YCHiking-GPX 路線與高度檢視工具</strong>
     <div id="routeSelectContainer" style="display:none; margin-top: 5px;">
       <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
       <select id="routeSelect" style="padding: 6px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; outline: none;"></select>
@@ -146,7 +189,7 @@
       <div id="infoA" style="font-size:13px; color:#666;">尚未設定</div>
     </div>
     <div id="boxB" class="ab-box active-b" style="flex:1; min-width:250px; border:1px solid #ccc; border-radius:8px; padding:10px; background:white; border-left:5px solid #e83e8c;">
-      <b>B 點</b>
+      <b>B 點</b> (請確認B點時間需晚於A點時間)
       <div id="infoB" style="font-size:13px; color:#666;">尚未設定</div>
     </div>
   </div>
