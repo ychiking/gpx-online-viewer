@@ -178,22 +178,22 @@ function loadRoute(index) {
       // 顯示高度圖的黑色位置數據 Tip
       chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
       chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: point.x, y: point.y });
-      chart.update();
+      chart.update('none');
 
       // 【修改點】點擊地圖路徑觸發高度圖 Tip 後，設定 3 秒閒置自動關閉
       if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
       window.chartTipTimer = setTimeout(() => {
         // 如果此時滑鼠沒有在按住拖動，則關閉高度圖 Tip
         if (!isMouseDown && chart) {
-          chart.setActiveElements([]);
+          // chart.setActiveElements([]);
           chart.tooltip.setActiveElements([], { x: 0, y: 0 });
-          chart.update('none');
+          chart.update();
         }
       }, 3000);
     }
   });
 
-  hoverMarker = L.circleMarker([trackPoints[0].lat, trackPoints[0].lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
+  hoverMarker = L.circleMarker([trackPoints[0].lat, trackPoints[0].lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1, weight: 3 }).addTo(map);
   drawElevationChart();
   renderRouteInfo();
 }
@@ -274,7 +274,7 @@ function drawElevationChart() {
       startHeightOnlyTimer();
     }
     if (chart) {
-      chart.setActiveElements([]);
+      // chart.setActiveElements([]);
       chart.tooltip.setActiveElements([], { x: 0, y: 0 });
       chart.update('none'); 
     }
@@ -287,7 +287,7 @@ function drawElevationChart() {
 		      startHeightOnlyTimer();
 		    }
 		    if (chart) {
-		      chart.setActiveElements([]);
+		      // chart.setActiveElements([]);
 		      chart.tooltip.setActiveElements([], { x: 0, y: 0 });
 		      chart.update('none');
 		    }
@@ -301,10 +301,10 @@ function drawElevationChart() {
       handleSync(e);
     } else {
       if (chart && chart.getActiveElements().length > 0) {
-        chart.setActiveElements([]);
+        // chart.setActiveElements([]);
         chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+        chart.update('none');
       }
-      chart.update('none');
     }
   });
 
@@ -316,7 +316,7 @@ function drawElevationChart() {
       startHeightOnlyTimer();
     }
     if (chart) {
-      chart.setActiveElements([]);
+      // chart.setActiveElements([]);
       chart.tooltip.setActiveElements([], { x: 0, y: 0 });
       chart.update('none');
     }
@@ -342,7 +342,7 @@ function drawElevationChart() {
         window.chartTipTimer = setTimeout(() => {
           // 如果 3 秒後使用者還沒放開滑鼠（或滑鼠停住沒動），則強制隱藏黑色 Tip
           if (chart) {
-            chart.setActiveElements([]);
+            // chart.setActiveElements([]);
             chart.tooltip.setActiveElements([], { x: 0, y: 0 });
             chart.update('none');
           }
@@ -363,7 +363,13 @@ function drawElevationChart() {
         backgroundColor: 'rgba(54, 162, 235, 0.2)', 
         borderColor: 'rgba(54, 162, 235, 1)', 
         tension: 0.1, 
-        pointRadius: 0 
+        // --- 修改這裡 ---
+		    pointRadius: 0,           // 平時隱藏，避免整條線都是點
+		    pointHitRadius: 10,       // 增加觸控感應範圍
+		    pointHoverRadius: 8,      // 拖移或選中時，藍色圓點的大小
+		    pointHoverBackgroundColor: 'rgba(54, 162, 235, 0.8)', // 圓點顏色
+		    pointHoverBorderWidth: 2,
+		    pointHoverBorderColor: '#fff'
       }]
     },
     options: {
@@ -455,6 +461,19 @@ window.focusWaypoint = function(lat, lon, name) {
 
     // 4. 顯示彈窗資訊
     showCustomPopup(idx, name);
+    
+    // --- 【新增：同步高度圖小藍圈】 ---
+    if (chart) {
+        // 設定高度圖選中該索引點（顯示小藍圓圈）
+        chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+        
+        // 如果你希望點選航點時，高度圖「不出現」黑色數據框，只需執行上面那行。
+        // 如果你希望「也要出現」黑色數據框，請加上下面這行：
+        // chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
+        
+        chart.update('none'); // 即時更新圖表狀態
+    }
+    // ------------------------------
     
     // 5. 滾動頁面回到地圖位置 (確保使用者看到地圖變化)
     document.getElementById("map").scrollIntoView({ behavior: 'smooth' });
