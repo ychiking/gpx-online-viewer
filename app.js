@@ -251,6 +251,13 @@ function loadRoute(index) {
   hoverMarker = L.circleMarker([trackPoints[0].lat, trackPoints[0].lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1, weight: 3 }).addTo(map);
   drawElevationChart();
   renderRouteInfo();
+  
+  // --- 【新增】 ---
+  // 啟動全自動偵測功能
+      detectPeaksAlongRoute();
+ 
+  
+  
 }
 
 function showCustomPopup(idx, title) {
@@ -594,3 +601,109 @@ function renderRouteInfo() {
 
 function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
 
+/// ================= 自動偵測經過山岳 (Overpass API) =================
+async function detectPeaksAlongRoute() {
+    const wptListContainer = document.getElementById("wptList");
+    
+    // 確保容器顯示
+    wptListContainer.style.display = "block";
+
+    // --- 【修改點 1】：建立或獲取專屬的 AI 區塊，不要蓋掉原本的 ---
+    let aiSection = document.getElementById("aiPeaksSection");
+    if (!aiSection) {
+        aiSection = document.createElement("div");
+        aiSection.id = "aiPeaksSection";
+        wptListContainer.appendChild(aiSection); // 加在原本航點表格的下面
+    }
+    
+    // 在 AI 區塊內顯示載入中（不影響上面的內容）
+    aiSection.innerHTML = `<div id="aiLoading" style="padding:20px; text-align:center; color:#666;">🔍 正在比對地圖資料，偵測沿途山岳...</div>`;
+
+    // 1. 抽樣軌跡點 (每 50 點抽一個)
+    const samplingRate = Math.max(1, Math.floor(trackPoints.length / 50));
+    const sampledPoints = trackPoints.filter((_, i) => i % samplingRate === 0);
+
+    // 2. 構建 Overpass 查詢 (aroundSegments 邏輯保持不變)
+    let aroundSegments = sampledPoints.map(p => `node(around:200,${p.lat},${p.lon})[natural=peak];`).join("");
+    const fullQuery = `[out:json][timeout:30];(${aroundSegments});out body;`;
+
+    try {
+        const response = await fetch("https://overpass-api.de/api/interpreter", {
+            method: "POST",
+            body: "data=" + encodeURIComponent(fullQuery)
+        });
+        const data = await response.json();
+        
+        if (!data.elements || data.elements.length === 0) {
+            aiSection.innerHTML = `<div style="padding:20px; color:#999; font-size:13px; text-align:center;">ℹ️ 沿途未偵測到額外的山峰標記。</div>`;
+            return;
+        }
+
+        // 3. 過濾重複的山
+        const uniquePeaks = [];
+        const seenNames = new Set();
+        data.elements.forEach(el => {
+            const name = el.tags.name || "未命名山峰";
+            const ele = el.tags.ele || "未知";
+            if (!seenNames.has(name)) {
+                seenNames.add(name);
+                let minD = Infinity, bestIdx = 0;
+                trackPoints.forEach((tp, i) => {
+                    let d = Math.sqrt((el.lat - tp.lat)**2 + (el.lon - tp.lon)**2);
+                    if (d < minD) { minD = d; bestIdx = i; }
+                });
+                uniquePeaks.push({
+                    name: name, ele: ele, lat: el.lat, lon: el.lon,
+                    time: trackPoints[bestIdx].timeLocal, idx: bestIdx
+                });
+            }
+        });
+
+        // 4. 依照時間排序
+        uniquePeaks.sort((a, b) => a.idx - b.idx);
+
+        // 5. 渲染表格到專屬區塊
+        renderPeakTable(uniquePeaks);
+
+    } catch (error) {
+        console.error("Overpass API Error:", error);
+        aiSection.innerHTML = `<div style="padding:20px; color:red; font-size:13px;">❌ 山岳偵測連線失敗。</div>`;
+    }
+}
+
+function renderPeakTable(peaks) {
+    const aiSection = document.getElementById("aiPeaksSection");
+    if (!aiSection) return;
+
+    if (peaks.length === 0) {
+        aiSection.innerHTML = `<div style="padding:20px; color:#999; font-size:13px; text-align:center;">ℹ️ 沿途未偵測到額外的山峰標記。</div>`;
+        return;
+    }
+
+    let html = `<h4 style="margin: 30px 0 10px 0; font-size: 16px; color: #2c3e50; border-left: 5px solid #d35400; padding-left: 10px;">⛰️ 自動偵測：沿途山岳</h4>`;
+    
+    // 調整比例：# (10%), 日期時間 (45%), 山名 (45%)
+    html += `<table class="wpt-table">
+        <thead>
+          <tr>
+            <th style="width:10%">#</th>
+            <th style="width:40%">日期與時間</th>
+            <th style="width:50%">山名 (海拔)</th>
+          </tr>
+        </thead>
+        <tbody>`;
+    
+    peaks.forEach((p, i) => {
+        // --- 【修改點】：直接使用 p.time，不進行換行處理 ---
+        const dateTimeDisplay = p.time ? p.time : '---'; 
+        
+        html += `<tr>
+            <td><span class="wpt-link" onclick="focusWaypoint(${p.lat}, ${p.lon}, '${p.name}')">${i+1}</span></td>
+            <td style="font-size: 13px; white-space: nowrap; color: #666;">${dateTimeDisplay}</td>
+            <td style="font-weight: bold; color: #007bff;">${p.name} <small style="color: #888; font-weight: normal;">(${p.ele}m)</small></td>
+        </tr>`;
+    });
+    
+    html += `</tbody></table>`;
+    aiSection.innerHTML = html;
+}
