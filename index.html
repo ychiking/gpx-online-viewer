@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <title>YCHiking - GPX 路線與高度檢視工具</title>
+  <title>YCHiking - GPX 路線檢視工具</title>
   
   <link rel="icon" type="image/png" href="https://ychiking.github.io/gpx-online-viewer/webicon.png">
   <link rel="apple-touch-icon" href="https://ychiking.github.io/gpx-online-viewer/webicon.png">
@@ -154,6 +154,37 @@
 			  word-break: break-all; /* 若檔名太長會自動換行，不會撐破版面 */
 			}
 
+		/* 地圖上的指北針樣式 */
+		.map-compass {
+		    position: absolute;
+		    bottom: 25px;   /* 稍微調高，避開 Leaflet 浮水印 */
+		    left: 20px;
+		    z-index: 1000;
+		    background: rgba(255, 255, 255, 0.9);
+		    padding: 5px;
+		    border-radius: 50%;
+		    box-shadow: 0 0 12px rgba(0,0,0,0.2);
+		    width: 70px;    /* 稍微加大 */
+		    height: 70px;   /* 稍微加大 */
+		    display: flex;
+		    align-items: center;
+		    justify-content: center;
+		    pointer-events: none;
+		    border: 1px solid #ccc;
+		}
+		
+		/* N 字標記 (放在 0 刻度上方) */
+		.map-compass::after {
+		    content: 'N';
+		    position: absolute;
+		    top: -20px;
+		    font-weight: bold;
+		    color: #d32f2f;
+		    font-size: 14px;
+		    text-shadow: 1px 1px 0 white;
+		}
+		
+
     @media (max-width: 768px) { #map { height: 35vh; } #chartContainer { height: 220px; padding: 5px 10px; } #routeInfo { margin-top: 0; font-size: 14px; } .file-name-text {
     font-size: 15px;
   }}
@@ -167,14 +198,37 @@
 	  <span id="fileNameDisplay" class="file-name-text">尚未選擇檔案</span>
 	</div>
   <div class="subtitle">
-    <strong>YCHiking-GPX 路線與高度檢視工具</strong>
+    <strong>YCHiking-GPX 路線檢視工具</strong>
     	<div id="routeSelectContainer" style="display:none; margin-top: 5px;">
       <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
       <select id="routeSelect" style="padding: 6px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; outline: none;"></select>
     </div>
   </div>
 </div>
-<div id="map"></div>
+<div id="map" style="position: relative;">
+<div class="map-compass">
+    <svg width="75" height="75" viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r="65" fill="none" stroke="#ccc" stroke-width="1" />
+        <circle cx="70" cy="70" r="55" fill="white" fill-opacity="0.8" />
+        
+        <text x="70" y="10" text-anchor="middle" font-size="20" font-weight="bold" fill="#d32f2f">北</text>
+        <text x="70" y="32" text-anchor="middle" font-size="20" fill="#d32f2f">0</text>
+        
+        <text x="122" y="70" text-anchor="middle" font-size="20" font-weight="bold" fill="#333">東</text>
+        <text x="122" y="90" text-anchor="middle" font-size="16" fill="#333">90</text>
+        
+        <text x="70" y="145" text-anchor="middle" font-size="20" font-weight="bold" fill="#333">南</text>
+        <text x="70" y="122" text-anchor="middle" font-size="16" fill="#333">180</text>
+        
+        <text x="18" y="70" text-anchor="middle" font-size="20" font-weight="bold" fill="#333">西</text>
+        <text x="18" y="90" text-anchor="middle" font-size="16" fill="#333">270</text>
+
+        <path d="M70,35 L62,70 L70,70 Z" fill="#d32f2f" />
+        <path d="M70,35 L78,70 L70,70 Z" fill="#b71c1c" /> <path d="M70,105 L62,70 L70,70 Z" fill="#777" />
+        <path d="M70,105 L78,70 L70,70 Z" fill="#555" /> <circle cx="70" cy="70" r="4" fill="#333" stroke="white" stroke-width="1" />
+    </svg>
+</div>
+</div>
 <div id="chartContainer"><canvas id="elevationChart"></canvas></div>
 <div id="routeInfo">
   <div id="routeSummary">尚未讀取資料</div>

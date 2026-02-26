@@ -147,6 +147,24 @@ function calculateElevationGainFiltered(points = trackPoints) {
   return { gain, loss };
 }
 
+// 計算兩點之間的方位角與名稱 (A點到B點)
+function getBearingInfo(lat1, lon1, lat2, lon2) {
+    const toRad = deg => deg * Math.PI / 180;
+    const toDeg = rad => rad * 180 / Math.PI;
+
+    const dLon = toRad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+              Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    
+    let bearing = (toDeg(Math.atan2(y, x)) + 360) % 360;
+
+    // 定義 8 個方位
+    const directions = ["北", "東北", "東", "東南", "南", "西南", "西", "西北"];
+    const index = Math.round(bearing / 45) % 8;
+    return { deg: bearing.toFixed(0), name: directions[index] };
+}
+
 // ================= 地圖載入與連動 =================
 function loadRoute(index) {
   map.closePopup(); 
@@ -570,7 +588,18 @@ function updateABUI() {
     const section = trackPoints.slice(start, end + 1);
     const { gain, loss } = calculateElevationGainFiltered(section);
     const timeDiff = Math.abs(pointA.timeUTC - pointB.timeUTC);
-    infoRes.innerHTML = `區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b><br>距離差：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>時間差：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b>`;
+    
+    // --- 【新增：計算方位】 ---
+    const bearing = getBearingInfo(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
+    
+    // 定義相反方位以達成「從 X 往 Y」的描述
+    const oppDir = { "北":"南", "南":"北", "東":"西", "西":"東", "東北":"西南", "西南":"東北", "東南":"西北", "西北":"東南" }[bearing.name];
+    // -----------------------
+    infoRes.innerHTML = `
+      區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b><br>
+      距　　離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
+      時　　間：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b><br>
+      移動方位：<span style="color:#007bff; font-weight:bold;">從 ${oppDir} 往 ${bearing.name} (${bearing.deg}°)</span>`;
   } else if (boxRes) boxRes.style.display = "none";
 }
 
