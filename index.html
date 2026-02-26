@@ -171,6 +171,16 @@
 		    justify-content: center;
 		    pointer-events: none;
 		    border: 1px solid #ccc;
+		    /* 增加動畫效果 */
+		    transition: opacity 0.3s ease, transform 0.3s ease;
+		    visibility: visible;
+		}
+		
+			/* 隱藏狀態 */
+		.map-compass.hidden {
+		    opacity: 0;
+		    transform: scale(0.5);
+		    visibility: hidden;
 		}
 		
 		/* N 字標記 (放在 0 刻度上方) */
@@ -206,7 +216,7 @@
   </div>
 </div>
 <div id="map" style="position: relative;">
-<div class="map-compass">
+<div id="mapCompass" class="map-compass">
     <svg width="75" height="75" viewBox="0 0 140 140">
         <circle cx="70" cy="70" r="65" fill="none" stroke="#ccc" stroke-width="1" />
         <circle cx="70" cy="70" r="55" fill="white" fill-opacity="0.8" />
