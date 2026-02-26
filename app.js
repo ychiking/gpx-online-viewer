@@ -273,10 +273,49 @@ function loadRoute(index) {
   // --- 【新增】 ---
   // 啟動全自動偵測功能
       detectPeaksAlongRoute();
- 
-  
   
 }
+
+// --- 指北針顯示/隱藏切換功能 ---
+window.toggleCompass = function() {
+  const compass = document.getElementById("mapCompass");
+  if (compass) {
+    // 切換 .hidden 類別
+    compass.classList.toggle("hidden");
+  }
+};
+
+// --- 建立 Leaflet 自定義控制按鈕 ---
+const CompassControl = L.Control.extend({
+  options: { position: 'topleft' }, // 放在右上角
+  onAdd: function (map) {
+    const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    const button = L.DomUtil.create('a', '', container);
+    
+    button.innerHTML = '🧭';
+    button.href = '#';
+    button.title = '顯示/隱藏指北針';
+    button.style.fontSize = '18px';
+    button.style.backgroundColor = 'white';
+    button.style.textAlign = 'center';
+    button.style.textDecoration = 'none';
+    button.style.lineHeight = '30px';
+    button.style.width = '30px';
+    button.style.height = '30px';
+    button.style.display = 'block';
+
+    L.DomEvent.on(button, 'click', function (e) {
+      L.DomEvent.preventDefault(e);
+      L.DomEvent.stopPropagation(e);
+      window.toggleCompass();
+    });
+
+    return container;
+  }
+});
+
+// 將按鈕加入地圖
+map.addControl(new CompassControl());
 
 function showCustomPopup(idx, title) {
   if (!trackPoints[idx]) return;
@@ -705,6 +744,8 @@ async function detectPeaksAlongRoute() {
             </div>`;
     }
 }
+
+
 
 function renderPeakTable(peaks) {
     const aiSection = document.getElementById("aiPeaksSection");
