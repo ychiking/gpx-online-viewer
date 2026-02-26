@@ -278,40 +278,53 @@ function loadRoute(index) {
 
 // --- 指北針顯示/隱藏切換功能 ---
 window.toggleCompass = function() {
-  const compass = document.getElementById("mapCompass");
-  if (compass) {
-    // 切換 .hidden 類別
-    compass.classList.toggle("hidden");
-  }
+    const compass = document.getElementById("mapCompass");
+    if (compass) {
+        // 使用 classList.toggle 切換隱藏狀態
+        compass.classList.toggle("hidden");
+    }
 };
 
 // --- 建立 Leaflet 自定義控制按鈕 ---
 const CompassControl = L.Control.extend({
-  options: { position: 'topleft' }, // 放在右上角
-  onAdd: function (map) {
-    const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-    const button = L.DomUtil.create('a', '', container);
-    
-    button.innerHTML = '🧭';
-    button.href = '#';
-    button.title = '顯示/隱藏指北針';
-    button.style.fontSize = '18px';
-    button.style.backgroundColor = 'white';
-    button.style.textAlign = 'center';
-    button.style.textDecoration = 'none';
-    button.style.lineHeight = '30px';
-    button.style.width = '30px';
-    button.style.height = '30px';
-    button.style.display = 'block';
+    options: { position: 'topleft' }, 
+    onAdd: function (map) {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const button = L.DomUtil.create('a', '', container);
+        
+        button.innerHTML = '🧭';
+        button.href = '#';
+        button.title = '顯示/隱藏指北針';
+        
+        // 樣式優化：稍微加大尺寸以便手機手指點擊
+        button.style.fontSize = '20px'; 
+        button.style.backgroundColor = 'white';
+        button.style.textAlign = 'center';
+        button.style.textDecoration = 'none';
+        button.style.lineHeight = '30px'; 
+        button.style.width = '30px';
+        button.style.height = '30px';
+        button.style.display = 'block';
+        button.style.cursor = 'pointer';
 
-    L.DomEvent.on(button, 'click', function (e) {
-      L.DomEvent.preventDefault(e);
-      L.DomEvent.stopPropagation(e);
-      window.toggleCompass();
-    });
+// 【手機端修正重點 1】：阻止所有地圖干擾事件
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
 
-    return container;
-  }
+        // 【手機端修正重點 2】：使用 Leaflet 專用的監聽方式處理 click 與 touch
+        L.DomEvent.on(button, 'click', function (e) {
+            L.DomEvent.stop(e); // 同時阻止預設行為與冒泡
+            window.toggleCompass();
+        });
+
+        // 額外針對觸控結束進行監聽，確保在某些移動瀏覽器上反應更快
+        L.DomEvent.on(button, 'touchend', function (e) {
+            L.DomEvent.stop(e);
+            window.toggleCompass();
+        });
+
+        return container;
+    }
 });
 
 // 將按鈕加入地圖
