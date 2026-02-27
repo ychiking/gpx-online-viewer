@@ -172,8 +172,8 @@
 		    pointer-events: none;
 		    border: 1px solid #ccc;
 		/* 預設狀態：完全隱藏 */
-		    opacity: 0;
-		    visibility: hidden; 
+		    opacity: 0 !important;
+		    visibility: hidden !important;
 		    transform: scale(0.8); /* 稍微縮小，增加彈出的感覺 */
 		    transition: all 0.3s ease; /* 統一動畫時間 */
 				}
@@ -181,8 +181,8 @@
 		
 		/* 當有 .show class 時顯示 */
 		.map-compass.show {
-		    opacity: 1;
-		    visibility: visible;
+		    opacity: 1 !important;
+		    visibility: visible !important;
 		    transform: scale(1);
 		}
 		
