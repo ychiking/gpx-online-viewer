@@ -129,21 +129,39 @@ function parseGPX(text) {
 function extractPoints(pts) {
   let res = [], total = 0;
   for (let i = 0; i < pts.length; i++) {
-    const lat = parseFloat(pts[i].getAttribute("lat")), lon = parseFloat(pts[i].getAttribute("lon"));
-    const ele = pts[i].getElementsByTagName("ele")[0], time = pts[i].getElementsByTagName("time")[0];
-    if (!isNaN(lat) && !isNaN(lon) && ele && time) {
-      const utc = new Date(time.textContent);
+    const lat = parseFloat(pts[i].getAttribute("lat")), 
+          lon = parseFloat(pts[i].getAttribute("lon"));
+    const eleNode = pts[i].getElementsByTagName("ele")[0];
+    const timeNode = pts[i].getElementsByTagName("time")[0];
+
+    // 修改：只要有經緯度，就允許匯入 (高度與時間設為預設值)
+    if (!isNaN(lat) && !isNaN(lon)) {
+      const ele = eleNode ? parseFloat(eleNode.textContent) : 0;
+      
+      // 如果沒有時間標籤，則給予一個虛擬時間或空值，避免程式出錯
+      const utc = timeNode ? new Date(timeNode.textContent) : new Date(0); 
+      const localTime = timeNode ? formatDate(new Date(utc.getTime() + 8*3600*1000)) : "無時間資訊";
+
       if (res.length > 0) {
         const a = res[res.length-1], R = 6371;
         const dLat = (lat-a.lat)*Math.PI/180, dLon = (lon-a.lon)*Math.PI/180;
         const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(lat*Math.PI/180)*Math.sin(dLon/2)**2;
         total += 2 * R * Math.asin(Math.sqrt(x));
       }
-      res.push({ lat, lon, ele: parseFloat(ele.textContent), timeUTC: utc, timeLocal: formatDate(new Date(utc.getTime() + 8*3600*1000)), distance: total });
+      
+      res.push({ 
+        lat, 
+        lon, 
+        ele, 
+        timeUTC: utc, 
+        timeLocal: localTime, 
+        distance: total 
+      });
     }
   }
   return res;
 }
+
 
 function calculateElevationGainFiltered(points = trackPoints) {
   if (points.length < 3) return { gain: 0, loss: 0 };
