@@ -197,17 +197,20 @@
 		    text-shadow: 1px 1px 0 white;
 		}
 		
-		/* 加在 <style> 標籤內 */
-		.shortcut-btn {
-		  font-size: 12px;
-		  background: #eee;
-		  color: #333;
-		  padding: 4px 12px;
-		  border-radius: 15px;
-		  text-decoration: none;
-		  border: 1px solid #ddd;
-		}
-		.shortcut-btn:hover { background: #e0e0e0; }
+		<style>
+		  /* 加入捷徑按鈕樣式 */
+		  .shortcut-btn {
+		    font-size: 12px;
+		    background: #f0f0f0;
+		    color: #555;
+		    padding: 5px 12px;
+		    border-radius: 15px;
+		    text-decoration: none;
+		    border: 1px solid #ddd;
+		    font-weight: bold;
+		    transition: all 0.2s;
+		  }
+		  .shortcut-btn:hover { background: #e0e0e0; border-color: #bbb; }
 
 
     @media (max-width: 768px) { #map { height: 35vh; } #chartContainer { height: 220px; padding: 5px 10px; } #routeInfo { margin-top: 0; font-size: 14px; } .file-name-text {
@@ -225,8 +228,7 @@
 	<div class="subtitle">
 	  <strong>YCHiking-GPX 路線檢視工具</strong>
 	  
-	  <div id="navShortcuts" style="margin-top: 8px; display: flex; gap: 10px;">
-	    </div>
+	  <div id="navShortcuts" style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;"></div>
 	
 	  <div id="routeSelectContainer" style="display:none; margin-top: 10px;">
 	    <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
