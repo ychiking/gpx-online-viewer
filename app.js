@@ -521,16 +521,23 @@ function renderRouteInfo() {
   const currentRoute = allTracks[routeSelect.value || 0];
   document.getElementById("routeSummary").innerHTML = `記錄日期：${f.timeLocal.substring(0, 10)}<br>路　　線：${currentRoute.name}<br>里　　線：${l.distance.toFixed(2)} km<br>花費時間：${Math.floor(dur/3600000)} 小時 ${Math.floor((dur%3600000)/60000)} 分鐘<br>最高海拔：${Math.max(...trackPoints.map(p=>p.ele)).toFixed(0)} m<br>最低海拔：${Math.min(...trackPoints.map(p=>p.ele)).toFixed(0)} m<br>總爬升數：${gain.toFixed(0)} m<br>總下降數：${loss.toFixed(0)} m`;
   const wptListContainer = document.getElementById("wptList");
+  const navShortcuts = document.getElementById("navShortcuts");
+  let shortcutsHtml = "";
   if (currentRoute.waypoints && currentRoute.waypoints.length > 0) {
     let tableHtml = `<table class="wpt-table"><thead><tr><th style="width:10%">#</th><th style="width:40%">日期與時間</th><th style="width:50%">航點名稱</th></tr></thead><tbody>`;
     currentRoute.waypoints.forEach((w, i) => { 
       tableHtml += `<tr><td><span class="wpt-link" onclick="focusWaypoint(${w.lat}, ${w.lon}, '${w.name}')">${i + 1}</span></td><td>${w.localTime}</td><td>${w.name}</td></tr>`; 
     });
-    wptListContainer.innerHTML = `<h4 style="margin: 20px 0 10px 0;">航點列表</h4>` + tableHtml + `</tbody></table>`;
+    wptListContainer.innerHTML = `<h4 id="wptListAnchor" style="margin: 20px 0 10px 0;">航點列表</h4>` + tableHtml + `</tbody></table>`;
     wptListContainer.style.display = "block";
+    
+    shortcutsHtml += `<a href="#wptListAnchor" class="shortcut-btn">📍 航點列表</a>`;
   } else { 
     wptListContainer.innerHTML = ""; wptListContainer.style.display = "none";
   }
+  shortcutsHtml += `<a href="#aiPeaksAnchor" class="shortcut-btn">⛰️ 沿途山岳</a>`;
+  
+  navShortcuts.innerHTML = shortcutsHtml;
 }
 
 function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
@@ -541,7 +548,7 @@ async function detectPeaksAlongRoute() {
     wptListContainer.style.display = "block";
     let aiSection = document.getElementById("aiPeaksSection");
     if (!aiSection) { aiSection = document.createElement("div"); aiSection.id = "aiPeaksSection"; wptListContainer.appendChild(aiSection); }
-    aiSection.innerHTML = `<div id="aiLoading" style="padding:20px; text-align:center; color:#666;">🔍 正在比對地圖資料，偵測沿途山岳...</div>`;
+    aiSection.innerHTML = `<div id="aiLoading" style="padding:20px; text-align:center; color:#666;">🔍 正在比對地圖資料，偵測沿途山岳(200公尺內)...</div>`;
 
     const samplingRate = Math.max(1, Math.floor(trackPoints.length / 50));
     const sampledPoints = trackPoints.filter((_, i) => i % samplingRate === 0);
@@ -583,7 +590,7 @@ async function detectPeaksAlongRoute() {
 function renderPeakTable(peaks) {
     const aiSection = document.getElementById("aiPeaksSection");
     if (!aiSection || peaks.length === 0) return;
-    let html = `<h4 style="margin: 30px 0 10px 0; font-size: 16px; color: #2c3e50; border-left: 5px solid #d35400; padding-left: 10px;">⛰️ 自動偵測：沿途山岳</h4><table class="wpt-table"><thead><tr><th style="width:10%">#</th><th style="width:40%">日期與時間</th><th style="width:50%">山名 (海拔)</th></tr></thead><tbody>`;
+    let html = `<h4 id="aiPeaksAnchor" style="margin: 30px 0 10px 0; font-size: 16px; color: #2c3e50; border-left: 5px solid #d35400; padding-left: 10px;">⛰️ 自動偵測：沿途山岳(200公尺內)</h4><table class="wpt-table"><thead><tr><th style="width:10%">#</th><th style="width:40%">日期與時間</th><th style="width:50%">山名 (海拔)</th></tr></thead><tbody>`;
     peaks.forEach((p, i) => {
         // 修改處：若距離 > 100m，時間欄位顯示 "------"
         const timeDisplay = p.distToTrack > 100 ? "------" : (p.time || '---');

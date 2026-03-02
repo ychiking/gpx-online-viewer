@@ -197,6 +197,18 @@
 		    text-shadow: 1px 1px 0 white;
 		}
 		
+		/* 加在 <style> 標籤內 */
+		.shortcut-btn {
+		  font-size: 12px;
+		  background: #eee;
+		  color: #333;
+		  padding: 4px 12px;
+		  border-radius: 15px;
+		  text-decoration: none;
+		  border: 1px solid #ddd;
+		}
+		.shortcut-btn:hover { background: #e0e0e0; }
+
 
     @media (max-width: 768px) { #map { height: 35vh; } #chartContainer { height: 220px; padding: 5px 10px; } #routeInfo { margin-top: 0; font-size: 14px; } .file-name-text {
     font-size: 15px;
@@ -210,13 +222,17 @@
 	  <label for="gpxInput" class="custom-file-upload">匯入 GPX</label>
 	  <span id="fileNameDisplay" class="file-name-text">尚未選擇檔案</span>
 	</div>
-  <div class="subtitle">
-    <strong>YCHiking-GPX 路線檢視工具</strong>
-    	<div id="routeSelectContainer" style="display:none; margin-top: 5px;">
-      <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
-      <select id="routeSelect" style="padding: 6px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; outline: none;"></select>
-    </div>
-  </div>
+	<div class="subtitle">
+	  <strong>YCHiking-GPX 路線檢視工具</strong>
+	  
+	  <div id="navShortcuts" style="margin-top: 8px; display: flex; gap: 10px;">
+	    </div>
+	
+	  <div id="routeSelectContainer" style="display:none; margin-top: 10px;">
+	    <label for="routeSelect" style="font-weight: bold; margin-right: 5px;">路線:</label>
+	    <select id="routeSelect" style="padding: 6px 15px; border-radius: 20px; border: 1px solid #ccc; background-color: white; outline: none;"></select>
+	  </div>
+	</div>
 </div>
 <div id="map" style="position: relative;">
 <div id="mapCompass" class="map-compass">
