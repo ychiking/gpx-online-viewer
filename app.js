@@ -419,9 +419,15 @@ function drawElevationChart() {
       }]
     },
     options: {
+    	animation: false,
       responsive: true, maintainAspectRatio: false,
       events: ['mousedown', 'mouseup', 'click', 'touchstart', 'touchmove', 'touchend'],
       interaction: { intersect: false, mode: "index" },
+      hover: {
+      	mode: 'index',
+      	intersect: false,
+      	animiationDuration: 0
+      },
       plugins: {
         tooltip: {
           enabled: true, displayColors: false, 
