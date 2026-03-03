@@ -572,6 +572,7 @@ function renderRouteInfo() {
     </div>`;
   
   shortcutsHtml += `<a href="#anchorPeak" class="shortcut-btn">⛰️ 沿途山岳</a>`;
+  shortcutsHtml += `<a href="javascript:location.reload();" class="shortcut-btn">✕ 關閉檔案</a>`;
 
   wptListContainer.innerHTML = listHtml;
   wptListContainer.style.display = "block";
