@@ -1,34 +1,16 @@
 // ================= 地圖初始化 =================
 const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
+const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
+const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: 'OpenTopoMap' });
 
-// 1. 定義 OpenStreetMap (預設)
-const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { 
-  attribution: "© OpenStreetMap" 
-});
-
-// 2. 定義 OpenTopoMap (等高線地形圖)
-const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
-  maxZoom: 17,
-  attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-});
-
-// 將預設地圖加入地圖物件
-osm.addTo(map);
-
-// 3. 建立底圖切換選單
-const baseMaps = {
-  "標準地圖 (OSM)": osm,
-  "等高線地形圖 (OpenTopo)": otm
-};
-
-// 將切換按鈕加入地圖右上角
-L.control.layers(baseMaps).addTo(map);
+L.control.layers({ "標準地圖 (OSM)": osm, "等高線地形圖 (OpenTopo)": otm }).addTo(map);
 
 let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [], wptMarkers = [];
 let pointA = null, pointB = null, markerA = null, markerB = null;
 let currentPopup = null; 
 let isMouseDown = false; 
-let mapTipTimer = null; // 用於高度圖觸發後的 3 秒自動關閉定時器
+let mapTipTimer = null;
+let gpsMarker = null;
 
 const routeSelect = document.getElementById("routeSelect");
 
@@ -65,6 +47,7 @@ window.clearABSettings = function() {
 };
 
 document.getElementById("gpxInput").addEventListener("change", e => {
+	window.resetGPS();
   const file = e.target.files[0];
   if (!file) return;
   
@@ -287,23 +270,205 @@ window.toggleCompass = function() {
     if (compass) { compass.classList.toggle("show"); }
 };
 
-const CompassControl = L.Control.extend({
+// ================= 垂直控制項 (座標在上，指北針在下) =================
+const CombinedControl = L.Control.extend({
     options: { position: 'topleft' }, 
     onAdd: function (map) {
         const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-        const button = L.DomUtil.create('a', '', container);
-        button.innerHTML = '🧭'; button.href = '#'; button.title = '顯示/隱藏指北針';
-        button.style.fontSize = '20px'; button.style.backgroundColor = 'white'; button.style.textAlign = 'center';
-        button.style.textDecoration = 'none'; button.style.lineHeight = '30px'; button.style.width = '30px';
-        button.style.height = '30px'; button.style.display = 'block'; button.style.cursor = 'pointer';
+        
+        const createBtn = (html, title, border) => {
+            const btn = L.DomUtil.create('a', '', container);
+            btn.innerHTML = html; btn.href = '#'; btn.title = title;
+            btn.style.cssText = `font-size:18px; background:white; text-align:center; line-height:30px; width:30px; height:30px; display:block; cursor:pointer; ${border ? 'border-bottom:1px solid #ccc;' : ''}`;
+            return btn;
+        };
+
+        // 1. 座標轉換
+        const coordBtn = createBtn('🌐', '座標轉換', true);
+
+        // 2. 定位按鈕 (新增)
+				const btnSize = "30px";      // 按鈕方框大小
+        const arrowIconSize = "20px"; // 箭頭圖案大小
+        const arrowColor = "#1a73e8"; // 箭頭顏色
+        const locArrowAngle = "315deg"
+        // ------------------------------------------
+
+        const locBtn = L.DomUtil.create('a', '', container);
+        locBtn.title = "目前位置定位";
+        locBtn.style.cssText = `width:${btnSize}; height:${btnSize}; background:white; cursor:pointer; display:flex; align-items:center; justify-content:center; border-bottom:1px solid #ccc;`;
+        
+        // 使用 SVG 繪製按鈕內的箭頭圖示
+        locBtn.innerHTML = `
+            <svg width="${arrowIconSize}" height="${arrowIconSize}" viewBox="0 0 100 100" style="display:block; transform: rotate(${locArrowAngle})">
+                <path d="M50 5 L90 90 L50 70 L10 90 Z" fill="${arrowColor}" />
+            </svg>
+        `;
+
+        // 3. 指北針按鈕
+        const compassBtn = createBtn('🧭', '顯示/隱藏指北針', false);
+
         L.DomEvent.disableClickPropagation(container);
-        L.DomEvent.disableScrollPropagation(container);
-        L.DomEvent.on(button, 'click', function (e) { L.DomEvent.stop(e); window.toggleCompass(); });
-        L.DomEvent.on(button, 'touchend', function (e) { L.DomEvent.stop(e); window.toggleCompass(); });
+        
+        // 事件綁定
+        L.DomEvent.on(coordBtn, 'click', (e) => { 
+            L.DomEvent.stop(e); 
+            window.clearCoordInputs();
+            document.getElementById('coordModal').style.display = 'flex'; 
+        });
+
+        L.DomEvent.on(locBtn, 'click', (e) => { 
+            L.DomEvent.stop(e); 
+            window.toggleGPS(locBtn); // 呼叫下方新增的切換函式
+        });
+
+        L.DomEvent.on(compassBtn, 'click', (e) => { 
+            L.DomEvent.stop(e); 
+            document.getElementById("mapCompass").classList.toggle("show"); 
+        });
+        
         return container;
     }
 });
-map.addControl(new CompassControl());
+map.addControl(new CombinedControl());
+
+// ================= 新增：定位切換功能函式 =================
+window.toggleGPS = function(btn) {
+    // 如果標記已存在，表示目前是開啟狀態 -> 執行「取消定位」
+    if (gpsMarker) {
+        map.removeLayer(gpsMarker);
+        gpsMarker = null;
+        btn.style.background = "white"; // 還原按鈕顏色
+        return;
+    }
+
+    if (!navigator.geolocation) {
+        alert("您的瀏覽器不支援 GPS 定位功能");
+        return;
+    }
+
+    // 執行定位
+    navigator.geolocation.getCurrentPosition((pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        
+        // 轉換座標為 TWD97 (需確保有引入 proj4)
+        const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
+
+        // 地圖移至定位點
+        map.setView([lat, lon], 16);
+        btn.style.background = "#e8f0fe"; // 按鈕變色表示工作中
+        
+				const mapArrowAngle = "315deg"; // <--- 地圖標記的傾斜角度
+        const arrowSize = 40;
+
+        // 自定義箭頭圖示 (可在此調整 width/height 控制箭頭大小)
+        const arrowIcon = L.divIcon({
+            className: 'custom-gps-arrow',
+            html: `<div style="transform: rotate(${mapArrowAngle}); display: flex; justify-content: center;">
+                     <svg width="40" height="40" viewBox="0 0 100 100">
+                       <path d="M50 5 L95 90 L50 70 L5 90 Z" fill="#1a73e8" stroke="white" stroke-width="5"/>
+                     </svg>
+                   </div>`,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
+
+        gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
+
+        // 彈出 Tip
+        const tipText = `
+            <div style="font-size:13px; line-height:1.6;">
+                <b style="color:#1a73e8;">📍 目前位置</b><br>
+                <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+                <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}
+            </div>
+        `;
+        gpsMarker.bindPopup(tipText).openPopup();
+
+    }, (err) => {
+        alert("無法獲取位置，請確認 GPS 已開啟並授權網頁存取");
+    }, { enableHighAccuracy: true });
+};
+
+window.resetGPS = function() {
+    if (gpsMarker) {
+        map.removeLayer(gpsMarker);
+        gpsMarker = null;
+    }
+    // 找到定位按鈕並還原背景色
+    const locBtn = document.querySelector('a[title="目前位置定位"]');
+    if (locBtn) {
+        locBtn.style.background = "white";
+    }
+};
+
+
+// ================= 座標轉換 TIP 邏輯 =================
+const TWD97_DEF = "+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=GRS80 +units=m +no_defs";
+const WGS84_DEF = "EPSG:4326";
+
+window.clearCoordInputs = function() {
+    document.getElementById('wgs_input').value = "";
+    document.getElementById('twd_input').value = "";
+    window.showMsg('res_twd97', "結果顯示在此 (點擊可複製)");
+    window.showMsg('res_wgs84', "結果顯示在此 (點擊可複製)");
+};
+
+
+window.showMsg = function(id, text, type = 'normal') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = text;
+    el.classList.remove('error-text', 'copy-success');
+    if (type === 'error') el.classList.add('error-text');
+    if (type === 'success') el.classList.add('copy-success');
+};
+
+window.getLocation = function() {
+    if (!navigator.geolocation) { showMsg('res_twd97', "不支援定位", 'error'); return; }
+    showMsg('res_twd97', "🔍 正在獲取 GPS...");
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            document.getElementById('wgs_input').value = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
+            window.toTWD97();
+        },
+        (err) => { showMsg('res_twd97', "定位失敗 (權限或訊號)", 'error'); },
+        { enableHighAccuracy: true, timeout: 8000 }
+    );
+};
+
+window.toTWD97 = function() {
+    try {
+        const val = document.getElementById('wgs_input').value;
+        const pts = val.replace(/[^\d.\-, ]/g, ' ').trim().split(/[\s,]+/).map(parseFloat);
+        if (pts.length < 2 || isNaN(pts[0])) throw "格式錯誤";
+        const res = proj4(WGS84_DEF, TWD97_DEF, [pts[1], pts[0]]);
+        showMsg('res_twd97', `TWD97 (X,Y): <b>${Math.round(res[0])}, ${Math.round(res[1])}</b>`);
+    } catch (e) { showMsg('res_twd97', "輸入錯的座標", 'error'); }
+};
+
+window.toWGS84 = function() {
+    try {
+        const val = document.getElementById('twd_input').value;
+        const pts = val.replace(/[^\d.\-, ]/g, ' ').trim().split(/[\s,]+/).map(parseFloat);
+        if (pts.length < 2 || isNaN(pts[0])) throw "格式錯誤";
+        const res = proj4(TWD97_DEF, WGS84_DEF, [pts[0], pts[1]]);
+        showMsg('res_wgs84', `WGS84 (緯度,經度): <b>${res[1].toFixed(6)}°, ${res[0].toFixed(6)}°</b>`);
+    } catch (e) { showMsg('res_wgs84', "輸入錯的座標", 'error'); }
+};
+
+window.copyText = function(id) {
+    const el = document.getElementById(id);
+    const text = el.innerText;
+    if (text.includes(': ')) {
+        const content = text.split(': ')[1];
+        const oldHtml = el.innerHTML;
+        navigator.clipboard.writeText(content).then(() => {
+            showMsg(id, "✅ 已複製", 'success');
+            setTimeout(() => { showMsg(id, oldHtml); el.classList.remove('copy-success'); }, 1500);
+        }).catch(() => showMsg(id, "複製失敗", 'error'));
+    }
+};
 
 // ================= 彈窗訊息 (修改後：支援不在路徑上的簡化模式) =================
 function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon = null) {
