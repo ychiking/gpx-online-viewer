@@ -20,7 +20,7 @@ routeSelect.addEventListener("change", (e) => {
     loadRoute(selectedIndex);
 });
 
-// ================= 定義圖示 (保持不變) =================
+// ================= 定義圖示 =================
 const startIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -37,7 +37,7 @@ const wptIcon = new L.Icon({
   iconSize: [20, 32], iconAnchor: [10, 32], popupAnchor: [1, -28], shadowSize: [32, 32]
 });
 
-// ================= A/B 點與解析邏輯 (保持不變) =================
+// ================= A/B 點與解析邏輯 =================
 window.clearABSettings = function() {
   pointA = null; pointB = null;
   if (markerA) { map.removeLayer(markerA); markerA = null; }
@@ -51,7 +51,6 @@ document.getElementById("gpxInput").addEventListener("change", e => {
   const file = e.target.files[0];
   if (!file) return;
   
-  // 更新介面上的檔案名稱顯示
   document.getElementById("fileNameDisplay").textContent = file.name;
   
   map.closePopup(); 
@@ -81,11 +80,11 @@ function parseGPX(text) {
     const pts = trks[i].getElementsByTagName("trkpt");
     const points = extractPoints(pts);
     
-    // 【關鍵修正】：只篩選出「距離該路線 500 公尺內」的航點
+    // 「距離該路線 500 公尺內」的航點
     const routeWaypoints = allWpts.filter(w => {
       return points.some(p => {
         const d = Math.sqrt((w.lat - p.lat)**2 + (w.lon - p.lon)**2) * 111000; // 簡單距離計算
-        return d < 500; // 單位：公尺，您可以根據需要調整範圍
+        return d < 500; // 單位：公尺，可以根據需要調整範圍
       });
     });
 
@@ -117,11 +116,9 @@ function extractPoints(pts) {
     const eleNode = pts[i].getElementsByTagName("ele")[0];
     const timeNode = pts[i].getElementsByTagName("time")[0];
 
-    // 修改：只要有經緯度，就允許匯入 (高度與時間設為預設值)
     if (!isNaN(lat) && !isNaN(lon)) {
       const ele = eleNode ? parseFloat(eleNode.textContent) : 0;
       
-      // 如果沒有時間標籤，則給予一個虛擬時間或空值，避免程式出錯
       const utc = timeNode ? new Date(timeNode.textContent) : new Date(0); 
       const localTime = timeNode ? formatDate(new Date(utc.getTime() + 8*3600*1000)) : "無時間資訊";
 
@@ -187,7 +184,7 @@ function loadRoute(index) {
   
   if (hoverMarker) {
     map.removeLayer(hoverMarker);
-    hoverMarker = null; // 確保舊的圓圈被移除
+    hoverMarker = null; 
   }
   
   trackPoints = sel.points;
@@ -270,7 +267,7 @@ window.toggleCompass = function() {
     if (compass) { compass.classList.toggle("show"); }
 };
 
-// ================= 垂直控制項 (座標在上，指北針在下) =================
+// ================= 垂直控制項 =================
 const CombinedControl = L.Control.extend({
     options: { position: 'topleft' }, 
     onAdd: function (map) {
@@ -283,11 +280,11 @@ const CombinedControl = L.Control.extend({
             return btn;
         };
 
-        // 1. 座標轉換
+        // 座標轉換
         const coordBtn = createBtn('🌐', '座標轉換', true);
 
-        // 2. 定位按鈕 (新增)
-				const btnSize = "30px";      // 按鈕方框大小
+        // 定位按鈕 
+		const btnSize = "30px";       // 按鈕方框大小
         const arrowIconSize = "20px"; // 箭頭圖案大小
         const arrowColor = "#1a73e8"; // 箭頭顏色
         const locArrowAngle = "315deg"
@@ -304,7 +301,7 @@ const CombinedControl = L.Control.extend({
             </svg>
         `;
 
-        // 3. 指北針按鈕
+        // 指北針按鈕
         const compassBtn = createBtn('🧭', '顯示/隱藏指北針', false);
 
         L.DomEvent.disableClickPropagation(container);
@@ -331,7 +328,7 @@ const CombinedControl = L.Control.extend({
 });
 map.addControl(new CombinedControl());
 
-// ================= 新增：定位切換功能函式 =================
+// ================= 定位切換功能函式 =================
 window.toggleGPS = function(btn) {
     // 如果標記已存在，表示目前是開啟狀態 -> 執行「取消定位」
     if (gpsMarker) {
@@ -351,17 +348,17 @@ window.toggleGPS = function(btn) {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         
-        // 轉換座標為 TWD97 (需確保有引入 proj4)
+        // 轉換座標為 TWD97
         const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
 
         // 地圖移至定位點
         map.setView([lat, lon], 16);
-        btn.style.background = "#e8f0fe"; // 按鈕變色表示工作中
+        btn.style.background = "#e8f0fe"; 
         
-				const mapArrowAngle = "315deg"; // <--- 地圖標記的傾斜角度
+				const mapArrowAngle = "315deg"; 
         const arrowSize = 40;
 
-        // 自定義箭頭圖示 (可在此調整 width/height 控制箭頭大小)
+        // 自定義箭頭圖示
         const arrowIcon = L.divIcon({
             className: 'custom-gps-arrow',
             html: `<div style="transform: rotate(${mapArrowAngle}); display: flex; justify-content: center;">
@@ -395,7 +392,7 @@ window.resetGPS = function() {
         map.removeLayer(gpsMarker);
         gpsMarker = null;
     }
-    // 找到定位按鈕並還原背景色
+
     const locBtn = document.querySelector('a[title="目前位置定位"]');
     if (locBtn) {
         locBtn.style.background = "white";
@@ -470,7 +467,7 @@ window.copyText = function(id) {
     }
 };
 
-// ================= 彈窗訊息 (修改後：支援不在路徑上的簡化模式) =================
+// ================= 彈窗訊息 (支援不在路徑上的簡化模式) =================
 function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon = null) {
   if (!trackPoints[idx]) return;
   const p = trackPoints[idx];
@@ -633,7 +630,7 @@ function startHeightOnlyTimer() {
   }, 3000);
 }
 
-// ================= 航點導向功能 (修改為判斷路徑距離並傳遞高度) =================
+// ================= 航點導向功能 =================
 window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
     map.setView([lat, lon], 16);
     
@@ -659,7 +656,7 @@ window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
     document.getElementById("map").scrollIntoView({ behavior: 'smooth' });
 };
 
-// ================= A/B 設定與資訊渲染 (保持不變) =================
+// ================= A/B 設定與資訊渲染 =================
 window.setAB = function(type, idx) {
   const p = trackPoints[idx];
   if (type === 'A') {
@@ -729,7 +726,6 @@ function renderRouteInfo() {
     shortcutsHtml += `<a href="#anchorWpt" class="shortcut-btn">📍 航點列表</a>`;
   }
 
-  // 2. 固定加上「沿途山岳」的區間標題與容器
   listHtml += `
     <h4 id="anchorPeak" style="margin: 30px 0 10px 0; font-size: 16px; color: #2c3e50; border-left: 5px solid #d35400; padding-left: 10px;">⛰️ 自動偵測：沿途山岳(200公尺內)</h4>
     <div id="aiPeaksSection">
