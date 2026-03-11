@@ -1,4 +1,4 @@
-// ================= 地圖初始化 v260310 =================
+// ================= 地圖初始化 =================
 const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
 const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: 'OpenTopoMap' });
@@ -373,11 +373,16 @@ window.toggleGPS = function(btn) {
         gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
 
         // 彈出 Tip
-        const tipText = `
-            <div style="font-size:13px; line-height:1.6;">
-                <b style="color:#1a73e8;">📍 目前位置</b><br>
+				const tipText = `
+            <div style="font-size:13px; line-height:1.6; min-width:200px;">
+                <b style="color:#1a73e8; font-size:14px;">📍 目前位置</b><br>
                 <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
                 <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}
+                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
+                <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
+                    ⚠️ 若定位不準，請檢查網頁應用程式權限設定：<br>
+                    安卓Chrome: 權限 > 位置 > 開啟<b>「使用精確位置」</b>開關。
+                </div>
             </div>
         `;
         gpsMarker.bindPopup(tipText).openPopup();
