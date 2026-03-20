@@ -783,7 +783,6 @@ function updateABUI() {
     if (pointA && pointB) {
         boxRes.style.display = "block";
         const bearing = getBearingInfo(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
-        const oppDir = { "北":"南", "南":"北", "東":"西", "西":"東", "東北":"西南", "西南":"東北", "東南":"西北", "西北":"東南" }[bearing.name];
         
         // 計算直線距離
         const R = 6371; 
@@ -821,7 +820,35 @@ function updateABUI() {
 
         if (typeof markerB !== 'undefined' && markerB) {
             markerB.unbindTooltip();
-            // 強化攔截功能，防止點擊視窗彈出座標選單
+
+            // --- 新增：動態方位判斷邏輯 ---
+            let tooltipDir = 'right';
+            let tooltipOffset = [15, 0];
+
+            const diffLat = pointB.lat - pointA.lat;
+            const diffLon = pointB.lon - pointA.lon;
+
+            // 判斷是以東西向為主還是南北向為主
+            if (Math.abs(diffLon) > Math.abs(diffLat)) {
+                // 東西向為主
+                if (diffLon >= 0) { 
+                    tooltipDir = 'right';  // B在東方，彈向右邊
+                    tooltipOffset = [15, 0];
+                } else { 
+                    tooltipDir = 'left';   // B在西方，彈向左邊
+                    tooltipOffset = [-15, 0];
+                }
+            } else {
+                // 南北向為主
+                if (diffLat >= 0) { 
+                    tooltipDir = 'top';    // B在北方，彈向上面
+                    tooltipOffset = [0, -15];
+                } else { 
+                    tooltipDir = 'bottom'; // B在南方，彈向下面
+                    tooltipOffset = [0, 15];
+                }
+            }
+
             markerB.bindTooltip(`
                 <div onmousedown="event.stopPropagation();" onclick="event.stopPropagation();" style="font-size:13px; line-height:1.4;">
                     <b style="color:#28a745;">區間分析 (A ↔ B)</b><br>
@@ -829,7 +856,13 @@ function updateABUI() {
                     <div style="margin-top:8px; border-top:1px solid #eee; padding-top:4px; text-align:right;">
                         <a href="javascript:void(0);" onclick="event.stopPropagation(); clearABSettings();" style="color:#d35400; text-decoration:none; font-weight:bold; font-size:12px;">❌ 清除 A B 點</a>
                     </div>
-                </div>`, { permanent: true, interactive: true, direction: 'right', offset: [15, 0], className: 'ab-map-tooltip' }).openTooltip();
+                </div>`, { 
+                    permanent: true, 
+                    interactive: true, 
+                    direction: tooltipDir, // 使用動態方向
+                    offset: tooltipOffset, // 使用動態偏移量
+                    className: 'ab-map-tooltip' 
+                }).openTooltip();
         }
     } else {
         if (boxRes) boxRes.style.display = "none";
