@@ -751,6 +751,8 @@ window.setAB = function(type, idx) {
 
 function updateABUI() {
     const infoA = document.getElementById("infoA"), infoB = document.getElementById("infoB"), boxRes = document.getElementById("boxRes"), infoRes = document.getElementById("infoRes");
+    
+    // 更新側邊欄資訊
     if (pointA) infoA.innerHTML = `高度: ${pointA.ele.toFixed(0)} m, 里程: ${pointA.distance.toFixed(2)} km<br>時間: ${pointA.timeLocal}`;
     else infoA.innerHTML = "尚未設定";
     if (pointB) infoB.innerHTML = `高度: ${pointB.ele.toFixed(0)} m, 里程: ${pointB.distance.toFixed(2)} km<br>時間: ${pointB.timeLocal}`;
@@ -758,14 +760,10 @@ function updateABUI() {
 
     if (pointA && pointB) {
         boxRes.style.display = "block";
-        const start = Math.min(pointA.idx, pointB.idx), end = Math.max(pointA.idx, pointB.idx);
-        const section = trackPoints.slice(start, end + 1);
-        const { gain, loss } = calculateElevationGainFiltered(section);
-        const timeDiff = Math.abs(pointA.timeUTC - pointB.timeUTC);
         const bearing = getBearingInfo(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
         const oppDir = { "北":"南", "南":"北", "東":"西", "西":"東", "東北":"西南", "西南":"東北", "東南":"西北", "西北":"東南" }[bearing.name];
-
-        // 直線距離計算
+        
+        // 計算直線距離 (Haversine formula)
         const R = 6371; 
         const dLat = (pointB.lat - pointA.lat) * Math.PI / 180;
         const dLon = (pointB.lon - pointA.lon) * Math.PI / 180;
@@ -775,44 +773,49 @@ function updateABUI() {
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const directDist = R * c;
 
-        const analysisContent = `
-            區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b><br>
-            沿路距離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
-            直線距離：<b style="color:#d35400;">${directDist.toFixed(2)} km</b><br>
-            時　　間：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b><br>
-            移動方位：<span style="color:#007bff; font-weight:bold;">從 ${oppDir} 往 ${bearing.name} (${bearing.deg}°)</span>`;
-        
+        let analysisContent = "";
+
+        // 【判斷邏輯】：如果 A 或 B 其中一點不在路徑內 (idx 為 -1)
+        if (pointA.idx === -1 || pointB.idx === -1) {
+            analysisContent = `
+                <div style="color:#d35400; font-weight:bold; margin-bottom:4px;">📍 直線分析 (非路徑點)</div>
+                直線距離：<b>${directDist.toFixed(2)} km</b><br>
+                移動方位：<span style="color:#007bff; font-weight:bold;">從 ${oppDir} 往 ${bearing.name} (${bearing.deg}°)</span>`;
+        } else {
+            // 兩點都在路徑內，顯示完整資訊
+            const start = Math.min(pointA.idx, pointB.idx), end = Math.max(pointA.idx, pointB.idx);
+            const section = trackPoints.slice(start, end + 1);
+            const { gain, loss } = calculateElevationGainFiltered(section);
+            const timeDiff = Math.abs(pointA.timeUTC - pointB.timeUTC);
+            
+            analysisContent = `
+                區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b><br>
+                沿路距離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
+                直線距離：<b>${directDist.toFixed(2)} km</b><br>
+                時　　間：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b><br>
+                移動方位：<span style="color:#007bff; font-weight:bold;">從 ${oppDir} 往 ${bearing.name} (${bearing.deg}°)</span>`;
+        }
+
         infoRes.innerHTML = analysisContent;
 
         if (typeof markerB !== 'undefined' && markerB) {
             markerB.unbindTooltip();
-            
-            // 【核心修正】：在最外層 div 加入攔截指令
-            // 1. onmousedown: 防止地圖開始判定點擊
-            // 2. onclick: 防止觸發地圖的 click 事件
+            // 加入 stopPropagation 確保點擊視窗不彈出座標選單
             markerB.bindTooltip(`
-                <div onmousedown="event.stopPropagation();" onclick="event.stopPropagation();" style="font-size:13px; line-height:1.4; cursor: default; padding: 5px;">
+                <div onmousedown="event.stopPropagation();" onclick="event.stopPropagation();" style="font-size:13px; line-height:1.4;">
                     <b style="color:#28a745;">區間分析 (A ↔ B)</b><br>
                     ${analysisContent}
                     <div style="margin-top:8px; border-top:1px solid #eee; padding-top:4px; text-align:right;">
-                        <a href="javascript:void(0);" 
-                           onmousedown="event.stopPropagation();" 
-                           onclick="event.stopPropagation(); clearABSettings();" 
-                           style="color:#d35400; text-decoration:none; font-weight:bold; font-size:12px;">❌ 清除 A B 點</a>
+                        <a href="javascript:void(0);" onclick="event.stopPropagation(); clearABSettings();" style="color:#d35400; text-decoration:none; font-weight:bold; font-size:12px;">❌ 清除 A B 點</a>
                     </div>
-                </div>`, { 
-                    permanent: true, 
-                    interactive: true, 
-                    direction: 'right', 
-                    offset: [15, 0], 
-                    className: 'ab-map-tooltip' 
-                }).openTooltip();
+                </div>`, { permanent: true, interactive: true, direction: 'right', offset: [15, 0], className: 'ab-map-tooltip' }).openTooltip();
         }
     } else {
         if (boxRes) boxRes.style.display = "none";
         if (typeof markerB !== 'undefined' && markerB) { markerB.unbindTooltip(); }
     }
     
+    // 原有的自動分析邏輯
     if (pointA && pointB && pointA.idx === -1 && pointB.idx === -1) {
         analyzeBestPath(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
     }
