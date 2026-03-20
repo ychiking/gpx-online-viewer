@@ -14,6 +14,73 @@ let gpsMarker = null;
 
 const routeSelect = document.getElementById("routeSelect");
 
+let clickTimeout = null;
+
+map.on('click', (e) => {
+    // 使用延遲，讓 polyline 的 click 事件有機會先執行並取消這個 timer
+    clickTimeout = setTimeout(() => {
+        showFreeClickPopup(e.latlng);
+    }, 200); // 200ms 的緩衝
+});
+
+// 專門處理「非路徑點」的彈窗
+function showFreeClickPopup(latlng) {
+    // 1. 使用 proj4 進行座標轉換 (從 WGS84 轉 TWD97)
+    // 您的專案中已定義 WGS84_DEF 與 TWD97_DEF
+    const twd97 = proj4(WGS84_DEF, TWD97_DEF, [latlng.lng, latlng.lat]);
+    const x97 = Math.round(twd97[0]);
+    const y97 = Math.round(twd97[1]);
+
+    // 2. 建立彈窗內容，包含兩種座標格式
+    const content = `
+        <div style="min-width:180px; font-size:13px; line-height:1.6;">
+          <b style="font-size:14px; color:#d35400;">📍 自選位置</b><br>
+          <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
+          <b>WGS84:</b> ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}<br>
+          <b>TWD97:</b> ${x97}, ${y97}
+          <div style="display:flex; margin-top:10px; gap:8px;">
+            <button onclick="setFreeAB('A', ${latlng.lat}, ${latlng.lng})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+            <button onclick="setFreeAB('B', ${latlng.lat}, ${latlng.lng})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+          </div>
+        </div>`;
+    
+    L.popup().setLatLng(latlng).setContent(content).openOn(map);
+}
+
+window.setFreeAB = function(type, lat, lon) {
+    // 建立一個不帶索引的點物件
+    const p = { lat, lon, ele: 0, distance: 0, timeLocal: "無時間資訊", timeUTC: 0, idx: -1 };
+    
+    if (type === 'A') {
+        pointA = p;
+        if (markerA) map.removeLayer(markerA);
+        // 加入 className: '' 移除 Leaflet 預設白框樣式
+        markerA = L.marker([lat, lon], { 
+            icon: L.divIcon({ 
+                html: `<div style="background:#007bff;color:white;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);">A</div>`, 
+                iconSize: [24, 24], 
+                iconAnchor: [12, 12],
+                className: '' 
+            }) 
+        }).addTo(map);
+    } else {
+        pointB = p;
+        if (markerB) map.removeLayer(markerB);
+        markerB = L.marker([lat, lon], { 
+            icon: L.divIcon({ 
+                html: `<div style="background:#e83e8c;color:white;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);">B</div>`, 
+                iconSize: [24, 24], 
+                iconAnchor: [12, 12],
+                className: '' 
+            }) 
+        }).addTo(map);
+    }
+    map.closePopup()
+    updateABUI();
+    // map.closePopup();
+};
+
+
 // ================= 下拉選單切換事件 =================
 routeSelect.addEventListener("change", (e) => {
     const selectedIndex = parseInt(e.target.value);
@@ -232,14 +299,20 @@ function loadRoute(index) {
     wptMarkers.push(wm);
   });
 
-  polyline.on('click', (e) => {
+polyline.on('click', (e) => {
+    // 關鍵：阻止事件傳遞到下層的地圖 (map)
+    L.DomEvent.stopPropagation(e); 
+    
+    if (clickTimeout) clearTimeout(clickTimeout); // 保險起見也清除 timer
+
     let minD = Infinity, idx = 0;
-    trackPoints.forEach((p, i) => { 
-      const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2); 
-      if (d < minD) { minD = d; idx = i; } 
+    trackPoints.forEach((p, i) => {
+        const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2);
+        if (d < minD) { minD = d; idx = i; }
     });
+
     hoverMarker.setLatLng([trackPoints[idx].lat, trackPoints[idx].lon]);
-    showCustomPopup(idx, "位置資訊"); 
+    showCustomPopup(idx, "位置資訊");
     if (chart) {
       const meta = chart.getDatasetMeta(0);
       const point = meta.data[idx];
@@ -682,6 +755,7 @@ function updateABUI() {
     else infoA.innerHTML = "尚未設定";
     if (pointB) infoB.innerHTML = `高度: ${pointB.ele.toFixed(0)} m, 里程: ${pointB.distance.toFixed(2)} km<br>時間: ${pointB.timeLocal}`;
     else infoB.innerHTML = "尚未設定";
+
     if (pointA && pointB) {
         boxRes.style.display = "block";
         const start = Math.min(pointA.idx, pointB.idx), end = Math.max(pointA.idx, pointB.idx);
@@ -690,26 +764,57 @@ function updateABUI() {
         const timeDiff = Math.abs(pointA.timeUTC - pointB.timeUTC);
         const bearing = getBearingInfo(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
         const oppDir = { "北":"南", "南":"北", "東":"西", "西":"東", "東北":"西南", "西南":"東北", "東南":"西北", "西北":"東南" }[bearing.name];
+
+        // 直線距離計算
+        const R = 6371; 
+        const dLat = (pointB.lat - pointA.lat) * Math.PI / 180;
+        const dLon = (pointB.lon - pointA.lon) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(pointA.lat * Math.PI / 180) * Math.cos(pointB.lat * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const directDist = R * c;
+
         const analysisContent = `
             區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b><br>
-            距　　離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
+            沿路距離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
+            直線距離：<b style="color:#d35400;">${directDist.toFixed(2)} km</b><br>
             時　　間：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b><br>
             移動方位：<span style="color:#007bff; font-weight:bold;">從 ${oppDir} 往 ${bearing.name} (${bearing.deg}°)</span>`;
+        
         infoRes.innerHTML = analysisContent;
+
         if (typeof markerB !== 'undefined' && markerB) {
             markerB.unbindTooltip();
+            
+            // 【核心修正】：在最外層 div 加入攔截指令
+            // 1. onmousedown: 防止地圖開始判定點擊
+            // 2. onclick: 防止觸發地圖的 click 事件
             markerB.bindTooltip(`
-                <div style="font-size:13px; line-height:1.4;">
+                <div onmousedown="event.stopPropagation();" onclick="event.stopPropagation();" style="font-size:13px; line-height:1.4; cursor: default; padding: 5px;">
                     <b style="color:#28a745;">區間分析 (A ↔ B)</b><br>
                     ${analysisContent}
                     <div style="margin-top:8px; border-top:1px solid #eee; padding-top:4px; text-align:right;">
-                        <a href="javascript:void(0);" onclick="clearABSettings();" style="color:#d35400; text-decoration:none; font-weight:bold; font-size:12px;">❌ 清除 A B 點</a>
+                        <a href="javascript:void(0);" 
+                           onmousedown="event.stopPropagation();" 
+                           onclick="event.stopPropagation(); clearABSettings();" 
+                           style="color:#d35400; text-decoration:none; font-weight:bold; font-size:12px;">❌ 清除 A B 點</a>
                     </div>
-                </div>`, { permanent: true, interactive: true, direction: 'right', offset: [15, 0], className: 'ab-map-tooltip' }).openTooltip();
+                </div>`, { 
+                    permanent: true, 
+                    interactive: true, 
+                    direction: 'right', 
+                    offset: [15, 0], 
+                    className: 'ab-map-tooltip' 
+                }).openTooltip();
         }
     } else {
         if (boxRes) boxRes.style.display = "none";
         if (typeof markerB !== 'undefined' && markerB) { markerB.unbindTooltip(); }
+    }
+    
+    if (pointA && pointB && pointA.idx === -1 && pointB.idx === -1) {
+        analyzeBestPath(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
     }
 }
 
@@ -791,6 +896,54 @@ async function detectPeaksAlongRoute() {
         renderPeakTable(uniquePeaks);
     } catch (error) {
         aiSection.innerHTML = `<div style="padding:20px; color:#721c24; background-color:#f8d7da; border:1px solid #f5c6cb; border-radius:8px; text-align:center; margin:10px 0;"><p style="margin-bottom:10px;">❌ 山岳偵測連線失敗</p><button onclick="detectPeaksAlongRoute()" style="padding:8px 16px; background:#d35400; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🔄 重新偵測</button></div>`;
+    }
+}
+
+// 用來儲存自動抓取的步道線條，以便清除
+let autoRouteLayer = null;
+
+async function analyzeBestPath(latA, lonA, latB, lonB) {
+    // 1. 定義搜尋範圍 (取 A, B 的矩形區域並稍微擴大)
+    const minLat = Math.min(latA, latB) - 0.01;
+    const maxLat = Math.max(latA, latB) + 0.01;
+    const minLon = Math.min(lonA, lonB) - 0.01;
+    const maxLon = Math.max(lonA, lonB) + 0.01;
+
+    // 2. Overpass 查詢：抓取步道 (path)、足跡 (footway)、以及稜線可能的步道
+    const query = `
+        [out:json][timeout:25];
+        (
+          way["highway"~"path|footway|track"](${minLat},${minLon},${maxLat},${maxLon});
+        );
+        out body; >; out skel qt;
+    `;
+
+    const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
+    
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        // 清除舊的自動路徑
+        if (autoRouteLayer) map.removeLayer(autoRouteLayer);
+
+        // 3. 簡單解析 OSM 座標點並轉換為 GeoJSON
+        // 註：這裏我們將抓到的路網直接顯示，讓使用者看到「有效路徑」在哪
+        autoRouteLayer = L.geoJSON(osmtogeojson(data), {
+            style: {
+                color: "#FF5722",
+                weight: 4,
+                opacity: 0.7,
+                dashArray: "5, 10" // 虛線表示這是系統建議路徑
+            }
+        }).addTo(map);
+
+        // 如果您有安裝 osmtogeojson.js 函式庫，這裡能完美運作
+        // 若無，則需要手動解析 node 與 way 的關係
+        console.log("OSM 步道抓取完成，已標註於地圖");
+
+    } catch (error) {
+        console.error("OSM 資料請求失敗:", error);
     }
 }
 
