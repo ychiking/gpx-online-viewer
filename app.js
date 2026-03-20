@@ -752,18 +752,40 @@ window.setAB = function(type, idx) {
 function updateABUI() {
     const infoA = document.getElementById("infoA"), infoB = document.getElementById("infoB"), boxRes = document.getElementById("boxRes"), infoRes = document.getElementById("infoRes");
     
-    // 更新側邊欄資訊
-    if (pointA) infoA.innerHTML = `高度: ${pointA.ele.toFixed(0)} m, 里程: ${pointA.distance.toFixed(2)} km<br>時間: ${pointA.timeLocal}`;
-    else infoA.innerHTML = "尚未設定";
-    if (pointB) infoB.innerHTML = `高度: ${pointB.ele.toFixed(0)} m, 里程: ${pointB.distance.toFixed(2)} km<br>時間: ${pointB.timeLocal}`;
-    else infoB.innerHTML = "尚未設定";
+    // 輔助函式：產生座標字串
+    const getCoordHTML = (p) => {
+        const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
+        return `WGS84: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}`;
+    };
+
+    // --- 更新 A 點資訊顯示 ---
+    if (pointA) {
+        let html = getCoordHTML(pointA);
+        if (pointA.idx !== -1) {
+            html += `<br><span style="color:#666;">高度: ${pointA.ele.toFixed(0)}m, 里程: ${pointA.distance.toFixed(2)}km, ${pointA.timeLocal}</span>`;
+        }
+        infoA.innerHTML = html;
+    } else {
+        infoA.innerHTML = "尚未設定";
+    }
+
+    // --- 更新 B 點資訊顯示 ---
+    if (pointB) {
+        let html = getCoordHTML(pointB);
+        if (pointB.idx !== -1) {
+            html += `<br><span style="color:#666;">高度: ${pointB.ele.toFixed(0)}m, 里程: ${pointB.distance.toFixed(2)}km, ${pointB.timeLocal}</span>`;
+        }
+        infoB.innerHTML = html;
+    } else {
+        infoB.innerHTML = "尚未設定";
+    }
 
     if (pointA && pointB) {
         boxRes.style.display = "block";
         const bearing = getBearingInfo(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
         const oppDir = { "北":"南", "南":"北", "東":"西", "西":"東", "東北":"西南", "西南":"東北", "東南":"西北", "西北":"東南" }[bearing.name];
         
-        // 計算直線距離 (Haversine formula)
+        // 計算直線距離
         const R = 6371; 
         const dLat = (pointB.lat - pointA.lat) * Math.PI / 180;
         const dLon = (pointB.lon - pointA.lon) * Math.PI / 180;
@@ -775,14 +797,13 @@ function updateABUI() {
 
         let analysisContent = "";
 
-        // 【判斷邏輯】：如果 A 或 B 其中一點不在路徑內 (idx 為 -1)
+        // 判斷是否包含非路徑點
         if (pointA.idx === -1 || pointB.idx === -1) {
             analysisContent = `
-                <div style="color:#d35400; font-weight:bold; margin-bottom:4px;">📍 直線分析 (非路徑點)</div>
+                <div style="color:#d35400; font-weight:bold; margin-bottom:4px;">📍 直線分析 (非全路徑點)</div>
                 直線距離：<b>${directDist.toFixed(2)} km</b><br>
-                移動方位：<span style="color:#007bff; font-weight:bold;">從 ${oppDir} 往 ${bearing.name} (${bearing.deg}°)</span>`;
+                移動方位：<span style="color:#007bff; font-weight:bold;">往 ${bearing.name} (${bearing.deg}°)</span>`;
         } else {
-            // 兩點都在路徑內，顯示完整資訊
             const start = Math.min(pointA.idx, pointB.idx), end = Math.max(pointA.idx, pointB.idx);
             const section = trackPoints.slice(start, end + 1);
             const { gain, loss } = calculateElevationGainFiltered(section);
@@ -793,14 +814,14 @@ function updateABUI() {
                 沿路距離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
                 直線距離：<b>${directDist.toFixed(2)} km</b><br>
                 時　　間：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b><br>
-                移動方位：<span style="color:#007bff; font-weight:bold;">從 ${oppDir} 往 ${bearing.name} (${bearing.deg}°)</span>`;
+                移動方位：<span style="color:#007bff; font-weight:bold;">往 ${bearing.name} (${bearing.deg}°)</span>`;
         }
 
         infoRes.innerHTML = analysisContent;
 
         if (typeof markerB !== 'undefined' && markerB) {
             markerB.unbindTooltip();
-            // 加入 stopPropagation 確保點擊視窗不彈出座標選單
+            // 強化攔截功能，防止點擊視窗彈出座標選單
             markerB.bindTooltip(`
                 <div onmousedown="event.stopPropagation();" onclick="event.stopPropagation();" style="font-size:13px; line-height:1.4;">
                     <b style="color:#28a745;">區間分析 (A ↔ B)</b><br>
@@ -815,9 +836,11 @@ function updateABUI() {
         if (typeof markerB !== 'undefined' && markerB) { markerB.unbindTooltip(); }
     }
     
-    // 原有的自動分析邏輯
+    // 兩點皆為自由點位時觸發步道偵測
     if (pointA && pointB && pointA.idx === -1 && pointB.idx === -1) {
-        analyzeBestPath(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
+        if (typeof analyzeBestPath === 'function') {
+            analyzeBestPath(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
+        }
     }
 }
 
