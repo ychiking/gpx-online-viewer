@@ -584,7 +584,6 @@ window.copyText = function(id) {
     }
 };
 
-// ================= 彈窗訊息 (支援不在路徑上的簡化模式) =================
 function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon = null) {
   if (!trackPoints[idx]) return;
   const p = trackPoints[idx];
@@ -602,11 +601,19 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
       // 如果有提供真實座標，彈窗對準真實座標
       if (realLat && realLon) targetLatLng = [realLat, realLon];
   } else {
-      // 原始路徑點/航點彈窗邏輯
+      // 計算 TWD97 座標
+      const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
+      const x97 = Math.round(twd97[0]);
+      const y97 = Math.round(twd97[1]);
+
       content = `
         <div style="min-width:180px; font-size:13px; line-height:1.5;">
           <b style="font-size:14px;">${title}</b><br>
-          高度: ${p.ele.toFixed(0)} m<br>距離: ${p.distance.toFixed(2)} km<br>時間: ${p.timeLocal}<br>座標: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
+          高度: ${p.ele.toFixed(0)} m<br>
+          距離: ${p.distance.toFixed(2)} km<br>
+          時間: ${p.timeLocal}<br>
+          WGS84: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>
+          TWD97: ${x97}, ${y97}
           <div style="display:flex; margin-top:10px; gap:5px;">
             <button onclick="setAB('A', ${idx})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
             <button onclick="setAB('B', ${idx})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
