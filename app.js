@@ -379,11 +379,41 @@ const CombinedControl = L.Control.extend({
 
         L.DomEvent.disableClickPropagation(container);
         
-        // 事件綁定
+// 座標定位按鈕點擊事件
         L.DomEvent.on(coordBtn, 'click', (e) => { 
             L.DomEvent.stop(e); 
-            window.clearCoordInputs();
-            document.getElementById('coordModal').style.display = 'flex'; 
+            const modal = document.getElementById('coordModal');
+            
+            map.closePopup();
+   
+            
+            // 設定雙輸入介面 HTML
+            modal.innerHTML = `
+                <div style="background:white; padding:20px; border-radius:12px; width:300px; box-shadow:0 10px 25px rgba(0,0,0,0.5); position:relative; font-family: sans-serif;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <b style="font-size:18px; color:#1a73e8;">🌐 座標跳轉定位</b>
+                        <span onclick="document.getElementById('coordModal').style.display='none'" style="cursor:pointer; font-size:24px; color:#999;">&times;</span>
+                    </div>
+                    
+                    <div style="margin-bottom:20px; border:1px solid #eee; padding:10px; border-radius:8px;">
+                        <label style="font-size:13px; font-weight:bold; color:#555;">1. WGS84 (緯度, 經度)</label>
+                        <input type="text" id="jump_wgs" placeholder="例如: 24.123, 121.456" 
+                               style="width:100%; padding:8px; margin-top:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                        <button onclick="executeJump('WGS')" 
+                                style="width:100%; margin-top:8px; background:#1a73e8; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 WGS84 定位</button>
+                    </div>
+
+                    <div style="margin-bottom:10px; border:1px solid #eee; padding:10px; border-radius:8px;">
+                        <label style="font-size:13px; font-weight:bold; color:#555;">2. TWD97 (X, Y)</label>
+                        <input type="text" id="jump_twd" placeholder="例如: 245678, 2765432" 
+                               style="width:100%; padding:8px; margin-top:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                        <button onclick="executeJump('TWD')" 
+                                style="width:100%; margin-top:8px; background:#34a853; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 TWD97 定位</button>
+                    </div>
+                    <p style="font-size:11px; color:#ea4335; margin:5px 0 0 5px;">* TWD97 輸入 6 字查報可直接定位該 X 區域</p>
+                </div>
+            `;
+            modal.style.display = 'flex'; 
         });
 
         L.DomEvent.on(locBtn, 'click', (e) => { 
@@ -1015,4 +1045,99 @@ function renderPeakTable(peaks) {
         html += `<tr><td><span class="wpt-link" onclick="focusWaypoint(${p.lat}, ${p.lon}, '${p.name}', ${p.distToTrack}, '${p.ele}')">${i+1}</span></td><td>${timeDisplay}</td><td style="font-weight: bold; color: #007bff;">${p.name} (${p.ele}m)</td></tr>`;
     });
     aiSection.innerHTML = html + `</tbody></table>`;
+}
+
+
+window.jumpToLocation = function(lat, lon) {
+    const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
+    
+    const content = `
+        <div style="font-size:14px; line-height:1.5; min-width:180px;">
+            <b style="color:#1a73e8; font-size:15px;">🎯 定位點資訊</b><hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
+            <div style="background:#f8f9fa; padding:8px; border-radius:4px;">
+                <b>WGS84:</b><br>${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+                <b style="display:inline-block; margin-top:5px;">TWD97:</b><br>${Math.round(twd97[0])}, ${Math.round(twd97[1])}
+            </div>
+        </div>
+    `;
+
+    document.getElementById('coordModal').style.display = 'none';
+    map.setView([lat, lon], 16); 
+    
+    const jumpMarker = L.marker([lat, lon]).addTo(map)
+        .bindPopup(content)
+        .openPopup();
+
+    map.once('click', () => map.removeLayer(jumpMarker));
+};
+
+
+window.executeJump = function(type) {
+    if (type === 'WGS') {
+        const val = document.getElementById('jump_wgs').value;
+        const pts = val.replace(/[^\d.\-, ]/g, ' ').trim().split(/[\s,]+/).map(parseFloat);
+        
+        if (pts.length < 2 || isNaN(pts[0]) || isNaN(pts[1])) {
+            showMapToast("請輸入有效的 WGS84 座標");
+            return;
+        }
+        window.jumpToLocation(pts[0], pts[1]);
+
+    } else {
+        const val = document.getElementById('jump_twd').value.trim();
+        const cleanVal = val.replace(/\D/g, '');
+
+        // 邏輯辨認：六位數簡化座標
+        if (cleanVal.length === 6) {
+            const partX = cleanVal.substring(0, 3);
+            const partY = cleanVal.substring(3, 6);
+            const x = parseFloat("3" + partX + "00"); 
+            const y = parseFloat("27" + partY + "00"); 
+            const coord = proj4(TWD97_DEF, WGS84_DEF, [x, y]);
+            window.jumpToLocation(coord[1], coord[0]);
+        } else {
+            // 標準 TWD97 (X, Y)
+            const pts = val.split(/[\s,]+/).map(v => v.trim());
+            const x = parseFloat(pts[0]);
+            const y = parseFloat(pts[1]);
+            
+            if (isNaN(x) || isNaN(y)) {
+                showMapToast("請輸入正確的 TWD97 或六位數座標");
+                return;
+            }
+            const coord = proj4(TWD97_DEF, WGS84_DEF, [x, y]);
+            window.jumpToLocation(coord[1], coord[0]);
+        }
+    }
+};
+
+// 在地圖上方顯示輕量提示 (代替 alert)
+function showMapToast(message) {
+    let toast = document.getElementById('map-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'map-toast';
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            z-index: 10000;
+            font-size: 14px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        `;
+        document.body.appendChild(toast);
+    }
+    toast.innerText = message;
+    toast.style.opacity = '1';
+    
+    // 3秒後隱藏
+    setTimeout(() => {
+        toast.style.opacity = '0';
+    }, 3000);
 }
