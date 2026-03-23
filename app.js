@@ -386,6 +386,15 @@ const CombinedControl = L.Control.extend({
             
             map.closePopup();
    
+   					map.eachLayer((layer) => {
+                // 判斷條件：是一個標記，且它的彈窗內容含有我們定義的「定位點資訊」字樣
+                if (layer instanceof L.Marker && 
+                    layer.getPopup() && 
+                    layer.getPopup().getContent().includes('定位點資訊')) {
+                    map.removeLayer(layer);
+                }
+            });
+   
             
             // 設定雙輸入介面 HTML
             modal.innerHTML = `
