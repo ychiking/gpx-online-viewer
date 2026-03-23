@@ -383,11 +383,24 @@ const CombinedControl = L.Control.extend({
         L.DomEvent.on(coordBtn, 'click', (e) => { 
             L.DomEvent.stop(e); 
             
-            // 清除地圖上的藍色定位點 (hoverMarker)
-            if (hoverMarker) {
-                map.removeLayer(hoverMarker);
-                hoverMarker = null; 
+// 1. 清除地圖上的藍色點 (hoverMarker)
+    if (hoverMarker) {
+        map.removeLayer(hoverMarker);
+        hoverMarker = null; 
+    }
+
+    // 2. 新增：強制清除地圖上所有之前的紫色定位點標記
+    map.eachLayer((layer) => {
+        if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
+            if (layer.getPopup()) {
+                const content = layer.getPopup().getContent();
+                // 檢查彈窗內容是否包含「定位點資訊」，若是則移除
+                if (typeof content === 'string' && content.includes('定位點資訊')) {
+                    map.removeLayer(layer);
+                }
             }
+        }
+    });
 
             const modal = document.getElementById('coordModal');
             
@@ -1087,10 +1100,12 @@ window.jumpToLocation = function(lat, lon) {
     document.getElementById('coordModal').style.display = 'none';
     map.setView([lat, lon], 16); 
     
-    // 建立臨時 Marker
-    const jumpMarker = L.marker([lat, lon]).addTo(map)
-        .bindPopup(content)
-        .openPopup();
+const jumpMarker = L.marker([lat, lon]).addTo(map);
+    
+    // 透過 hue-rotate(260deg) 將預設的藍色圖示旋轉至紫色
+    jumpMarker._icon.style.filter = "hue-rotate(180deg) brightness(160%)";
+
+    jumpMarker.bindPopup(content).openPopup();
 
     // 點擊地圖即自動移除標記
     map.once('click', () => {
