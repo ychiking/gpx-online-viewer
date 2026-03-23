@@ -382,21 +382,16 @@ const CombinedControl = L.Control.extend({
 // 座標定位按鈕點擊事件
         L.DomEvent.on(coordBtn, 'click', (e) => { 
             L.DomEvent.stop(e); 
+            
+            // 清除地圖上的藍色定位點 (hoverMarker)
+            if (hoverMarker) {
+                map.removeLayer(hoverMarker);
+                hoverMarker = null; 
+            }
+
             const modal = document.getElementById('coordModal');
             
-            map.closePopup();
-   
-   					map.eachLayer((layer) => {
-                // 判斷條件：是一個標記，且它的彈窗內容含有我們定義的「定位點資訊」字樣
-                if (layer instanceof L.Marker && 
-                    layer.getPopup() && 
-                    layer.getPopup().getContent().includes('定位點資訊')) {
-                    map.removeLayer(layer);
-                }
-            });
-   
-            
-            // 設定雙輸入介面 HTML
+            // 在 input 標籤中加入 onkeydown="if(event.keyCode==13) executeJump('...')"
             modal.innerHTML = `
                 <div style="background:white; padding:20px; border-radius:12px; width:300px; box-shadow:0 10px 25px rgba(0,0,0,0.5); position:relative; font-family: sans-serif;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -407,6 +402,7 @@ const CombinedControl = L.Control.extend({
                     <div style="margin-bottom:20px; border:1px solid #eee; padding:10px; border-radius:8px;">
                         <label style="font-size:13px; font-weight:bold; color:#555;">1. WGS84 (緯度, 經度)</label>
                         <input type="text" id="jump_wgs" placeholder="例如: 24.123, 121.456" 
+                               onkeydown="if(event.keyCode==13) executeJump('WGS')"
                                style="width:100%; padding:8px; margin-top:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
                         <button onclick="executeJump('WGS')" 
                                 style="width:100%; margin-top:8px; background:#1a73e8; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 WGS84 定位</button>
@@ -415,6 +411,7 @@ const CombinedControl = L.Control.extend({
                     <div style="margin-bottom:10px; border:1px solid #eee; padding:10px; border-radius:8px;">
                         <label style="font-size:13px; font-weight:bold; color:#555;">2. TWD97 (X, Y)</label>
                         <input type="text" id="jump_twd" placeholder="例如: 245678, 2765432" 
+                               onkeydown="if(event.keyCode==13) executeJump('TWD')"
                                style="width:100%; padding:8px; margin-top:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
                         <button onclick="executeJump('TWD')" 
                                 style="width:100%; margin-top:8px; background:#34a853; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 TWD97 定位</button>
@@ -423,7 +420,10 @@ const CombinedControl = L.Control.extend({
                 </div>
             `;
             modal.style.display = 'flex'; 
-        });
+
+            // 自動聚焦在第一個輸入框，方便直接打字
+            setTimeout(() => document.getElementById('jump_wgs').focus(), 100);
+        } );
 
         L.DomEvent.on(locBtn, 'click', (e) => { 
             L.DomEvent.stop(e); 
