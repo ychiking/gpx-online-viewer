@@ -1064,29 +1064,41 @@ function renderPeakTable(peaks) {
 }
 
 
+// 執行地圖移動與標記顯示
 window.jumpToLocation = function(lat, lon) {
     const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
     
+    // 建立彈窗內容，修正函式名稱為 setFreeAB 並統一 TWD97 樣式
     const content = `
         <div style="font-size:14px; line-height:1.5; min-width:180px;">
             <b style="color:#1a73e8; font-size:15px;">🎯 定位點資訊</b><hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
-            <div style="background:#f8f9fa; padding:8px; border-radius:4px;">
-                <b>WGS84:</b><br>${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-                <b style="display:inline-block; margin-top:5px;">TWD97:</b><br>${Math.round(twd97[0])}, ${Math.round(twd97[1])}
+            <div style="padding:5px 0;">
+                WGS84: ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+                TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}
+            </div>
+            <div style="display:flex; margin-top:10px; gap:5px;">
+                <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+                <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
             </div>
         </div>
     `;
 
+    // 關閉 Modal 並跳轉
     document.getElementById('coordModal').style.display = 'none';
     map.setView([lat, lon], 16); 
     
+    // 建立臨時 Marker
     const jumpMarker = L.marker([lat, lon]).addTo(map)
         .bindPopup(content)
         .openPopup();
 
-    map.once('click', () => map.removeLayer(jumpMarker));
+    // 點擊地圖即自動移除標記
+    map.once('click', () => {
+        if (map.hasLayer(jumpMarker)) {
+            map.removeLayer(jumpMarker);
+        }
+    });
 };
-
 
 window.executeJump = function(type) {
     if (type === 'WGS') {
