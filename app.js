@@ -68,8 +68,22 @@ fullScreenBtn.onAdd = function() {
             btn.innerHTML = '⛶';
             document.body.style.overflow = '';
         }
+        
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (mapElement.requestFullscreen) {
+            mapElement.requestFullscreen();
+        } else if (mapElement.webkitRequestFullscreen) {
+            mapElement.webkitRequestFullscreen(); // 針對 iPad Safari
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+    }
         // 修正地圖尺寸
-        setTimeout(() => map.invalidateSize(), 300);
+        setTimeout(() => map.invalidateSize(), 500);
     }
     };
     return btn;
@@ -473,32 +487,33 @@ const CombinedControl = L.Control.extend({
             // ------------------------------------------
 
             // 在 input 標籤中加入 onkeydown="if(event.keyCode==13) executeJump('...')"
-            modal.innerHTML = `
-                <div style="background:white; padding:20px; border-radius:12px; width:300px; box-shadow:0 10px 25px rgba(0,0,0,0.5); position:relative; font-family: sans-serif;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                        <b style="font-size:18px; color:#1a73e8;">🌐 座標跳轉定位</b>
-                        <span onclick="event.stopPropagation(); document.getElementById('coordModal').style.display='none'" style="cursor:pointer; font-size:24px; color:#999;">&times;</span>
-                    </div>
-                    
-                    <div style="margin-bottom:20px; border:1px solid #eee; padding:10px; border-radius:8px;">
-                        <label style="font-size:13px; font-weight:bold; color:#555;">1. WGS84 (緯度, 經度)</label>
-                        <input type="text" id="jump_wgs" placeholder="例如: 24.123, 121.456" 
-                               onkeydown="if(event.keyCode==13) executeJump('WGS')"
-                               style="width:100%; padding:8px; margin-top:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
-                        <button onclick="executeJump('WGS')" 
-                                style="width:100%; margin-top:8px; background:#1a73e8; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 WGS84 定位</button>
-                    </div>
+ modal.innerHTML = `
+    <div style="background:white; padding:12px 15px; border-radius:12px; width:260px; box-shadow:0 10px 25px rgba(0,0,0,0.5); position:relative; font-family: sans-serif;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <b style="font-size:16px; color:#1a73e8;">🌐 座標跳轉定位</b>
+            <span onclick="event.stopPropagation(); document.getElementById('coordModal').style.display='none'" 
+                  style="cursor:pointer; font-size:22px; color:#999; padding: 0 5px;">&times;</span>
+        </div>
+        
+        <div style="margin-bottom:12px; border:1px solid #eee; padding:8px; border-radius:8px;">
+            <label style="font-size:12px; font-weight:bold; color:#555;">1. WGS84 (緯度, 經度)</label>
+            <input type="text" id="jump_wgs" placeholder="24.123, 121.456" 
+                   onkeydown="if(event.keyCode==13) executeJump('WGS')"
+                   style="width:100%; padding:6px; margin-top:4px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:14px;">
+            <button onclick="executeJump('WGS')" 
+                    style="width:100%; margin-top:6px; background:#1a73e8; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;">確認 WGS84 定位</button>
+        </div>
 
-                    <div style="margin-bottom:10px; border:1px solid #eee; padding:10px; border-radius:8px;">
-                        <label style="font-size:13px; font-weight:bold; color:#555;">2. TWD97 (X, Y)</label>
-                        <input type="text" id="jump_twd" placeholder="例如: 245678, 2765432" 
-                               onkeydown="if(event.keyCode==13) executeJump('TWD')"
-                               style="width:100%; padding:8px; margin-top:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
-                        <button onclick="executeJump('TWD')" 
-                                style="width:100%; margin-top:8px; background:#34a853; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 TWD97 定位</button>
-                    </div>
-                    <p style="font-size:11px; color:#ea4335; margin:5px 0 0 5px;">* TWD97 輸入 6 字查報可直接定位該 X 區域</p>
-                </div>
+        <div style="margin-bottom:8px; border:1px solid #eee; padding:8px; border-radius:8px;">
+            <label style="font-size:12px; font-weight:bold; color:#555;">2. TWD97 (X, Y)</label>
+            <input type="text" id="jump_twd" placeholder="245678, 2765432" 
+                   onkeydown="if(event.keyCode==13) executeJump('TWD')"
+                   style="width:100%; padding:6px; margin-top:4px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:14px;">
+            <button onclick="executeJump('TWD')" 
+                    style="width:100%; margin-top:6px; background:#34a853; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;">確認 TWD97 定位</button>
+        </div>
+        <p style="font-size:10px; color:#ea4335; margin:2px 0 0 2px;">* TWD97 輸入 6 字查報可直接定位</p>
+    </div>
             `;
 
             // 自動聚焦
