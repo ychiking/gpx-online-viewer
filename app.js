@@ -23,6 +23,46 @@ map.on('click', (e) => {
     }, 200); // 200ms 的緩衝
 });
 
+
+// 建立全螢幕控制按鈕
+const fullScreenBtn = L.control({ position: 'topleft' });
+
+fullScreenBtn.onAdd = function() {
+    const btn = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    btn.innerHTML = '⛶'; // 全螢幕符號
+    btn.style.backgroundColor = 'white';
+    btn.style.width = '30px';
+    btn.style.height = '30px';
+    btn.style.lineHeight = '30px';
+    btn.style.textAlign = 'center';
+    btn.style.cursor = 'pointer';
+    btn.style.fontSize = '22px';
+    btn.style.fontWeight = 'bold';
+    btn.title = '切換全螢幕模式';
+
+    L.DomEvent.disableClickPropagation(btn);
+    
+    btn.onclick = function() {
+        const mapElement = document.getElementById('map');
+        if (!document.fullscreenElement) {
+            // 進入全螢幕
+            if (mapElement.requestFullscreen) {
+                mapElement.requestFullscreen();
+            } else if (mapElement.webkitRequestFullscreen) { /* Safari */
+                mapElement.webkitRequestFullscreen();
+            }
+        } else {
+            // 退出全螢幕
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    };
+    return btn;
+};
+
+fullScreenBtn.addTo(map);
+
 // 專門處理「非路徑點」的彈窗
 function showFreeClickPopup(latlng) {
     // 1. 使用 proj4 進行座標轉換 (從 WGS84 轉 TWD97)
@@ -379,37 +419,49 @@ const CombinedControl = L.Control.extend({
 
         L.DomEvent.disableClickPropagation(container);
         
-// 座標定位按鈕點擊事件
+/// 座標定位按鈕點擊事件
         L.DomEvent.on(coordBtn, 'click', (e) => { 
             L.DomEvent.stop(e); 
             
-// 1. 清除地圖上的藍色點 (hoverMarker)
-    if (hoverMarker) {
-        map.removeLayer(hoverMarker);
-        hoverMarker = null; 
-    }
-
-    // 2. 新增：強制清除地圖上所有之前的紫色定位點標記
-    map.eachLayer((layer) => {
-        if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
-            if (layer.getPopup()) {
-                const content = layer.getPopup().getContent();
-                // 檢查彈窗內容是否包含「定位點資訊」，若是則移除
-                if (typeof content === 'string' && content.includes('定位點資訊')) {
-                    map.removeLayer(layer);
-                }
-            }
-        }
-    });
-
-            const modal = document.getElementById('coordModal');
             
+            // 1. 清除地圖上的定位點邏輯 (維持不變)
+            if (hoverMarker) {
+                map.removeLayer(hoverMarker);
+                hoverMarker = null; 
+            }
+
+            map.eachLayer((layer) => {
+                if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
+                    if (layer.getPopup()) {
+                        const content = layer.getPopup().getContent();
+                        if (typeof content === 'string' && content.includes('定位點資訊')) {
+                            map.removeLayer(layer);
+                        }
+                    }
+                }
+            });
+
+            // --- 關鍵修正：確保 Modal 在全螢幕下可見 ---
+            const modal = document.getElementById('coordModal');
+            const mapContainer = document.getElementById('map');
+            
+            // 如果 Modal 不在地圖容器內，就把它搬進去
+            if (modal.parentNode !== mapContainer) {
+                mapContainer.appendChild(modal);
+            }
+
+            // 強制設定 Modal 的層級與定位，確保它在全螢幕最上層
+            modal.style.zIndex = "2147483647"; // 使用最大值
+            modal.style.position = "absolute";
+            modal.style.display = 'flex'; 
+            // ------------------------------------------
+
             // 在 input 標籤中加入 onkeydown="if(event.keyCode==13) executeJump('...')"
             modal.innerHTML = `
                 <div style="background:white; padding:20px; border-radius:12px; width:300px; box-shadow:0 10px 25px rgba(0,0,0,0.5); position:relative; font-family: sans-serif;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                         <b style="font-size:18px; color:#1a73e8;">🌐 座標跳轉定位</b>
-                        <span onclick="document.getElementById('coordModal').style.display='none'" style="cursor:pointer; font-size:24px; color:#999;">&times;</span>
+                        <span onclick="event.stopPropagation(); document.getElementById('coordModal').style.display='none'" style="cursor:pointer; font-size:24px; color:#999;">&times;</span>
                     </div>
                     
                     <div style="margin-bottom:20px; border:1px solid #eee; padding:10px; border-radius:8px;">
@@ -432,11 +484,10 @@ const CombinedControl = L.Control.extend({
                     <p style="font-size:11px; color:#ea4335; margin:5px 0 0 5px;">* TWD97 輸入 6 字查報可直接定位該 X 區域</p>
                 </div>
             `;
-            modal.style.display = 'flex'; 
 
-            // 自動聚焦在第一個輸入框，方便直接打字
+            // 自動聚焦
             setTimeout(() => document.getElementById('jump_wgs').focus(), 100);
-        } );
+        });
 
         L.DomEvent.on(locBtn, 'click', (e) => { 
             L.DomEvent.stop(e); 
@@ -652,6 +703,8 @@ function startHeightTipTimer() {
   }, 3000);
 }
 
+
+
 // ================= 高度圖 =================
 let mouseX = null; 
 
@@ -706,6 +759,9 @@ function drawElevationChart() {
       }
     }
   }
+
+document.getElementById('chartContainer').style.display = 'block';
+
 
   chart = new Chart(ctx, {
     type: "line",
