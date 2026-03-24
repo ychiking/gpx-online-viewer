@@ -44,19 +44,33 @@ fullScreenBtn.onAdd = function() {
     
     btn.onclick = function() {
         const mapElement = document.getElementById('map');
-        if (!document.fullscreenElement) {
-            // 進入全螢幕
-            if (mapElement.requestFullscreen) {
-                mapElement.requestFullscreen();
-            } else if (mapElement.webkitRequestFullscreen) { /* Safari */
-                mapElement.webkitRequestFullscreen();
-            }
+  // 檢查瀏覽器是否支援原生全螢幕 API
+    const canNativeFull = mapElement.requestFullscreen || mapElement.webkitRequestFullscreen;
+
+    if (canNativeFull) {
+        // --- 原本的邏輯：支援全螢幕的裝置 (PC, Android, iPad) ---
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            if (mapElement.requestFullscreen) mapElement.requestFullscreen();
+            else if (mapElement.webkitRequestFullscreen) mapElement.webkitRequestFullscreen();
         } else {
-            // 退出全螢幕
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            }
+            if (document.exitFullscreen) document.exitFullscreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
         }
+    } else {
+        // --- 針對 iPhone 的解決方案：偽全螢幕 ---
+        if (!mapElement.classList.contains('iphone-fullscreen')) {
+            mapElement.classList.add('iphone-fullscreen');
+            btn.innerHTML = '✕'; // 變更按鈕圖示，提示關閉
+            // 隱藏頁面其他部分，讓地圖看起來是全螢幕
+            document.body.style.overflow = 'hidden'; 
+        } else {
+            mapElement.classList.remove('iphone-fullscreen');
+            btn.innerHTML = '⛶';
+            document.body.style.overflow = '';
+        }
+        // 修正地圖尺寸
+        setTimeout(() => map.invalidateSize(), 300);
+    }
     };
     return btn;
 };
