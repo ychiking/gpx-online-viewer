@@ -449,6 +449,8 @@ const CombinedControl = L.Control.extend({
             if (modal.parentNode !== mapContainer) {
                 mapContainer.appendChild(modal);
             }
+            
+						L.DomEvent.disableClickPropagation(modal);
 
             // 強制設定 Modal 的層級與定位，確保它在全螢幕最上層
             modal.style.zIndex = "2147483647"; // 使用最大值
@@ -1172,6 +1174,10 @@ const jumpMarker = L.marker([lat, lon]).addTo(map);
 };
 
 window.executeJump = function(type) {
+	if (typeof event !== 'undefined') {
+        event.stopPropagation();
+    }
+	
     if (type === 'WGS') {
         const val = document.getElementById('jump_wgs').value;
         const pts = val.replace(/[^\d.\-, ]/g, ' ').trim().split(/[\s,]+/).map(parseFloat);
@@ -1208,6 +1214,11 @@ window.executeJump = function(type) {
             window.jumpToLocation(coord[1], coord[0]);
         }
     }
+    
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth' // 使用平滑捲動效果
+    });
 };
 
 // 在地圖上方顯示輕量提示 (代替 alert)
