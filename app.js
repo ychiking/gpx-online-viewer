@@ -512,7 +512,7 @@ const CombinedControl = L.Control.extend({
             <button onclick="executeJump('TWD')" 
                     style="width:100%; margin-top:6px; background:#34a853; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;">確認 TWD97 定位</button>
         </div>
-        <p style="font-size:10px; color:#ea4335; margin:2px 0 0 2px;">* TWD97 輸入 6 字查報可直接定位</p>
+        <p style="font-size:10px; color:#ea4335; margin:2px 0 0 2px;">* TWD97 可輸入X前四位數，Y前五位數定位</p>
     </div>
             `;
 
@@ -1203,51 +1203,49 @@ const jumpMarker = L.marker([lat, lon]).addTo(map);
 };
 
 window.executeJump = function(type) {
-	if (typeof event !== 'undefined') {
+    if (typeof event !== 'undefined') {
         event.stopPropagation();
     }
-	
+
     if (type === 'WGS') {
         const val = document.getElementById('jump_wgs').value;
-        const pts = val.replace(/[^\d.\-, ]/g, ' ').trim().split(/[\s,]+/).map(parseFloat);
-        
-        if (pts.length < 2 || isNaN(pts[0]) || isNaN(pts[1])) {
-            showMapToast("請輸入有效的 WGS84 座標");
+        const pts = val.split(/[,\s]+/).map(v => v.trim());
+        const lat = parseFloat(pts[0]);
+        const lng = parseFloat(pts[1]);
+        if (isNaN(lat) || isNaN(lng)) {
+            showMapToast("請輸入正確的 WGS84 座標");
             return;
         }
-        window.jumpToLocation(pts[0], pts[1]);
-
+        window.jumpToLocation(lat, lng);
     } else {
-        const val = document.getElementById('jump_twd').value.trim();
-        const cleanVal = val.replace(/\D/g, '');
+        const rawVal = document.getElementById('jump_twd').value;
+        const val = rawVal.replace(/\D/g, ''); // 只取數字
+        let x, y;
 
-        // 邏輯辨認：六位數簡化座標
-        if (cleanVal.length === 6) {
-            const partX = cleanVal.substring(0, 3);
-            const partY = cleanVal.substring(3, 6);
-            const x = parseFloat("3" + partX + "00"); 
-            const y = parseFloat("27" + partY + "00"); 
-            const coord = proj4(TWD97_DEF, WGS84_DEF, [x, y]);
-            window.jumpToLocation(coord[1], coord[0]);
+        // 支援 9 位數格式 (X 4位 + Y 5位)
+        if (val.length === 9) {
+            x = parseInt(val.substring(0, 4), 10) * 100; // 前 4 位補兩個 0
+            y = parseInt(val.substring(4, 9), 10) * 100; // 後 5 位補兩個 0
         } else {
-            // 標準 TWD97 (X, Y)
-            const pts = val.split(/[\s,]+/).map(v => v.trim());
-            const x = parseFloat(pts[0]);
-            const y = parseFloat(pts[1]);
-            
-            if (isNaN(x) || isNaN(y)) {
-                showMapToast("請輸入正確的 TWD97 或六位數座標");
-                return;
-            }
-            const coord = proj4(TWD97_DEF, WGS84_DEF, [x, y]);
-            window.jumpToLocation(coord[1], coord[0]);
+            // 否則視為標準 TWD97 (X, Y) 格式
+            const pts = rawVal.split(/[\s,]+/).map(v => v.trim());
+            x = parseFloat(pts[0]);
+            y = parseFloat(pts[1]);
         }
+
+        if (isNaN(x) || isNaN(y)) {
+            showMapToast("請輸入 9 位數或標準 TWD97 座標");
+            return;
+        }
+
+        const coord = proj4(TWD97_DEF, WGS84_DEF, [x, y]);
+        window.jumpToLocation(coord[1], coord[0]);
     }
-    
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth' // 使用平滑捲動效果
-    });
+
+    // 捲動回頂部並關閉
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const modal = document.getElementById('coordModal');
+    if (modal) modal.style.display = 'none';
 };
 
 // 在地圖上方顯示輕量提示 (代替 alert)
