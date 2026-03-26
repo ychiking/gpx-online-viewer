@@ -3,6 +3,7 @@ const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
 const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: 'OpenTopoMap' });
 
+
 L.control.layers({ "標準地圖 (OSM)": osm, "等高線地形圖 (OpenTopo)": otm }).addTo(map);
 
 let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [], wptMarkers = [];
@@ -487,34 +488,68 @@ const CombinedControl = L.Control.extend({
             // ------------------------------------------
 
             // 在 input 標籤中加入 onkeydown="if(event.keyCode==13) executeJump('...')"
- modal.innerHTML = `
-    <div style="background:white; padding:12px 15px; border-radius:12px; width:260px; box-shadow:0 10px 25px rgba(0,0,0,0.5); position:relative; font-family: sans-serif;">
+modal.innerHTML = `
+    <div id="jump-container" style="background:white; padding:12px 15px; border-radius:12px; width:280px; box-shadow:0 10px 25px rgba(0,0,0,0.5); font-family: sans-serif; font-size:13px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <b style="font-size:16px; color:#1a73e8;">🌐 座標跳轉定位</b>
-            <span onclick="event.stopPropagation(); document.getElementById('coordModal').style.display='none'" 
-                  style="cursor:pointer; font-size:22px; color:#999; padding: 0 5px;">&times;</span>
-        </div>
-        
-        <div style="margin-bottom:12px; border:1px solid #eee; padding:8px; border-radius:8px;">
-            <label style="font-size:12px; font-weight:bold; color:#555;">1. WGS84 (緯度, 經度)</label>
-            <input type="text" id="jump_wgs" placeholder="24.123, 121.456" 
-                   onkeydown="if(event.keyCode==13) executeJump('WGS')"
-                   style="width:100%; padding:6px; margin-top:4px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:14px;">
-            <button onclick="executeJump('WGS')" 
-                    style="width:100%; margin-top:6px; background:#1a73e8; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;">確認 WGS84 定位</button>
+            <b style="color:#1a73e8;">🌐 座標跳轉定位</b>
+            <span onclick="document.getElementById('coordModal').style.display='none'" style="cursor:pointer; font-size:20px; color:#999;">&times;</span>
         </div>
 
-        <div style="margin-bottom:8px; border:1px solid #eee; padding:8px; border-radius:8px;">
-            <label style="font-size:12px; font-weight:bold; color:#555;">2. TWD97 (X, Y)</label>
-            <input type="text" id="jump_twd" placeholder="245678, 2765432" 
-                   onkeydown="if(event.keyCode==13) executeJump('TWD')"
-                   style="width:100%; padding:6px; margin-top:4px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:14px;">
-            <button onclick="executeJump('TWD')" 
-                    style="width:100%; margin-top:6px; background:#34a853; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;">確認 TWD97 定位</button>
+        <div style="border:1px solid #eee; padding:8px; border-radius:8px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <label style="font-weight:bold;">WGS84 (GPS)</label>
+                <select id="wgs_type" onchange="toggleWgsInput()" style="font-size:11px; padding:2px;">
+                    <option value="DD">十進位度</option>
+                    <option value="DMS">度分秒</option>
+                </select>
+            </div>
+
+            <div id="wgs_dd_input" style="display:flex; gap:5px;">
+                <input type="number" id="lat_dd" placeholder="緯度" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:50%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+                <input type="number" id="lng_dd" placeholder="經度" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:50%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+            </div>
+
+            <div id="wgs_dms_input" style="display:none; flex-direction:column; gap:8px;">
+                <div style="display:flex; gap:3px; align-items:center;">
+                    <span style="width:15px; font-weight:bold; color:#666;">緯</span>
+                    <input type="number" id="lat_d" placeholder="度°" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:30%; padding:5px; border:1px solid #ccc;">
+                    <input type="number" id="lat_m" placeholder="分'" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:30%; padding:5px; border:1px solid #ccc;">
+                    <input type="number" id="lat_s" placeholder="秒&quot;" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:35%; padding:5px; border:1px solid #ccc;">
+                </div>
+                <div style="display:flex; gap:3px; align-items:center;">
+                    <span style="width:15px; font-weight:bold; color:#666;">經</span>
+                    <input type="number" id="lng_d" placeholder="度°" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:30%; padding:5px; border:1px solid #ccc;">
+                    <input type="number" id="lng_m" placeholder="分'" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:30%; padding:5px; border:1px solid #ccc;">
+                    <input type="number" id="lng_s" placeholder="秒&quot;" onkeydown="if(event.keyCode==13) executeJump('WGS')" style="width:35%; padding:5px; border:1px solid #ccc;">
+                </div>
+            </div>
+            <button onclick="executeJump('WGS')" style="width:100%; margin-top:10px; background:#1a73e8; color:white; border:none; padding:7px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 WGS84 定位</button>
         </div>
-        <p style="font-size:10px; color:#ea4335; margin:2px 0 0 2px;">* TWD97 可輸入X前四位數，Y前五位數定位</p>
+
+        <div style="border:1px solid #eee; padding:8px; border-radius:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <select id="twd_system" style="font-weight:bold; border:none; background:none; cursor:pointer; color:#34a853; font-size:13px;">
+                    <option value="97">TWD97</option>
+                    <option value="67">TWD67</option>
+                </select>
+                <span style="font-size:10px; color:#999;">X (橫) / Y (縱)</span>
+            </div>
+            <div style="display:flex; gap:5px;">
+                <input type="number" id="twd_x" placeholder="X 座標" onkeydown="if(event.keyCode==13) executeJump('TWD')" style="width:50%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+                <input type="number" id="twd_y" placeholder="Y 座標" onkeydown="if(event.keyCode==13) executeJump('TWD')" style="width:50%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+            </div>
+            <p style="font-size:10px; color:#ea4335; margin:2px 0 0 2px;">* 至少輸入X前四位數，Y前五位數</p>
+            <button onclick="executeJump('TWD')" style="width:100%; margin-top:10px; background:#34a853; color:white; border:none; padding:7px; border-radius:4px; cursor:pointer; font-weight:bold;">確認 TWD 定位</button>
+        </div>
     </div>
-            `;
+`;
+
+// 輔助 UI 切換函式
+window.toggleWgsInput = function() {
+    const type = document.getElementById('wgs_type').value;
+    document.getElementById('wgs_dd_input').style.display = (type === 'DD') ? 'flex' : 'none';
+    document.getElementById('wgs_dms_input').style.display = (type === 'DMS') ? 'flex' : 'none';
+};
 
             // 自動聚焦
             setTimeout(() => document.getElementById('jump_wgs').focus(), 100);
@@ -614,6 +649,7 @@ window.resetGPS = function() {
 
 // ================= 座標轉換 TIP 邏輯 =================
 const TWD97_DEF = "+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=GRS80 +units=m +no_defs";
+const TWD67_DEF = "+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=aust_SA +towgs84=-752,-358,-179,0,0,0,0 +units=m +no_defs";
 const WGS84_DEF = "EPSG:4326";
 
 window.clearCoordInputs = function() {
@@ -1202,50 +1238,91 @@ const jumpMarker = L.marker([lat, lon]).addTo(map);
     });
 };
 
+window.jumpToLocation = function(lat, lon) {
+    const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
+    const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]); // 新增 TWD67 轉換
+    
+    const content = `
+        <div style="font-size:14px; line-height:1.5; min-width:180px;">
+            <b style="color:#1a73e8; font-size:15px;">🎯 定位點資訊</b><hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
+            <div style="padding:5px 0;">
+                WGS84: ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+                TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+                TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
+            </div>
+            <div style="display:flex; margin-top:10px; gap:5px;">
+                <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+                <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('coordModal').style.display = 'none';
+    map.setView([lat, lon], 16); 
+    
+    const jumpMarker = L.marker([lat, lon]).addTo(map);
+    jumpMarker._icon.style.filter = "hue-rotate(180deg) brightness(160%)";
+    jumpMarker.bindPopup(content).openPopup();
+
+    map.once('click', () => {
+        if (map.hasLayer(jumpMarker)) map.removeLayer(jumpMarker);
+    });
+};
+
+// 修改後的執行跳轉函式：整合 DMS 與 TWD67/97 邏輯
 window.executeJump = function(type) {
-    if (typeof event !== 'undefined') {
-        event.stopPropagation();
-    }
+    if (typeof event !== 'undefined') event.stopPropagation();
+
+    let lat, lng;
 
     if (type === 'WGS') {
-        const val = document.getElementById('jump_wgs').value;
-        const pts = val.split(/[,\s]+/).map(v => v.trim());
-        const lat = parseFloat(pts[0]);
-        const lng = parseFloat(pts[1]);
-        if (isNaN(lat) || isNaN(lng)) {
-            showMapToast("請輸入正確的 WGS84 座標");
+        const wgsType = document.getElementById('wgs_type').value;
+        if (wgsType === 'DD') {
+            lat = parseFloat(document.getElementById('lat_dd').value);
+            lng = parseFloat(document.getElementById('lng_dd').value);
+        } else {
+            // 度分秒計算
+            const ld = parseFloat(document.getElementById('lat_d').value) || 0;
+            const lm = parseFloat(document.getElementById('lat_m').value) || 0;
+            const ls = parseFloat(document.getElementById('lat_s').value) || 0;
+            lat = ld + (lm / 60) + (ls / 3600);
+
+            const nd = parseFloat(document.getElementById('lng_d').value) || 0;
+            const nm = parseFloat(document.getElementById('lng_m').value) || 0;
+            const ns = parseFloat(document.getElementById('lng_s').value) || 0;
+            lng = nd + (nm / 60) + (ns / 3600);
+        }
+        
+        if (isNaN(lat) || isNaN(lng) || lat === 0) {
+            showMapToast("請填寫緯經度");
             return;
         }
         window.jumpToLocation(lat, lng);
-    } else {
-        const rawVal = document.getElementById('jump_twd').value;
-        const val = rawVal.replace(/\D/g, ''); // 只取數字
-        let x, y;
 
-        // 支援 9 位數格式 (X 4位 + Y 5位)
-        if (val.length === 9) {
-            x = parseInt(val.substring(0, 4), 10) * 100; // 前 4 位補兩個 0
-            y = parseInt(val.substring(4, 9), 10) * 100; // 後 5 位補兩個 0
-        } else {
-            // 否則視為標準 TWD97 (X, Y) 格式
-            const pts = rawVal.split(/[\s,]+/).map(v => v.trim());
-            x = parseFloat(pts[0]);
-            y = parseFloat(pts[1]);
-        }
+    } else {
+        const twdSystem = document.getElementById('twd_system').value;
+        const sourceDef = (twdSystem === '67') ? TWD67_DEF : TWD97_DEF;
+        const xStr = document.getElementById('twd_x').value;
+        const yStr = document.getElementById('twd_y').value;
+
+        let x = parseFloat(xStr);
+        let y = parseFloat(yStr);
+
+        // 原本定義的 9 位數自動補位 (4碼補2個0, 5碼補2個0)
+        if (xStr.length === 4) x = x * 100;
+        if (yStr.length === 5) y = y * 100;
 
         if (isNaN(x) || isNaN(y)) {
-            showMapToast("請輸入 9 位數或標準 TWD97 座標");
+            showMapToast("請填寫 X 與 Y");
             return;
         }
 
-        const coord = proj4(TWD97_DEF, WGS84_DEF, [x, y]);
+        const coord = proj4(sourceDef, WGS84_DEF, [x, y]);
         window.jumpToLocation(coord[1], coord[0]);
     }
-
-    // 捲動回頂部並關閉
+    
+    // 捲動並關閉彈窗 (維持原本行為)
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    const modal = document.getElementById('coordModal');
-    if (modal) modal.style.display = 'none';
 };
 
 // 在地圖上方顯示輕量提示 (代替 alert)
