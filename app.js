@@ -94,19 +94,23 @@ fullScreenBtn.addTo(map);
 
 // 專門處理「非路徑點」的彈窗
 function showFreeClickPopup(latlng) {
-    // 1. 使用 proj4 進行座標轉換 (從 WGS84 轉 TWD97)
-    // 您的專案中已定義 WGS84_DEF 與 TWD97_DEF
+    // 1. 使用 proj4 進行座標轉換 (包含 TWD97 與 TWD67)
     const twd97 = proj4(WGS84_DEF, TWD97_DEF, [latlng.lng, latlng.lat]);
+    const twd67 = proj4(WGS84_DEF, TWD67_DEF, [latlng.lng, latlng.lat]);
+    
     const x97 = Math.round(twd97[0]);
     const y97 = Math.round(twd97[1]);
+    const x67 = Math.round(twd67[0]);
+    const y67 = Math.round(twd67[1]);
 
-    // 2. 建立彈窗內容，包含兩種座標格式
+    // 2. 建立彈窗內容，新增 TWD67 格式
     const content = `
         <div style="min-width:180px; font-size:13px; line-height:1.6;">
           <b style="font-size:14px; color:#d35400;">📍 自選位置</b><br>
           <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
           <b>WGS84:</b> ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}<br>
-          <b>TWD97:</b> ${x97}, ${y97}
+          <b>TWD97:</b> ${x97}, ${y97}<br>
+          <b>TWD67:</b> ${x67}, ${y67}
           <div style="display:flex; margin-top:10px; gap:8px;">
             <button onclick="setFreeAB('A', ${latlng.lat}, ${latlng.lng})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
             <button onclick="setFreeAB('B', ${latlng.lat}, ${latlng.lng})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
@@ -117,13 +121,25 @@ function showFreeClickPopup(latlng) {
 }
 
 window.setFreeAB = function(type, lat, lon) {
-    // 建立一個不帶索引的點物件
+    // === 自動關閉定位標記與還原按鈕顏色 ===
+    if (gpsMarker) {
+        map.removeLayer(gpsMarker);
+        gpsMarker = null;
+        
+        
+        if (gpsInterval) { clearInterval(gpsInterval); gpsInterval = null; }
+        // 使用剛才存下來的變數直接修改顏色
+        if (gpsButtonElement) {
+            gpsButtonElement.style.background = "white";
+        }
+    }
+
+    // --- 以下維持你原始的邏輯 ---
     const p = { lat, lon, ele: 0, distance: 0, timeLocal: "無時間資訊", timeUTC: 0, idx: -1 };
     
     if (type === 'A') {
         pointA = p;
         if (markerA) map.removeLayer(markerA);
-        // 加入 className: '' 移除 Leaflet 預設白框樣式
         markerA = L.marker([lat, lon], { 
             icon: L.divIcon({ 
                 html: `<div style="background:#007bff;color:white;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);">A</div>`, 
@@ -144,9 +160,9 @@ window.setFreeAB = function(type, lat, lon) {
             }) 
         }).addTo(map);
     }
-    map.closePopup()
+    
+    map.closePopup();
     updateABUI();
-    // map.closePopup();
 };
 
 
@@ -381,22 +397,25 @@ polyline.on('click', (e) => {
     });
 
     hoverMarker.setLatLng([trackPoints[idx].lat, trackPoints[idx].lon]);
+    
+    // 呼叫顯示彈窗 (TWD67 的邏輯將在 showCustomPopup 內處理)
     showCustomPopup(idx, "位置資訊");
+
     if (chart) {
-      const meta = chart.getDatasetMeta(0);
-      const point = meta.data[idx];
-      chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
-      chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: point.x, y: point.y });
-      chart.update('none');
-      if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
-      window.chartTipTimer = setTimeout(() => {
-        if (!isMouseDown && chart) {
-          chart.tooltip.setActiveElements([], { x: 0, y: 0 });
-          chart.update();
-        }
-      }, 3000);
+        const meta = chart.getDatasetMeta(0);
+        const point = meta.data[idx];
+        chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+        chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: point.x, y: point.y });
+        chart.update('none');
+        if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
+        window.chartTipTimer = setTimeout(() => {
+            if (!isMouseDown && chart) {
+                chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+                chart.update();
+            }
+        }, 3000);
     }
-  });
+})
 
   hoverMarker = L.circleMarker([trackPoints[0].lat, trackPoints[0].lon], { radius: 6, color: "blue", fillColor: "#fff", fillOpacity: 1, weight: 3 }).addTo(map);
   drawElevationChart();
@@ -570,11 +589,22 @@ window.toggleWgsInput = function() {
 });
 map.addControl(new CombinedControl());
 
+let gpsInterval = null;
+let gpsButtonElement = null;
+
 window.toggleGPS = function(btn) {
-    // 如果標記已存在，表示目前是開啟狀態 -> 執行「取消定位」
-    if (gpsMarker) {
-        map.removeLayer(gpsMarker);
-        gpsMarker = null;
+    gpsButtonElement = btn; 
+
+    // 如果計時器或標記已存在 -> 執行「關閉定位」
+    if (gpsInterval || gpsMarker) {
+        if (gpsInterval) {
+            clearInterval(gpsInterval);
+            gpsInterval = null;
+        }
+        if (gpsMarker) {
+            map.removeLayer(gpsMarker);
+            gpsMarker = null;
+        }
         btn.style.background = "white"; // 還原按鈕顏色
         return;
     }
@@ -584,61 +614,78 @@ window.toggleGPS = function(btn) {
         return;
     }
 
-    // 執行定位
-    navigator.geolocation.getCurrentPosition((pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        
-        // 轉換座標 (包含 TWD97 與 TWD67)
-        const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
-        const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
+    // 定義一個執行定位的內部函式
+    const runLocation = (isFirstTime = false) => {
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            
+            // 轉換座標
+            const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
+            const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
 
-        // 地圖移至定位點
-        map.setView([lat, lon], 16);
-        btn.style.background = "#e8f0fe"; 
-        
-        const mapArrowAngle = "315deg"; 
-        const arrowSize = 40;
+            // 1. 每次更新都將地圖中心移至目前位置 (維持目前的縮放層級)
+            map.setView([lat, lon], map.getZoom());
+            btn.style.background = "#e8f0fe"; 
 
-        // 自定義箭頭圖示
-        const arrowIcon = L.divIcon({
-            className: 'custom-gps-arrow',
-            html: `<div style="transform: rotate(${mapArrowAngle}); display: flex; justify-content: center;">
-                     <svg width="40" height="40" viewBox="0 0 100 100">
-                       <path d="M50 5 L95 90 L50 70 L5 90 Z" fill="#1a73e8" stroke="white" stroke-width="5"/>
-                     </svg>
-                   </div>`,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20]
-        });
+            // 2. 更新或建立自定義箭頭
+            const arrowIcon = L.divIcon({
+                className: 'custom-gps-arrow',
+                html: `<div style="transform: rotate(315deg); display: flex; justify-content: center;">
+                         <svg width="40" height="40" viewBox="0 0 100 100">
+                           <path d="M50 5 L95 90 L50 70 L5 90 Z" fill="#1a73e8" stroke="white" stroke-width="5"/>
+                         </svg>
+                       </div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+            });
 
-        gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
+            if (gpsMarker) {
+                gpsMarker.setLatLng([lat, lon]);
+            } else {
+                gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
+            }
 
-        // 彈出 Tip (新增 TWD67 與 A/B 點按鈕)
-        const tipText = `
-            <div style="font-size:13px; line-height:1.6; min-width:200px;">
-                <b style="color:#1a73e8; font-size:14px;">📍 目前位置</b><br>
-                <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-                <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
-                <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
-                
-                <div style="display:flex; margin-top:10px; gap:8px;">
-                    <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
-                    <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+            // 3. 準備彈出視窗內容
+            const tipText = `
+                <div style="font-size:13px; line-height:1.6; min-width:200px;">
+                    <b style="color:#1a73e8; font-size:14px;">📍 目前位置 (自動追蹤中)</b><br>
+                    <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+                    <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+                    <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
+                    
+                    <div style="display:flex; margin-top:10px; gap:8px;">
+                        <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+                        <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+                    </div>
+
+                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
+                    <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
+                        ⚠️ 自動追蹤中，每 30 秒更新一次中心位置。
+                    </div>
                 </div>
+            `;
 
-                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
-                <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
-                    ⚠️ 若定位不準，請檢查網頁應用程式權限設定：<br>
-                    安卓Chrome: 權限 > 位置 > 開啟<b>「使用精確位置」</b>開關。
-                </div>
-            </div>
-        `;
-        gpsMarker.bindPopup(tipText).openPopup();
+            // 只有在第一次開啟，或使用者本來就打開著 Popup 時才更新 Popup
+            if (isFirstTime || (gpsMarker.getPopup() && gpsMarker.getPopup().isOpen())) {
+                gpsMarker.bindPopup(tipText).openPopup();
+            } else {
+                gpsMarker.bindPopup(tipText);
+            }
 
-    }, (err) => {
-        alert("無法獲取位置，請確認 GPS 已開啟並授權網頁存取");
-    }, { enableHighAccuracy: true });
+        }, (err) => {
+            console.warn("定位失敗:", err);
+            if (isFirstTime) alert("無法獲取位置，請確認 GPS 已開啟");
+        }, { enableHighAccuracy: true });
+    };
+
+    // 立即啟動第一次定位
+    runLocation(true);
+
+    // 設定每 30 秒自動更新
+    gpsInterval = setInterval(() => {
+        runLocation(false);
+    }, 30000);
 };
 
 window.resetGPS = function() {
@@ -730,19 +777,31 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
 
   // 判定是否為不在路徑上的模式 (藉由傳入 offPathEle)
   if (offPathEle !== null) {
+      // 即使不在路徑上，如果有座標，也計算 TWD97 與 TWD67
+      const lat = (realLat && realLon) ? realLat : p.lat;
+      const lon = (realLat && realLon) ? realLon : p.lon;
+      const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
+      const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
+
       content = `
         <div style="min-width:160px; font-size:13px; line-height:1.6;">
           <b style="font-size:14px;">${title}</b><br>
           高度: ${offPathEle} m<br>
+          WGS84: ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>
+          TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+          TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}<br>
           <span style="color:red; font-weight:bold;">⚠️ 不在路徑上</span>
         </div>`;
-      // 如果有提供真實座標，彈窗對準真實座標
+      
       if (realLat && realLon) targetLatLng = [realLat, realLon];
   } else {
-      // 計算 TWD97 座標
+      // 計算 TWD97 與 TWD67 座標
       const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
+      const twd67 = proj4(WGS84_DEF, TWD67_DEF, [p.lon, p.lat]); // 新增 TWD67
       const x97 = Math.round(twd97[0]);
       const y97 = Math.round(twd97[1]);
+      const x67 = Math.round(twd67[0]); // 新增 TWD67 X
+      const y67 = Math.round(twd67[1]); // 新增 TWD67 Y
 
       content = `
         <div style="min-width:180px; font-size:13px; line-height:1.5;">
@@ -751,7 +810,8 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
           距離: ${p.distance.toFixed(2)} km<br>
           時間: ${p.timeLocal}<br>
           WGS84: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>
-          TWD97: ${x97}, ${y97}
+          TWD97: ${x97}, ${y97}<br>
+          TWD67: ${x67}, ${y67}
           <div style="display:flex; margin-top:10px; gap:5px;">
             <button onclick="setAB('A', ${idx})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
             <button onclick="setAB('B', ${idx})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
@@ -941,10 +1001,13 @@ window.setAB = function(type, idx) {
 function updateABUI() {
     const infoA = document.getElementById("infoA"), infoB = document.getElementById("infoB"), boxRes = document.getElementById("boxRes"), infoRes = document.getElementById("infoRes");
     
-    // 輔助函式：產生座標字串
+    // 輔助函式：產生座標字串 (新增 TWD67 顯示)
     const getCoordHTML = (p) => {
         const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
-        return `WGS84: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}`;
+        const twd67 = proj4(WGS84_DEF, TWD67_DEF, [p.lon, p.lat]);
+        return `WGS84: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>
+                TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+                TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}`;
     };
 
     // --- 更新 A 點資訊顯示 ---
@@ -969,11 +1032,11 @@ function updateABUI() {
         infoB.innerHTML = "尚未設定";
     }
 
+    // --- 區間分析邏輯維持不變 ---
     if (pointA && pointB) {
         boxRes.style.display = "block";
         const bearing = getBearingInfo(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
         
-        // 計算直線距離
         const R = 6371; 
         const dLat = (pointB.lat - pointA.lat) * Math.PI / 180;
         const dLon = (pointB.lon - pointA.lon) * Math.PI / 180;
@@ -985,7 +1048,6 @@ function updateABUI() {
 
         let analysisContent = "";
 
-        // 判斷是否包含非路徑點
         if (pointA.idx === -1 || pointB.idx === -1) {
             analysisContent = `
                 <div style="color:#d35400; font-weight:bold; margin-bottom:4px;">📍 直線分析 (非全路徑點)</div>
@@ -1007,35 +1069,20 @@ function updateABUI() {
 
         infoRes.innerHTML = analysisContent;
 
+        // Tooltip 動態方向邏輯維持不變...
         if (typeof markerB !== 'undefined' && markerB) {
             markerB.unbindTooltip();
-
-            // --- 新增：動態方位判斷邏輯 ---
             let tooltipDir = 'right';
             let tooltipOffset = [15, 0];
-
             const diffLat = pointB.lat - pointA.lat;
             const diffLon = pointB.lon - pointA.lon;
 
-            // 判斷是以東西向為主還是南北向為主
             if (Math.abs(diffLon) > Math.abs(diffLat)) {
-                // 東西向為主
-                if (diffLon >= 0) { 
-                    tooltipDir = 'right';  // B在東方，彈向右邊
-                    tooltipOffset = [15, 0];
-                } else { 
-                    tooltipDir = 'left';   // B在西方，彈向左邊
-                    tooltipOffset = [-15, 0];
-                }
+                if (diffLon >= 0) { tooltipDir = 'right'; tooltipOffset = [15, 0]; }
+                else { tooltipDir = 'left'; tooltipOffset = [-15, 0]; }
             } else {
-                // 南北向為主
-                if (diffLat >= 0) { 
-                    tooltipDir = 'top';    // B在北方，彈向上面
-                    tooltipOffset = [0, -15];
-                } else { 
-                    tooltipDir = 'bottom'; // B在南方，彈向下面
-                    tooltipOffset = [0, 15];
-                }
+                if (diffLat >= 0) { tooltipDir = 'top'; tooltipOffset = [0, -15]; }
+                else { tooltipDir = 'bottom'; tooltipOffset = [0, 15]; }
             }
 
             markerB.bindTooltip(`
@@ -1048,8 +1095,8 @@ function updateABUI() {
                 </div>`, { 
                     permanent: true, 
                     interactive: true, 
-                    direction: tooltipDir, // 使用動態方向
-                    offset: tooltipOffset, // 使用動態偏移量
+                    direction: tooltipDir, 
+                    offset: tooltipOffset, 
                     className: 'ab-map-tooltip' 
                 }).openTooltip();
         }
@@ -1058,7 +1105,6 @@ function updateABUI() {
         if (typeof markerB !== 'undefined' && markerB) { markerB.unbindTooltip(); }
     }
     
-    // 兩點皆為自由點位時觸發步道偵測
     if (pointA && pointB && pointA.idx === -1 && pointB.idx === -1) {
         if (typeof analyzeBestPath === 'function') {
             analyzeBestPath(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
@@ -1288,7 +1334,6 @@ window.executeJump = function(type) {
             lat = parseFloat(document.getElementById('lat_dd').value);
             lng = parseFloat(document.getElementById('lng_dd').value);
         } else {
-            // 度分秒計算
             const ld = parseFloat(document.getElementById('lat_d').value) || 0;
             const lm = parseFloat(document.getElementById('lat_m').value) || 0;
             const ls = parseFloat(document.getElementById('lat_s').value) || 0;
@@ -1315,7 +1360,6 @@ window.executeJump = function(type) {
         let x = parseFloat(xStr);
         let y = parseFloat(yStr);
 
-        // 原本定義的 9 位數自動補位 (4碼補2個0, 5碼補2個0)
         if (xStr.length === 4) x = x * 100;
         if (yStr.length === 5) y = y * 100;
 
@@ -1328,7 +1372,6 @@ window.executeJump = function(type) {
         window.jumpToLocation(coord[1], coord[0]);
     }
     
-    // 捲動並關閉彈窗 (維持原本行為)
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
