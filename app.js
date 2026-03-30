@@ -570,7 +570,6 @@ window.toggleWgsInput = function() {
 });
 map.addControl(new CombinedControl());
 
-// ================= 定位切換功能函式 =================
 window.toggleGPS = function(btn) {
     // 如果標記已存在，表示目前是開啟狀態 -> 執行「取消定位」
     if (gpsMarker) {
@@ -590,14 +589,15 @@ window.toggleGPS = function(btn) {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         
-        // 轉換座標為 TWD97
+        // 轉換座標 (包含 TWD97 與 TWD67)
         const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
+        const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
 
         // 地圖移至定位點
         map.setView([lat, lon], 16);
         btn.style.background = "#e8f0fe"; 
         
-				const mapArrowAngle = "315deg"; 
+        const mapArrowAngle = "315deg"; 
         const arrowSize = 40;
 
         // 自定義箭頭圖示
@@ -614,12 +614,19 @@ window.toggleGPS = function(btn) {
 
         gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
 
-        // 彈出 Tip
-				const tipText = `
+        // 彈出 Tip (新增 TWD67 與 A/B 點按鈕)
+        const tipText = `
             <div style="font-size:13px; line-height:1.6; min-width:200px;">
                 <b style="color:#1a73e8; font-size:14px;">📍 目前位置</b><br>
                 <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-                <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}
+                <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+                <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
+                
+                <div style="display:flex; margin-top:10px; gap:8px;">
+                    <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+                    <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+                </div>
+
                 <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
                 <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
                     ⚠️ 若定位不準，請檢查網頁應用程式權限設定：<br>
