@@ -118,13 +118,38 @@ function updateGrids() {
     drawTWDGrid(gridLayers.TWD67, TWD67_DEF, '#e67e22');
 
     // WGS84 繪製 (略過標籤重複部分...)
-    if (map.hasLayer(gridLayers.WGS84)) {
-        let stepDeg = zoom > 13 ? 0.01 : 0.05;
+if (map.hasLayer(gridLayers.WGS84)) {
+        let stepDeg = zoom > 14 ? 0.005 : (zoom > 12 ? 0.01 : 0.05); // 動態間距
+        const wgsColor = '#666'; // 使用深灰色讓文字更清楚
+
+        // 垂直線 (經度 Longitude)
         for (let lo = Math.floor(bounds.getWest()/stepDeg)*stepDeg; lo <= bounds.getEast(); lo += stepDeg) {
-            L.polyline([[bounds.getSouth(), lo], [bounds.getNorth(), lo]], {color: '#aaa', weight: 1, opacity: 0.4, dashArray: '5,5', interactive: false}).addTo(gridLayers.WGS84);
+            L.polyline([[bounds.getSouth(), lo], [bounds.getNorth(), lo]], {
+                color: wgsColor, 
+                weight: 1, 
+                opacity: 0.5, 
+                dashArray: '5,10', 
+                interactive: false
+            }).addTo(gridLayers.WGS84);
+            
+            // 標註經度 (上方與下方)
+            createLabel(bounds.getNorth(), lo, lo.toFixed(3) + '°E', wgsColor, [0, 0]).addTo(gridLayers.WGS84);
+            createLabel(bounds.getSouth(), lo, lo.toFixed(3) + '°E', wgsColor, [0, 20]).addTo(gridLayers.WGS84);
         }
+
+        // 水平線 (緯度 Latitude)
         for (let la = Math.floor(bounds.getSouth()/stepDeg)*stepDeg; la <= bounds.getNorth(); la += stepDeg) {
-            L.polyline([[la, bounds.getWest()], [la, bounds.getEast()]], {color: '#aaa', weight: 1, opacity: 0.4, dashArray: '5,5', interactive: false}).addTo(gridLayers.WGS84);
+            L.polyline([[la, bounds.getWest()], [la, bounds.getEast()]], {
+                color: wgsColor, 
+                weight: 1, 
+                opacity: 0.5, 
+                dashArray: '5,10', 
+                interactive: false
+            }).addTo(gridLayers.WGS84);
+            
+            // 標註緯度 (左側與右側)
+            createLabel(la, bounds.getWest(), la.toFixed(3) + '°N', wgsColor, [-5, 12]).addTo(gridLayers.WGS84);
+            createLabel(la, bounds.getEast(), la.toFixed(3) + '°N', wgsColor, [55, 12]).addTo(gridLayers.WGS84);
         }
     }
 }
