@@ -3,6 +3,13 @@ const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
 const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: 'OpenTopoMap' });
 
+const rudy = L.tileLayer("https://tile.happytp.com/wmts/gm_taiwan_topo/default/GoogleMapsCompatible/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: "魯地圖 (Rudy Map) | Happytp",
+    keepBuffer: 2,
+    crossOrigin: true  // 嘗試加入這一行，讓請求帶有跨域資訊
+});
+
 // --- 格線圖層全域變數 ---
 let gridLayers = {
     "WGS84": L.layerGroup(),
@@ -14,7 +21,9 @@ let gridLayers = {
 // --- 地圖初始化部分的圖層控制 ---
 const baseMaps = { 
     "標準地圖 (OSM)": osm, 
-    "等高線地形圖 (OpenTopo)": otm 
+    "等高線地形圖 (OpenTopo)": otm,
+    "魯地圖 (Rudy Topo)": rudy
+    
 };
 
 const overlayMaps = {
