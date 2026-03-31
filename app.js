@@ -1,7 +1,13 @@
 // ================= 地圖初始化 =================
 const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
-const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: 'OpenTopoMap' });
+const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 18, maxNativeZoom: 17, attribution: 'OpenTopoMap' });
+
+const emap = L.tileLayer("https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}", {
+    maxZoom: 19,
+    attribution: "內政部臺灣通用電子地圖",
+    opacity: 1.0,
+});
 
 // --- 格線圖層全域變數 ---
 let gridLayers = {
@@ -14,7 +20,9 @@ let gridLayers = {
 // --- 地圖初始化部分的圖層控制 ---
 const baseMaps = { 
     "標準地圖 (OSM)": osm, 
-    "等高線地形圖 (OpenTopo)": otm 
+    "等高線地形圖 (OpenTopo)": otm,
+    "內政部臺灣通用電子地圖": emap
+    
 };
 
 const overlayMaps = {
