@@ -109,7 +109,7 @@ function updateGrids() {
                 if (y % 1000 === 0) continue;
                 let p_left = proj4(def, WGS84_DEF, [sw[0], y]);
                 let p_right = proj4(def, WGS84_DEF, [ne[0], y]);
-                L.polyline([[p_left[1], p_left[0]], [p_right[1], p_right[0]]], {color: color, weight: 0.5, opacity: 0.2, interactive: false}).addTo(gridLayers.SubGrid);
+                L.polyline([[p_left[1], p_left[0]], [p_right[1], p_right[0]]], {color: color, weight: 0.8, opacity: 0.8, dashArray: '2, 4', interactive: false}).addTo(gridLayers.SubGrid);
             }
         }
     };
