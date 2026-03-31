@@ -98,12 +98,12 @@ function updateGrids() {
         }
 
         // B. 繪製百米細線 (只有在「顯示百米細格」被勾選且 Zoom 足夠大時)
-        if (map.hasLayer(gridLayers.SubGrid) && zoom >= 14) {
+        if (map.hasLayer(gridLayers.SubGrid) && zoom >= 13) {
             for (let x = Math.floor(sw[0]/subStepMeter)*subStepMeter; x <= ne[0]; x += subStepMeter) {
                 if (x % 1000 === 0) continue; 
                 let p_top = proj4(def, WGS84_DEF, [x, ne[1]]);
                 let p_bot = proj4(def, WGS84_DEF, [x, sw[1]]);
-                L.polyline([[p_top[1], p_top[0]], [p_bot[1], p_bot[0]]], {color: color, weight: 0.5, opacity: 0.2, interactive: false}).addTo(gridLayers.SubGrid);
+                L.polyline([[p_top[1], p_top[0]], [p_bot[1], p_bot[0]]], {color: color, weight: 0.8, opacity: 0.8, dashArray: '2, 4', interactive: false}).addTo(gridLayers.SubGrid);
             }
             for (let y = Math.floor(sw[1]/subStepMeter)*subStepMeter; y <= ne[1]; y += subStepMeter) {
                 if (y % 1000 === 0) continue;
