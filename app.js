@@ -3,8 +3,30 @@ const map = L.map("map", { tap: true }).setView([25.03, 121.56], 12);
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
 const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: 'OpenTopoMap' });
 
+// --- 格線圖層全域變數 ---
+let gridLayers = {
+    "WGS84": L.layerGroup(),
+    "TWD97": L.layerGroup(),
+    "TWD67": L.layerGroup(),
+    "SubGrid": L.layerGroup()
+};
 
-L.control.layers({ "標準地圖 (OSM)": osm, "等高線地形圖 (OpenTopo)": otm }).addTo(map);
+// --- 地圖初始化部分的圖層控制 ---
+const baseMaps = { 
+    "標準地圖 (OSM)": osm, 
+    "等高線地形圖 (OpenTopo)": otm 
+};
+
+const overlayMaps = {
+    "WGS84 格線": gridLayers.WGS84,
+    "TWD97 格線": gridLayers.TWD97,
+    "TWD67 格線": gridLayers.TWD67,
+    "顯示百米細格": gridLayers.SubGrid  // 新增：獨立的 Checkbox
+};
+
+L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+map.on('overlayadd', updateGrids);
 
 let allTracks = [], trackPoints = [], polyline, hoverMarker, chart, markers = [], wptMarkers = [];
 let pointA = null, pointB = null, markerA = null, markerB = null;
@@ -18,11 +40,96 @@ const routeSelect = document.getElementById("routeSelect");
 let clickTimeout = null;
 
 map.on('click', (e) => {
-    // 使用延遲，讓 polyline 的 click 事件有機會先執行並取消這個 timer
     clickTimeout = setTimeout(() => {
         showFreeClickPopup(e.latlng);
-    }, 200); // 200ms 的緩衝
+    }, 200); 
 });
+
+// ================= 格線繪製邏輯 =================
+function updateGrids() {
+    const zoom = map.getZoom();
+    const bounds = map.getBounds();
+    
+    // 清除所有舊圖層
+    gridLayers.WGS84.clearLayers();
+    gridLayers.TWD97.clearLayers();
+    gridLayers.TWD67.clearLayers();
+    gridLayers.SubGrid.clearLayers();
+
+    if (zoom < 10) return; 
+
+    // 設定公里格線間距
+    let stepMeter = zoom > 13 ? 1000 : 5000;
+    let subStepMeter = 100; // 百米間距
+
+    const createLabel = (lat, lon, text, color, anchor = [0, 0]) => {
+        return L.marker([lat, lon], {
+            icon: L.divIcon({
+                className: 'grid-label',
+                html: `<div style="color: ${color}; font-size: 10px; font-weight: bold; text-shadow: 1px 1px 2px #fff; white-space: nowrap; background: rgba(255,255,255,0.5); padding: 1px 3px; border-radius: 2px;">${text}</div>`,
+                iconSize: [0, 0],
+                iconAnchor: anchor
+            }),
+            interactive: false
+        });
+    };
+
+    // 繪製 TWD 邏輯
+    const drawTWDGrid = (layer, def, color) => {
+        if (!map.hasLayer(layer)) return;
+        
+        const sw = proj4(WGS84_DEF, def, [bounds.getWest(), bounds.getSouth()]);
+        const ne = proj4(WGS84_DEF, def, [bounds.getEast(), bounds.getNorth()]);
+
+        // A. 繪製主公里線 (1km)
+        for (let x = Math.floor(sw[0]/stepMeter)*stepMeter; x <= ne[0]; x += stepMeter) {
+            let p_top = proj4(def, WGS84_DEF, [x, ne[1]]);
+            let p_bot = proj4(def, WGS84_DEF, [x, sw[1]]);
+            L.polyline([[p_top[1], p_top[0]], [p_bot[1], p_bot[0]]], {color: color, weight: 1.2, opacity: 0.6, interactive: false}).addTo(layer);
+            createLabel(p_top[1], p_top[0], Math.round(x), color, [0, 0]).addTo(layer);
+            createLabel(p_bot[1], p_bot[0], Math.round(x), color, [0, 20]).addTo(layer);
+        }
+        for (let y = Math.floor(sw[1]/stepMeter)*stepMeter; y <= ne[1]; y += stepMeter) {
+            let p_left = proj4(def, WGS84_DEF, [sw[0], y]);
+            let p_right = proj4(def, WGS84_DEF, [ne[0], y]);
+            L.polyline([[p_left[1], p_left[0]], [p_right[1], p_right[0]]], {color: color, weight: 1.2, opacity: 0.6, interactive: false}).addTo(layer);
+            createLabel(p_left[1], p_left[0], Math.round(y), color, [-5, 12]).addTo(layer);
+            createLabel(p_right[1], p_right[0], Math.round(y), color, [55, 12]).addTo(layer);
+        }
+
+        // B. 繪製百米細線 (只有在「顯示百米細格」被勾選且 Zoom 足夠大時)
+        if (map.hasLayer(gridLayers.SubGrid) && zoom >= 14) {
+            for (let x = Math.floor(sw[0]/subStepMeter)*subStepMeter; x <= ne[0]; x += subStepMeter) {
+                if (x % 1000 === 0) continue; 
+                let p_top = proj4(def, WGS84_DEF, [x, ne[1]]);
+                let p_bot = proj4(def, WGS84_DEF, [x, sw[1]]);
+                L.polyline([[p_top[1], p_top[0]], [p_bot[1], p_bot[0]]], {color: color, weight: 0.5, opacity: 0.2, interactive: false}).addTo(gridLayers.SubGrid);
+            }
+            for (let y = Math.floor(sw[1]/subStepMeter)*subStepMeter; y <= ne[1]; y += subStepMeter) {
+                if (y % 1000 === 0) continue;
+                let p_left = proj4(def, WGS84_DEF, [sw[0], y]);
+                let p_right = proj4(def, WGS84_DEF, [ne[0], y]);
+                L.polyline([[p_left[1], p_left[0]], [p_right[1], p_right[0]]], {color: color, weight: 0.5, opacity: 0.2, interactive: false}).addTo(gridLayers.SubGrid);
+            }
+        }
+    };
+
+    drawTWDGrid(gridLayers.TWD97, TWD97_DEF, '#4a90e2'); 
+    drawTWDGrid(gridLayers.TWD67, TWD67_DEF, '#e67e22');
+
+    // WGS84 繪製 (略過標籤重複部分...)
+    if (map.hasLayer(gridLayers.WGS84)) {
+        let stepDeg = zoom > 13 ? 0.01 : 0.05;
+        for (let lo = Math.floor(bounds.getWest()/stepDeg)*stepDeg; lo <= bounds.getEast(); lo += stepDeg) {
+            L.polyline([[bounds.getSouth(), lo], [bounds.getNorth(), lo]], {color: '#aaa', weight: 1, opacity: 0.4, dashArray: '5,5', interactive: false}).addTo(gridLayers.WGS84);
+        }
+        for (let la = Math.floor(bounds.getSouth()/stepDeg)*stepDeg; la <= bounds.getNorth(); la += stepDeg) {
+            L.polyline([[la, bounds.getWest()], [la, bounds.getEast()]], {color: '#aaa', weight: 1, opacity: 0.4, dashArray: '5,5', interactive: false}).addTo(gridLayers.WGS84);
+        }
+    }
+}
+
+map.on('moveend', updateGrids);
 
 
 // 建立全螢幕控制按鈕
