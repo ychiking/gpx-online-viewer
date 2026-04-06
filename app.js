@@ -2116,6 +2116,9 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
     document.getElementById("fileNameDisplay").textContent = `已匯入 ${files.length} 個 GPX 檔案`;
     clearAllMultiGPX(); 
     
+    const hint = document.getElementById('importHint');
+    if (hint) hint.style.display = 'none';
+    
     let allBounds = L.latLngBounds([]);
 
     for (let i = 0; i < files.length; i++) {
