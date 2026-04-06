@@ -14,15 +14,26 @@
 
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont; }
-    #header { padding: 10px 14px; background: #f6f6f6; border-bottom: 1px solid #ddd; }
-    #map { height: 600px; cursor: crosshair; }
+    #header { padding: 5px 14px; background: #f6f6f6; border-bottom: 1px solid #ddd; }
+    #map { height: 520px; cursor: crosshair; }
     #chartContainer { 
     height: 300px; 
     padding: 10px 16px; 
     border-bottom: 1px solid #ddd; 
     display: none; /* 加入這一行 */
 }
-    #routeInfo { margin-top: 5px; padding: 12px 16px; background: #fafafa; border-top: 1px solid #ddd; font-size: 15px; line-height: 1.6; }
+    #toggleChartBtn {
+            margin: 5px auto;
+            padding: 5px 15px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 1001; /* 確保在圖表上方 */
+        }
+    #routeInfo { margin-top: 5px; padding: 8px 8px; background: #fafafa; border-top: 1px solid #ddd; font-size: 15px; line-height: 1.6; }
     .upload-row { display: flex; align-items: center; gap: 8px; }
     .subtitle { margin-top: 8px; font-size: 14px; color: #555; line-height: 1.4; }
     .modal-overlay {
@@ -78,41 +89,221 @@
 		    font-size: 14px;
 		    text-shadow: 1px 1px 0 white;
 		}
-		/* 專門給 iPhone 用的偽全螢幕樣式 */
-		.iphone-fullscreen {
-    		position: fixed !important;
-    		top: 0 !important;
-    		left: 0 !important;
-    		width: 100vw !important;
-    		height: 100vh !important;
-    		z-index: 9999 !important;
-		}
+		.shortcut-btn {
+    display: inline-block;
+    font-size: 12px;
+    background: #f0f0f0;
+    color: #555;
+    padding: 5px 12px;
+    border-radius: 15px;
+    
+    /* 關鍵修改 */
+    border: 1px solid #ddd;   /* 確保有淡淡的邊框 */
+    cursor: pointer;          /* 讓滑鼠移上去顯示手指 */
+    font-family: inherit;      /* 繼承字體 */
+    line-height: 1.4;
+    outline: none;            /* 移除點擊時的藍色外框 */
+    vertical-align: middle;
+}
+
+.shortcut-btn:hover {
+    background: #e0e0e0;      /* 增加滑動時的深色效果 */
+}
+		
+.iphone-fullscreen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999 !important;
+    background: white;
+    display: flex !important;
+    flex-direction: column !important; /* 地圖在上，按鈕在下 */
+}
+
+.iphone-fullscreen #map {
+    flex: 1 !important; 
+    height: 100% !important; 
+    width: 100% !important;
+}
+
+
+.iphone-fullscreen #multiGpxBtnBar {
+	  display: flex !important;
+	  z-index: 10001 !important;
+	  flex-shrink: 0 !important;
+}
 		
     .custom-file-upload { display: inline-block; padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border-radius: 20px; font-size: 14px; font-weight: bold; }
     .map-compass { position: absolute; bottom: 10px; left: 5px; z-index: 1000; background: rgba(255, 255, 255, 0.9); border-radius: 50%; width: 65px; height: 65px; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: all 0.3s; border: 1px solid #ccc; }
     .map-compass.show { opacity: 1; visibility: visible; }
     .shortcut-btn { font-size: 12px; background: #f0f0f0; color: #555; padding: 5px 12px; border-radius: 15px; text-decoration: none; border: 1px solid #ddd; font-weight: bold; }
 
+/* 新增：地圖底部多檔案按鈕欄樣式 */
+.multi-gpx-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.85); /* 稍微加深避免背景干擾 */
+    z-index: 1000;
+    
+    /* 關鍵設定 */
+    display: flex !important;
+    flex-wrap: nowrap !important;   /* 強制絕對不換行 */
+    overflow-x: auto !important;    /* 顯式開啟水平捲動 */
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; /* 讓手機滑動有慣性流暢感 */
+    
+    pointer-events: auto !important; /* 確保攔截點擊與滑動 */
+    touch-action: pan-x;
+}
+
+/* 捲動條美化 */
+.multi-gpx-bar::-webkit-scrollbar { height: 5px; }
+.multi-gpx-bar::-webkit-scrollbar-thumb { background: #555; border-radius: 8px; }
+
+/* 2. 修改按鈕：禁止被壓縮 */
+.gpx-file-btn {
+    pointer-events: auto !important;
+    
+    /* 關鍵設定：禁止壓縮 */
+    flex: 0 0 auto !important;      /* 讓按鈕維持原本寬度，不允許縮小 (flex-shrink: 0) */
+    
+    background: transparent;
+    color: white;
+    border: none;
+    padding: 8px 14px;              /* 稍微加大間距方便手指點擊 */
+    font-size: 14px;
+    cursor: pointer;
+    border-bottom: 3px solid transparent; /* 改為底部邊框在手機上視覺較直觀 */
+    border-radius: 4px;
+    margin: 0 4px;
+    
+    /* 文字處理 */
+    white-space: nowrap !important; 
+    max-width: 200px;               /* 手機建議縮小一點最大寬度，避免一個檔名佔滿螢幕 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    vertical-align: middle;
+    
+    opacity: 0.7;
+    transition: all 0.2s;
+}
+
+/* 選中狀態修正 */
+.gpx-file-btn.active { 
+    opacity: 1; 
+    font-weight: bold; 
+    background: rgba(255, 255, 255, 0.15);
+    
+}
+
+/* 結合按鈕的特殊視覺區隔 */
+.gpx-file-btn.combined-btn {
+    background-color: rgba(60, 60, 60, 0.9) !important; /* 深一點的背景 */
+    font-weight: bold !important;
+    color: #ffd700 !important; /* 金色或亮色文字 */
+}
+
+/* 選中狀態時，紅色的指示線（紅框空隙邏輯） */
+.gpx-file-btn.active {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    position: relative;
+}
+
+/* 之前討論的紅條不貼上下邏輯 */
+.gpx-file-btn.active::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 20%;
+    height: 60%;
+    width: 3px;
+    background: #ff4d4d;
+}
+
+/* 關閉按鈕修正：也必須禁止壓縮 */
+.gpx-file-btn.close-btn {
+    flex: 0 0 auto !important;
+    border: 1px solid #ff4d4d !important;
+    color: #ff4d4d !important;
+    background: transparent !important;
+    
+    /* 1. 關鍵：增加上下 margin 讓它縮進去，產生空隙 */
+    margin: 6px 10px 6px 15px !important; 
+    
+    /* 2. 關鍵：設定固定高度，不要讓它撐滿整個 Bar */
+    height: 28px !important; 
+    
+    /* 3. 讓文字與圓框完美置中 */
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    
+    /* 圓角與內距 */
+    border-radius: 20px !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.gpx-file-btn.close-btn:hover { background: rgba(255, 77, 77, 0.2); }
+
+
+/* 版權宣告位移效果 */
+.leaflet-bottom.leaflet-right {
+    transition: margin-bottom
+}
+
+body.has-gpx-bar .leaflet-bottom.leaflet-right {
+    margin-bottom: 45px !important; /* 配合 GPX Bar 的高度 */
+}
+
+body.has-gpx-bar .map-compass {
+    bottom: 55px; /* 原本 10px + Bar 高度約 45px = 55px */
+}
+
+/* 3. 如果是 iPhone 全螢幕模式，可能需要推更高避免擋到系統條 */
+body.has-gpx-bar.iphone-fullscreen .map-compass {
+    bottom: 75px;
+}
+    /*<input type="file" id="gpxInput" accept=".gpx" style="display: none;" /> */
+    /* <label for="gpxInput" class="custom-file-upload">匯入 GPX</label> */
+    /*<label for="multiGpxInput" class="custom-file-upload" style="background-color: #28a745; margin-left: 5px;">匯入多個 GPX</label>  */
+    
+    
     @media (max-width: 768px) { #map { height: 45vh; } #chartContainer { height: 220px; } }
   </style>
 </head>
 <body>
 <div id="header">
+	<strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v260406</strong> 
   <div class="upload-row">
     <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
-    <label for="gpxInput" class="custom-file-upload">匯入 GPX</label>
-    <span id="fileNameDisplay" style="font-weight:600; margin-left:5px;">尚未選擇檔案</span>
+ 
+    
+    <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
+    <label for="multiGpxInput" class="custom-file-upload">匯入 GPX</label>   
+    <span id="fileNameDisplay" style="font-weight:500; margin-left:5px;">尚未選擇檔案</span> <span style="font-size: 12px; color: #777; margin-left: 0px;">(支援匯入多個GPX檔)</span>
   </div>
-  <div class="subtitle">
-    <strong>YCHiking-GPX 路線檢視工具 v260331</strong>
-    <div id="navShortcuts" style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;"></div>
-    <div id="routeSelectContainer" style="display:none; margin-top: 10px;">
-      <select id="routeSelect" style="padding: 6px 15px; border-radius: 20px; border: 1px solid #ccc;"></select>
+<div class="subtitle">
+  	<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;">   
+    <div id="navShortcuts" style="display: flex; gap: 8px; align-items: center;"></div>  
+    <div id="routeSelectContainer" style="display: none; margin-top: 0;">
+    <select id="routeSelect" style="padding: 6px 12px; border-radius: 16px; border: 1px solid #ccc;"></select>
     </div>
+    
   </div>
 </div>
+</div>
+
 
 <div id="map">
+	<div id="multiGpxBtnBar" class="multi-gpx-bar" style="display: none;"></div>
  	<div id="mapCompass" class="map-compass">
     <svg width="100%" height="100%" viewBox="-10 -10 160 160">
         <circle cx="70" cy="70" r="65" fill="none" stroke="#ccc" stroke-width="1" />
@@ -164,6 +355,7 @@
     </div>
 </div>
 
+<button id="toggleChartBtn" onclick="toggleElevationChart()" style="display: none;">展開/收合高度表</button>
 <div id="chartContainer"><canvas id="elevationChart"></canvas></div>
 <div id="routeInfo">
   <div id="routeSummary">尚未讀取資料</div>
