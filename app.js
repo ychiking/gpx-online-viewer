@@ -1697,7 +1697,7 @@ function renderRouteInfo() {
     </div>`;
   
   shortcutsHtml += `<button type="button" class="shortcut-btn" onclick="document.getElementById('anchorPeak').scrollIntoView({behavior: 'smooth'})">⛰️ 沿途山岳</button>`;
-  shortcutsHtml += `<button type="button" class="shortcut-btn" onclick="location.reload()">✕ 關閉檔案</button>`;
+  // shortcutsHtml += `<button type="button" class="shortcut-btn" onclick="location.reload()">✕ 關閉檔案</button>`;
 
   wptListContainer.innerHTML = listHtml;
   wptListContainer.style.display = "block";
