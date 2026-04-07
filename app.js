@@ -1645,7 +1645,10 @@ function renderRouteInfo() {
   }
 
   // 更新 UI 顯示 (其餘部分維持不變)
+  const displayName = window.currentFileNameForDisplay || (allTracks[0] ? allTracks[0].name : "");
+  
   document.getElementById("routeSummary").innerHTML = `
+    檔　　名：${displayName}<br>
     記錄日期：${f.timeLocal.substring(0, 10)}<br>
     路　　線：${currentRoute.name}<br>
     里　　程：${displayDist.toFixed(2)} km<br>
@@ -2210,6 +2213,8 @@ function switchMultiGpx(index) {
     
     window.currentMultiIndex = index;
     map.closePopup();
+    
+    window.currentFileNameForDisplay = data.name;
 
     // 1. 處理所有圖層的「原始顏色」與「半透明」狀態
     multiGpxStack.forEach((item, i) => {
@@ -2271,7 +2276,7 @@ function switchMultiGpx(index) {
     document.getElementById("wptList").style.display = "block";
     
     // 如果是結合項，顯示稍微不同的文字提示
-    document.getElementById("fileNameDisplay").textContent = displayMsg;
+    // document.getElementById("fileNameDisplay").textContent = displayMsg;
 
     // 4. 重置山岳偵測 (保持你原本的邏輯)
     if (typeof detectPeaksAlongRoute === 'function') {
