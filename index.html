@@ -96,8 +96,6 @@
     color: #555;
     padding: 5px 12px;
     border-radius: 15px;
-    
-    /* 關鍵修改 */
     border: 1px solid #ddd;   /* 確保有淡淡的邊框 */
     cursor: pointer;          /* 讓滑鼠移上去顯示手指 */
     font-family: inherit;      /* 繼承字體 */
@@ -135,7 +133,14 @@
 	  flex-shrink: 0 !important;
 	  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 40px) !important;
 }
-		
+
+.iphone-fullscreen .map-compass {
+    position: fixed !important; /* 改成 fixed 脫離原本容器 */
+    bottom: 80px !important;
+    left: 15px !important;
+    z-index: 10005 !important;
+}
+	
     .custom-file-upload {
     display: inline-block;
     padding: 8px 8px;
@@ -248,18 +253,13 @@
     color: white !important;
     background: transparent !important;
     
-    /* 1. 關鍵：增加上下 margin 讓它縮進去，產生空隙 */
     margin: 6px 10px 6px 15px !important; 
-    
-    /* 2. 關鍵：設定固定高度，不要讓它撐滿整個 Bar */
     height: 28px !important; 
-    
-    /* 3. 讓文字與圓框完美置中 */
+
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    
-    /* 圓角與內距 */
+
     border-radius: 20px !important;
     padding: 0 12px !important;
     font-size: 13px !important;
@@ -270,7 +270,6 @@
 .gpx-file-btn.close-btn:hover { background: rgba(255, 77, 77, 0.2); }
 
 
-/* 版權宣告位移效果 */
 .leaflet-bottom.leaflet-right {
     transition: margin-bottom
 }
@@ -280,12 +279,12 @@ body.has-gpx-bar .leaflet-bottom.leaflet-right {
 }
 
 body.has-gpx-bar .map-compass {
-    bottom: 55px; /* 原本 10px + Bar 高度約 45px = 55px */
+    bottom: 45px; /* 原本 10px + Bar 高度約 45px = 55px */
 }
 
 /* 3. 如果是 iPhone 全螢幕模式，可能需要推更高避免擋到系統條 */
-body.has-gpx-bar.iphone-fullscreen .map-compass {
-    bottom: 75px;
+body.has-gpx-bar.iphone-fullscreen #map .map-compass {
+    bottom: 80px !important;
 }
     /*<input type="file" id="gpxInput" accept=".gpx" style="display: none;" /> */
     /* <label for="gpxInput" class="custom-file-upload">匯入 GPX</label> */
@@ -297,13 +296,12 @@ body.has-gpx-bar.iphone-fullscreen .map-compass {
 </head>
 <body>
 <div id="header">
-	<strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v260407</strong> 
+	<strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v260408</strong> 
   <div class="upload-row">
     <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
- 
-    
+
     <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
-    <label for="multiGpxInput" class="custom-file-upload">匯入 GPX</label>   
+    <label for="multiGpxInput" class="custom-file-upload">匯入GPX</label>   
     <span id="fileNameDisplay" style="font-weight:500; margin-left:5px;">尚未選擇檔案</span> 
     <span id="importHint" style="font-size: 12px; color: #777; margin-left: 0px;">(支援匯入多個GPX檔)</span>
   </div>

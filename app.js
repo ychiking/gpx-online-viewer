@@ -1326,7 +1326,6 @@ function startHeightTipTimer() {
 }
 
 
-
 // ================= 高度圖 =================
 let mouseX = null; 
 
@@ -1335,35 +1334,7 @@ function drawElevationChart() {
   const ctx = canvas.getContext("2d");
   if (chart) chart.destroy();
 
-  canvas.addEventListener('mousedown', (e) => { 
-    if (e.button === 0) { isMouseDown = true; if (mapTipTimer) clearTimeout(mapTipTimer); handleSync(e); }
-  });
-  canvas.addEventListener('touchstart', (e) => {
-    isMouseDown = true; if (mapTipTimer) clearTimeout(mapTipTimer); handleSync(e); if (e.cancelable) e.preventDefault();
-  }, { passive: false });
-  canvas.addEventListener('touchmove', (e) => {
-    if (isMouseDown) { handleSync(e); if (e.cancelable) e.preventDefault(); }
-  }, { passive: false });
-  window.addEventListener('mouseup', () => { 
-    if (isMouseDown) { isMouseDown = false; startHeightOnlyTimer(); }
-    if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
-  });
-  canvas.addEventListener('touchend', () => {
-    if (isMouseDown) { isMouseDown = false; startHeightOnlyTimer(); }
-    if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
-  });
-  canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect(); mouseX = e.clientX - rect.left;
-    if (isMouseDown) { handleSync(e); } else {
-      if (chart && chart.getActiveElements().length > 0) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
-    }
-  });
-  canvas.addEventListener('mouseleave', () => { 
-    mouseX = null; if (isMouseDown) { isMouseDown = false; startHeightOnlyTimer(); }
-    if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
-  });
-
-  function handleSync(e) {
+  const _handleSync = (e) => {
     const points = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
     if (points.length) {
       const idx = points[0].index;
@@ -1380,31 +1351,52 @@ function drawElevationChart() {
         }, 3000);
       }
     }
-  }
+  };
 
-document.getElementById('chartContainer').style.display = 'block';
+  const onMouseDown = (e) => { if (e.button === 0) { isMouseDown = true; if (mapTipTimer) clearTimeout(mapTipTimer); _handleSync(e); } };
+  const onTouchStart = (e) => { isMouseDown = true; if (mapTipTimer) clearTimeout(mapTipTimer); _handleSync(e); if (e.cancelable) e.preventDefault(); };
+  const onTouchMove = (e) => { if (isMouseDown) { _handleSync(e); if (e.cancelable) e.preventDefault(); } };
+  const onMouseMove = (e) => { 
+    const rect = canvas.getBoundingClientRect(); mouseX = e.clientX - rect.left;
+    if (isMouseDown) { _handleSync(e); } else {
+      if (chart && chart.getActiveElements().length > 0) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
+    }
+  };
+  const onMouseLeave = () => { mouseX = null; if (isMouseDown) { isMouseDown = false; startHeightOnlyTimer(); } if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); } };
+  const onEnd = () => { if (isMouseDown) { isMouseDown = false; startHeightOnlyTimer(); } if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); } };
 
+  canvas.replaceWith(canvas.cloneNode(true)); 
+  const newCanvas = document.getElementById("elevationChart");
+  const newCtx = newCanvas.getContext("2d");
 
-  chart = new Chart(ctx, {
+  newCanvas.addEventListener('mousedown', onMouseDown);
+  newCanvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  newCanvas.addEventListener('touchmove', onTouchMove, { passive: false });
+  newCanvas.addEventListener('mousemove', onMouseMove);
+  newCanvas.addEventListener('mouseleave', onMouseLeave);
+  newCanvas.addEventListener('touchend', onEnd);
+
+  window.removeEventListener('mouseup', onEnd); 
+  window.addEventListener('mouseup', onEnd);
+
+  document.getElementById('chartContainer').style.display = 'block';
+
+  chart = new Chart(newCtx, {
     type: "line",
     data: {
       labels: trackPoints.map(p => p.distance.toFixed(2)),
       datasets: [{ 
         label: "高度 (m)", data: trackPoints.map(p => p.ele), fill: true, 
         backgroundColor: 'rgba(54, 162, 235, 0.2)', borderColor: 'rgba(54, 162, 235, 1)', tension: 0.1, 
-		    pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 8, pointHoverBackgroundColor: 'rgba(54, 162, 235, 0.8)', pointHoverBorderWidth: 2, pointHoverBorderColor: '#fff'
+        pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 8, pointHoverBackgroundColor: 'rgba(54, 162, 235, 0.8)', pointHoverBorderWidth: 2, pointHoverBorderColor: '#fff'
       }]
     },
     options: {
-    	animation: false,
+      animation: false,
       responsive: true, maintainAspectRatio: false,
       events: ['mousedown', 'mouseup', 'click', 'touchstart', 'touchmove', 'touchend'],
       interaction: { intersect: false, mode: "index" },
-      hover: {
-      	mode: 'index',
-      	intersect: false,
-      	animiationDuration: 0
-      },
+      hover: { mode: 'index', intersect: false, animiationDuration: 0 },
       plugins: {
         tooltip: {
           enabled: true, displayColors: false, 
@@ -1413,7 +1405,7 @@ document.getElementById('chartContainer').style.display = 'block';
             title: () => "位置資訊", 
             label: function(context) {
               const p = trackPoints[context.dataIndex];
-              return [` \u25A0 距離: ${p.distance.toFixed(2)} km`, ` \u25A0 高度: ${p.ele.toFixed(0)} m`, ` \u25A0 時間: ${p.timeLocal.split(' ')[1]}`];
+              return [` ■ 距離: ${p.distance.toFixed(2)} km`, ` ■ 高度: ${p.ele.toFixed(0)} m`, ` ■ 時間: ${p.timeLocal ? p.timeLocal.split(' ')[1] : ''}`];
             }
           }
         }
@@ -1434,6 +1426,25 @@ document.getElementById('chartContainer').style.display = 'block';
     }]
   });
 }
+
+  function handleSync(e) {
+    const points = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
+    if (points.length) {
+      const idx = points[0].index;
+      const p = trackPoints[idx];
+      hoverMarker.setLatLng([p.lat, p.lon]);
+      showCustomPopup(idx, "位置資訊");
+      chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+      chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
+      chart.update('none');
+      if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
+      if (isMouseDown) {
+        window.chartTipTimer = setTimeout(() => {
+          if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
+        }, 3000);
+      }
+    }
+  }
 
 function startHeightOnlyTimer() {
   if (mapTipTimer) clearTimeout(mapTipTimer);
@@ -1489,7 +1500,6 @@ window.setAB = function(type, idx) {
 function updateABUI() {
     const infoA = document.getElementById("infoA"), infoB = document.getElementById("infoB"), boxRes = document.getElementById("boxRes"), infoRes = document.getElementById("infoRes");
     
-    // 輔助函式：產生座標字串 (新增 TWD67 顯示)
     const getCoordHTML = (p) => {
         const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
         const twd67 = proj4(WGS84_DEF, TWD67_DEF, [p.lon, p.lat]);
@@ -1557,7 +1567,6 @@ function updateABUI() {
 
         infoRes.innerHTML = analysisContent;
 
-        // Tooltip 動態方向邏輯維持不變...
         if (typeof markerB !== 'undefined' && markerB) {
             markerB.unbindTooltip();
             let tooltipDir = 'right';
@@ -1609,15 +1618,13 @@ function renderRouteInfo() {
   let displayGain, displayLoss, displayMaxEle, displayMinEle, displayDur;
 
   if (currentRoute.isCombined) {
-    // 【結合模式：數據處理】
+
     const subTracks = allTracks.filter(t => !t.isCombined);
     
-    // 1. 海拔極值 (掃描所有點)
     const allEles = subTracks.flatMap(t => t.points.map(p => p.ele));
     displayMaxEle = Math.max(...allEles);
     displayMinEle = Math.min(...allEles);
 
-    // 2. 爬升/下降 (各段累加，避免斷點產生的垂直爬升)
     displayGain = 0;
     displayLoss = 0;
     subTracks.forEach(t => {
@@ -1626,12 +1633,9 @@ function renderRouteInfo() {
       displayLoss += stats.loss;
     });
 
-    // 3. 里程 (各段最後里程相加)
     displayDist = subTracks.reduce((sum, t) => sum + t.points.at(-1).distance, 0);
 
-    // --- 關鍵修改：總花費時間 ---
-    // 使用結合後「最後一點的時間」減去「第一點的時間」
-    // 這樣才會包含路線之間的休息時間 (如：閂山到鈴鳴山中間的營地過夜時間)
+
     displayDur = l.timeUTC - f.timeUTC; 
 
   } else {
@@ -1644,11 +1648,10 @@ function renderRouteInfo() {
     displayDur = l.timeUTC - f.timeUTC;
   }
 
-  // 更新 UI 顯示 (其餘部分維持不變)
   const displayName = window.currentFileNameForDisplay || (allTracks[0] ? allTracks[0].name : "");
   
   document.getElementById("routeSummary").innerHTML = `
-    檔　　名：${displayName}<br>
+    檔案名稱：${displayName}<br>
     記錄日期：${f.timeLocal.substring(0, 10)}<br>
     路　　線：${currentRoute.name}<br>
     里　　程：${displayDist.toFixed(2)} km<br>
@@ -1658,7 +1661,6 @@ function renderRouteInfo() {
     總爬升數：${displayGain.toFixed(0)} m<br>
     總下降數：${displayLoss.toFixed(0)} m`;
 
-  // --- 渲染航點列表 (此處顯示所有 24 個或更多航點) ---
   const wptListContainer = document.getElementById("wptList");
   const navShortcuts = document.getElementById("navShortcuts");
   let listHtml = "";
@@ -1677,7 +1679,6 @@ function renderRouteInfo() {
   // --- 關鍵修改：山岳偵測改為「全部手動」模式 ---
   listHtml += `<h4 id="anchorPeak" style="margin: 30px 0 10px 0; font-size: 16px; color: #2c3e50; border-left: 5px solid #d35400; padding-left: 10px;">⛰️ 沿途山岳(200公尺內)</h4>`;
   
-  // 不再區分單檔或多檔，統一顯示手動偵測按鈕
   listHtml += `
     <div id="aiPeaksSection">
         <div style="padding:15px; text-align:center; background:#f8f9fa; border:1px dashed #ccc; border-radius:8px; margin:10px 0;">
@@ -1715,7 +1716,6 @@ function renderRouteInfo() {
   wptListContainer.style.display = "block";
   navShortcuts.innerHTML = shortcutsHtml;
 
-  // 移除自動呼叫 detectPeaksAlongRoute() 的程式碼
 } 
 
 
@@ -1745,7 +1745,6 @@ async function detectPeaksAlongRoute(isManual = false) {
         wptListContainer.appendChild(aiSection);
     }
 
-    // --- 修改處 1：強制所有模式匯入後都先顯示「手動偵測」按鈕，不自動執行 ---
     if (!isManual) {
         aiSection.innerHTML = `
             <div style="padding:20px; text-align:center; background:#f9f9f9; border:1px dashed #ccc; border-radius:8px; margin:10px 0;">
@@ -1776,8 +1775,6 @@ async function detectPeaksAlongRoute(isManual = false) {
             </div>`;
         return; // 結束，不往下執行偵測
     }
-
-    // --- 修改處 2：以下為點擊按鈕後才執行的偵測流程 ---
     
     peakAbortController = new AbortController();
     
@@ -1787,19 +1784,15 @@ async function detectPeaksAlongRoute(isManual = false) {
         🔍 正在掃描全線資料，偵測 200 公尺內山岳...
     </div>`;
 
-    // 確保 trackPoints 是當前選中路線（包含結合版）的完整點位
     if (typeof trackPoints === 'undefined' || !trackPoints || trackPoints.length === 0) {
         aiSection.innerHTML = `<div style="padding:10px; color:red;">無法取得軌跡點資料。</div>`;
         return;
     }
 
-    // --- 修改處 3：優化抽樣邏輯，確保長距離/結合路線也能涵蓋全範圍 ---
-    // 限制最多 80 個採樣點，避免 Overpass 請求過長，但確保點與點之間距離合理
     const maxSamples = 80; 
     const samplingRate = Math.max(1, Math.floor(trackPoints.length / maxSamples));
     const sampledPoints = trackPoints.filter((_, i) => i % samplingRate === 0);
     
-    // 使用 Overpass API 的 around 語法串接所有點位
     let aroundSegments = sampledPoints.map(p => `node(around:200,${p.lat},${p.lon})[natural=peak];`).join("");
     const fullQuery = `[out:json][timeout:30];(${aroundSegments});out body;`;
 
@@ -1829,11 +1822,9 @@ async function detectPeaksAlongRoute(isManual = false) {
             const name = el.tags.name || "未命名山峰";
             const ele = el.tags.ele || "未知";
             
-            // 避免重複加入同名的山
             if (!seenNames.has(name)) {
                 seenNames.add(name);
                 
-                // 在「所有」軌跡點中找出離這座山最近的點，以獲取精確距離與抵達時間
                 let minMeterDist = Infinity, bestIdx = 0;
                 trackPoints.forEach((tp, i) => {
                     const R = 6371000;
@@ -1856,7 +1847,6 @@ async function detectPeaksAlongRoute(isManual = false) {
             }
         });
 
-        // 依據在軌跡上出現的先後順序排序
         uniquePeaks.sort((a, b) => a.idx - b.idx);
         
         if (typeof renderPeakTable === 'function') {
@@ -1887,7 +1877,6 @@ async function detectPeaksAlongRoute(isManual = false) {
     }
 }
 
-// 用來儲存自動抓取的步道線條，以便清除
 let autoRouteLayer = null;
 
 async function analyzeBestPath(latA, lonA, latB, lonB) {
@@ -1897,7 +1886,6 @@ async function analyzeBestPath(latA, lonA, latB, lonB) {
     const minLon = Math.min(lonA, lonB) - 0.01;
     const maxLon = Math.max(lonA, lonB) + 0.01;
 
-    // 2. Overpass 查詢：抓取步道 (path)、足跡 (footway)、以及稜線可能的步道
     const query = `
         [out:json][timeout:25];
         (
@@ -1912,11 +1900,8 @@ async function analyzeBestPath(latA, lonA, latB, lonB) {
         const response = await fetch(url);
         const data = await response.json();
         
-        // 清除舊的自動路徑
         if (autoRouteLayer) map.removeLayer(autoRouteLayer);
 
-        // 3. 簡單解析 OSM 座標點並轉換為 GeoJSON
-        // 註：這裏我們將抓到的路網直接顯示，讓使用者看到「有效路徑」在哪
         autoRouteLayer = L.geoJSON(osmtogeojson(data), {
             style: {
                 color: "#FF5722",
@@ -1926,8 +1911,6 @@ async function analyzeBestPath(latA, lonA, latB, lonB) {
             }
         }).addTo(map);
 
-        // 如果您有安裝 osmtogeojson.js 函式庫，這裡能完美運作
-        // 若無，則需要手動解析 node 與 way 的關係
         console.log("OSM 步道抓取完成，已標註於地圖");
 
     } catch (error) {
@@ -1951,7 +1934,6 @@ function renderPeakTable(peaks) {
 window.jumpToLocation = function(lat, lon) {
     const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
     
-    // 建立彈窗內容，修正函式名稱為 setFreeAB 並統一 TWD97 樣式
     const content = `
         <div style="font-size:14px; line-height:1.5; min-width:180px;">
             <b style="color:#1a73e8; font-size:15px;">🎯 定位點資訊</b><hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
@@ -1966,18 +1948,15 @@ window.jumpToLocation = function(lat, lon) {
         </div>
     `;
 
-    // 關閉 Modal 並跳轉
     document.getElementById('coordModal').style.display = 'none';
     map.setView([lat, lon], 16); 
     
 const jumpMarker = L.marker([lat, lon]).addTo(map);
     
-    // 透過 hue-rotate(260deg) 將預設的藍色圖示旋轉至紫色
     jumpMarker._icon.style.filter = "hue-rotate(180deg) brightness(160%)";
 
     jumpMarker.bindPopup(content).openPopup();
 
-    // 點擊地圖即自動移除標記
     map.once('click', () => {
         if (map.hasLayer(jumpMarker)) {
             map.removeLayer(jumpMarker);
@@ -2016,7 +1995,6 @@ window.jumpToLocation = function(lat, lon) {
     });
 };
 
-// 修改後的執行跳轉函式：整合 DMS 與 TWD67/97 邏輯
 window.executeJump = function(type) {
     if (typeof event !== 'undefined') event.stopPropagation();
 
@@ -2069,7 +2047,6 @@ window.executeJump = function(type) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-// 在地圖上方顯示輕量提示 (代替 alert)
 function showMapToast(message) {
     let toast = document.getElementById('map-toast');
     if (!toast) {
@@ -2126,9 +2103,7 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
 
     for (let i = 0; i < files.length; i++) {
         const text = await files[i].text();
-        // 取得不含副檔名的檔名，用於後續 parseGPX 顯示
         const pureFileName = files[i].name.replace(/\.[^/.]+$/, "");
-        
         const tracks = processGpxXml(text); 
         
         let combinedPoints = [];
@@ -2150,7 +2125,6 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
             gpxId: gpxId 
         }).addTo(map);
 
-        // 線條點擊事件
         layer.on('click', (e) => {
             L.DomEvent.stopPropagation(e); 
             const clickedId = e.target.options.gpxId;
@@ -2181,7 +2155,6 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
             }
         });
 
-        // --- 修改處：存入 content (原始文字) 與 fileName ---
         multiGpxStack.push({
             id: gpxId, 
             name: files[i].name,
@@ -2206,7 +2179,7 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
     
     e.target.value = ""; 
 });
-// 切換 Focus 的 GPX (核心需求：顯示該 GPX 的航點與列表)
+
 function switchMultiGpx(index) {
     const data = multiGpxStack[index];
     if (!data) return;
@@ -2220,9 +2193,7 @@ function switchMultiGpx(index) {
     multiGpxStack.forEach((item, i) => {
         const btn = document.getElementById(`multi-btn-${i}`);
         if (i === index) {
-            // --- 選中的檔案 ---
-            // 這裡不要寫死 'red'，而是使用 item.color (原始顏色)
-            // 如果你想強調選中項，可以把線條加粗
+
             item.layer.setStyle({ 
                 color: item.color, // 保持原始顏色
                 weight: 8,         // 加粗
@@ -2242,31 +2213,25 @@ function switchMultiGpx(index) {
         }
     });
 
-    // 2. 重新解析數據 (為了更新高度表與航點)
     if (data.content) {
         const pureFileName = data.name.replace(/\.[^/.]+$/, "");
         parseGPX(data.content, pureFileName);
         
-        // --- 關鍵修正：修正 parseGPX/loadRoute 強制變紅的問題 ---
-        // 因為 parseGPX 最終會跑 loadRoute 並產生一條新的紅線 (activeRouteLayer)
-        // 我們需要在這之後立刻把那條紅線的顏色也改回原始顏色
         setTimeout(() => {
             if (window.activeRouteLayer) {
                 activeRouteLayer.setStyle({ color: data.color });
             }
-        }, 50); // 微調延遲確保 loadRoute 已執行完畢
+        }, 50); 
         
     } else {
         allTracks = [{ name: data.name, points: data.points, waypoints: data.waypoints }];
         trackPoints = data.points; 
         loadRoute(0); 
-        // 手動修正 loadRoute 產生的線條顏色
         if (window.activeRouteLayer) {
             activeRouteLayer.setStyle({ color: data.color });
         }
     }
 
-    // 3. 更新 UI 狀態 (保持你原本的邏輯)
     const toggleBtn = document.getElementById("toggleChartBtn");
     if (toggleBtn) {
         toggleBtn.style.display = "block"; 
@@ -2275,10 +2240,6 @@ function switchMultiGpx(index) {
     document.getElementById("chartContainer").style.display = "block";
     document.getElementById("wptList").style.display = "block";
     
-    // 如果是結合項，顯示稍微不同的文字提示
-    // document.getElementById("fileNameDisplay").textContent = displayMsg;
-
-    // 4. 重置山岳偵測 (保持你原本的邏輯)
     if (typeof detectPeaksAlongRoute === 'function') {
         if (typeof peakAbortController !== 'undefined' && peakAbortController) {
             peakAbortController.abort();
@@ -2301,7 +2262,6 @@ function renderMultiGpxButtons() {
 
     bar.innerHTML = ''; // 先清空
     
-    // 1. 產生關閉按鈕
     const closeBtn = document.createElement('button');
     closeBtn.className = 'gpx-file-btn close-btn';
     closeBtn.innerHTML = '✕ 關閉檔案';
@@ -2312,7 +2272,6 @@ function renderMultiGpxButtons() {
     };
     bar.appendChild(closeBtn);
     
-    // 2. 產生各個 GPX 軌跡按鈕
     multiGpxStack.forEach((gpx, i) => {
         const btn = document.createElement('button');
         btn.className = 'gpx-file-btn';
@@ -2334,12 +2293,9 @@ function renderMultiGpxButtons() {
         bar.appendChild(btn);
     });
 
-    // --- 【關鍵修正：阻止事件傳遞到地圖】 ---
-    // 這幾行會讓你在這條 Bar 上滑動時，地圖乖乖不動
     L.DomEvent.disableClickPropagation(bar);
     L.DomEvent.disableScrollPropagation(bar);
 
-    // 針對行動裝置觸控的徹底阻斷
     const stopMe = (e) => e.stopPropagation();
     bar.addEventListener('touchstart', stopMe, { passive: true });
     bar.addEventListener('touchmove', stopMe, { passive: true });
@@ -2347,10 +2303,9 @@ function renderMultiGpxButtons() {
 }
 
 function clearAllMultiGPX() {
-    // 清除所有路徑圖層
+
     multiGpxStack.forEach(item => map.removeLayer(item.layer));
     
-    // 清除起終點與航點標記
     markers.forEach(m => map.removeLayer(m));
     markers = [];
     wptMarkers.forEach(m => map.removeLayer(m));
@@ -2366,7 +2321,6 @@ function clearAllMultiGPX() {
         bar.innerHTML = '';
     }
     
-    // 恢復 UI 文字
     document.getElementById("routeSummary").textContent = "尚未讀取資料";
     document.getElementById("chartContainer").style.display = "none";
     document.getElementById("wptList").style.display = "none";
@@ -2377,11 +2331,8 @@ window.switchToTrack = function(id) {
     if (!target) return;
     currentFocusId = id;
 
-    // 1. 呼叫原本的解析邏輯 
-    // (這會更新全域的 trackPoints 並畫出主線)
     parseGPX(target.content);
 
-    // 2. 處理背景線 (讓沒選中的軌跡變成灰色虛線)
     backgroundTracksLayer.clearLayers();
     allTracks.forEach(t => {
         if (t.id !== id) {
@@ -2398,12 +2349,10 @@ window.switchToTrack = function(id) {
         }
     });
 
-    // 3. 重畫高度圖 (確保拖拉功能連動到正確的 trackPoints)
     if (typeof drawElevationChart === 'function') {
         drawElevationChart();
     }
     
-    // 4. 更新按鈕與資訊
     renderRouteInfo();
     renderTrackButtons();
 };
@@ -2413,17 +2362,12 @@ function toggleElevationChart() {
     const btn = document.getElementById("toggleChartBtn");
 
     if (chartContainer.style.display === "none") {
-        // 執行展開
         chartContainer.style.display = "block";
         btn.textContent = "收合高度表";
-        
-        // 關鍵：如果 Chart.js 在容器隱藏時繪製，寬度會縮成 0
-        // 展開後必須呼叫 resize() 讓圖表重新填滿容器
         if (window.chart) {
             window.chart.resize();
         }
     } else {
-        // 執行收合
         chartContainer.style.display = "none";
         btn.textContent = "展開高度表";
     }
