@@ -131,12 +131,12 @@
 	  display: flex !important;
 	  z-index: 10001 !important;
 	  flex-shrink: 0 !important;
-	  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 40px) !important;
+	  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 45px) !important;
 }
 
 .iphone-fullscreen .map-compass {
     position: fixed !important; /* 改成 fixed 脫離原本容器 */
-    bottom: 80px !important;
+    bottom: 90px !important;
     left: 15px !important;
     z-index: 10005 !important;
 }
@@ -182,8 +182,8 @@
 }
 
 /* 捲動條美化 */
-.multi-gpx-bar::-webkit-scrollbar { height: 5px; }
-.multi-gpx-bar::-webkit-scrollbar-thumb { background: #555; border-radius: 8px; }
+.multi-gpx-bar::-webkit-scrollbar { height: 6px; }
+.multi-gpx-bar::-webkit-scrollbar-thumb { background: #555; border-radius: 12px; }
 
 /* 2. 修改按鈕：禁止被壓縮 */
 .gpx-file-btn {
@@ -275,16 +275,16 @@
 }
 
 body.has-gpx-bar .leaflet-bottom.leaflet-right {
-    margin-bottom: 45px !important; /* 配合 GPX Bar 的高度 */
+    margin-bottom: 46px !important; /* 配合 GPX Bar 的高度 */
 }
 
 body.has-gpx-bar .map-compass {
-    bottom: 45px; /* 原本 10px + Bar 高度約 45px = 55px */
+    bottom: 50px; /* 原本 10px + Bar 高度約 45px = 55px */
 }
 
 /* 3. 如果是 iPhone 全螢幕模式，可能需要推更高避免擋到系統條 */
 body.has-gpx-bar.iphone-fullscreen #map .map-compass {
-    bottom: 80px !important;
+    bottom: 90px !important;
 }
     /*<input type="file" id="gpxInput" accept=".gpx" style="display: none;" /> */
     /* <label for="gpxInput" class="custom-file-upload">匯入 GPX</label> */
