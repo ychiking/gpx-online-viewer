@@ -313,7 +313,6 @@ fullScreenBtn.addTo(map);
 
 // 專門處理「非路徑點」的彈窗
 function showFreeClickPopup(latlng) {
-    // 1. 使用 proj4 進行座標轉換 (包含 TWD97 與 TWD67)
     const twd97 = proj4(WGS84_DEF, TWD97_DEF, [latlng.lng, latlng.lat]);
     const twd67 = proj4(WGS84_DEF, TWD67_DEF, [latlng.lng, latlng.lat]);
     
@@ -322,10 +321,21 @@ function showFreeClickPopup(latlng) {
     const x67 = Math.round(twd67[0]);
     const y67 = Math.round(twd67[1]);
 
-    // 2. 建立彈窗內容，新增 TWD67 格式
+    // Google Map 連結與圖示
+    const gUrl = `https://www.google.com/maps/search/?api=1&query=${latlng.lat},${latlng.lng}`;
+    const gMapIconBtn = `
+        <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
+            <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
+            </svg>
+        </a>`;
+
     const content = `
         <div style="min-width:180px; font-size:13px; line-height:1.6;">
-          <b style="font-size:14px; color:#d35400;">📍 自選位置</b><br>
+          <div style="display:flex; align-items:center; margin-bottom:5px;">
+            ${gMapIconBtn}
+            <b style="font-size:14px; color:#d35400;">自選位置</b>
+          </div>
           <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
           <b>WGS84:</b> ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}<br>
           <b>TWD97:</b> ${x97}, ${y97}<br>
@@ -1048,25 +1058,36 @@ window.toggleGPS = function(btn) {
                 gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
             }
 
-            // 3. 準備彈出視窗內容
-            const tipText = `
-                <div style="font-size:13px; line-height:1.6; min-width:200px;">
-                    <b style="color:#1a73e8; font-size:14px;">📍 目前位置 (自動追蹤中)</b><br>
-                    <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-                    <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
-                    <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
-                    
-                    <div style="display:flex; margin-top:10px; gap:8px;">
-                        <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
-                        <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
-                    </div>
-
-                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
-                    <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
-                        ⚠️ 自動追蹤中，每 30 秒更新一次中心位置。
-                    </div>
-                </div>
-            `;
+						const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+						const gMapIconBtn = `
+						    <a href="${gUrl}" target="_blank" title="於 Google Map 開啟導航" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
+						        <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
+						            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
+						        </svg>
+						    </a>`;
+						
+						const tipText = `
+						    <div style="font-size:13px; line-height:1.6; min-width:200px;">
+						        <div style="display:flex; align-items:center;">
+						            ${gMapIconBtn}
+						            <b style="color:#1a73e8; font-size:14px;">目前位置 (自動追蹤中)</b>
+						        </div>
+						        <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
+						        <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+						        <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+						        <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
+						        
+						        <div style="display:flex; margin-top:10px; gap:8px;">
+						            <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+						            <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+						        </div>
+						
+						        <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
+						        <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
+						            ⚠️ 自動追蹤中，每 30 秒更新一次中心位置。
+						        </div>
+						    </div>
+						`;
 
             // 只有在第一次開啟，或使用者本來就打開著 Popup 時才更新 Popup
             if (isFirstTime || (gpsMarker.getPopup() && gpsMarker.getPopup().isOpen())) {
@@ -1174,6 +1195,11 @@ window.copyText = function(id) {
 function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon = null) {
   if (!trackPoints[idx]) return;
   const p = trackPoints[idx];
+  const lat = (realLat && realLon) ? realLat : p.lat;
+  const lon = (realLat && realLon) ? realLon : p.lon;
+  // 修正網址格式
+  const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+  
   let content = "";
   let targetLatLng = [p.lat, p.lon];
   
@@ -1181,17 +1207,24 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
         hoverMarker.setLatLng([p.lat, p.lon]).bringToFront();
     }
 
-  // 判定是否為不在路徑上的模式 (藉由傳入 offPathEle)
+  // 1. 定義 Google Map 圖示按鈕的 HTML (重複使用)
+  const gMapIconBtn = `
+    <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
+        <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
+        </svg>
+    </a>`;
+
   if (offPathEle !== null) {
-      // 即使不在路徑上，如果有座標，也計算 TWD97 與 TWD67
-      const lat = (realLat && realLon) ? realLat : p.lat;
-      const lon = (realLat && realLon) ? realLon : p.lon;
       const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
       const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
 
       content = `
         <div style="min-width:160px; font-size:13px; line-height:1.6;">
-          <b style="font-size:14px;">${title}</b><br>
+          <div style="display:flex; align-items:center; margin-bottom:5px;">
+            ${gMapIconBtn}
+            <b style="font-size:14px;">${title}</b>
+          </div>
           高度: ${offPathEle} m<br>
           WGS84: ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>
           TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
@@ -1201,17 +1234,19 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
       
       if (realLat && realLon) targetLatLng = [realLat, realLon];
   } else {
-      // 計算 TWD97 與 TWD67 座標
       const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
-      const twd67 = proj4(WGS84_DEF, TWD67_DEF, [p.lon, p.lat]); // 新增 TWD67
+      const twd67 = proj4(WGS84_DEF, TWD67_DEF, [p.lon, p.lat]); 
       const x97 = Math.round(twd97[0]);
       const y97 = Math.round(twd97[1]);
-      const x67 = Math.round(twd67[0]); // 新增 TWD67 X
-      const y67 = Math.round(twd67[1]); // 新增 TWD67 Y
+      const x67 = Math.round(twd67[0]); 
+      const y67 = Math.round(twd67[1]); 
 
       content = `
         <div style="min-width:180px; font-size:13px; line-height:1.5;">
-          <b style="font-size:14px;">${title}</b><br>
+          <div style="display:flex; align-items:center; margin-bottom:5px;">
+            ${gMapIconBtn}
+            <b style="font-size:14px;">${title}</b>
+          </div>
           高度: ${p.ele.toFixed(0)} m<br>
           距離: ${p.distance.toFixed(2)} km<br>
           時間: ${p.timeLocal}<br>
@@ -1851,44 +1886,24 @@ function renderPeakTable(peaks) {
 // 執行地圖移動與標記顯示
 window.jumpToLocation = function(lat, lon) {
     const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
-    
-    const content = `
-        <div style="font-size:14px; line-height:1.5; min-width:180px;">
-            <b style="color:#1a73e8; font-size:15px;">🎯 定位點資訊</b><hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
-            <div style="padding:5px 0;">
-                WGS84: ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-                TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}
-            </div>
-            <div style="display:flex; margin-top:10px; gap:5px;">
-                <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
-                <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
-            </div>
-        </div>
-    `;
-
-    document.getElementById('coordModal').style.display = 'none';
-    map.setView([lat, lon], 16); 
-    
-const jumpMarker = L.marker([lat, lon]).addTo(map);
-    
-    jumpMarker._icon.style.filter = "hue-rotate(180deg) brightness(160%)";
-
-    jumpMarker.bindPopup(content).openPopup();
-
-    map.once('click', () => {
-        if (map.hasLayer(jumpMarker)) {
-            map.removeLayer(jumpMarker);
-        }
-    });
-};
-
-window.jumpToLocation = function(lat, lon) {
-    const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
     const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]); // 新增 TWD67 轉換
     
+    // 定義 Google Map 連結與圖示
+    const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+    const gMapIconBtn = `
+        <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
+            <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
+            </svg>
+        </a>`;
+
     const content = `
         <div style="font-size:14px; line-height:1.5; min-width:180px;">
-            <b style="color:#1a73e8; font-size:15px;">🎯 定位點資訊</b><hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
+            <div style="display:flex; align-items:center;">
+                ${gMapIconBtn}
+                <b style="color:#1a73e8; font-size:15px;">定位點資訊</b>
+            </div>
+            <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
             <div style="padding:5px 0;">
                 WGS84: ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
                 TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
@@ -1905,7 +1920,12 @@ window.jumpToLocation = function(lat, lon) {
     map.setView([lat, lon], 16); 
     
     const jumpMarker = L.marker([lat, lon]).addTo(map);
-    jumpMarker._icon.style.filter = "hue-rotate(180deg) brightness(160%)";
+    
+    // 確保 marker 渲染後再套用濾鏡
+    if (jumpMarker._icon) {
+        jumpMarker._icon.style.filter = "hue-rotate(180deg) brightness(160%)";
+    }
+
     jumpMarker.bindPopup(content).openPopup();
 
     map.once('click', () => {
