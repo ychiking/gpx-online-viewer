@@ -321,13 +321,13 @@ function showFreeClickPopup(latlng) {
     const x67 = Math.round(twd67[0]);
     const y67 = Math.round(twd67[1]);
 
-    // Google Map 連結與圖示
-    const gUrl = `https://www.google.com/maps/search/?api=1&query=${latlng.lat},${latlng.lng}`;
+    const gUrl = `https://www.google.com/maps?q=${latlng.lat},${latlng.lng}`;
+    
+    // 定義按鈕化的圖示連結
     const gMapIconBtn = `
-        <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
-            <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
-            </svg>
+        <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" 
+           style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); vertical-align: middle;">
+            <img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px; display:block;" alt="GMap">
         </a>`;
 
     const content = `
@@ -1036,7 +1036,7 @@ window.toggleGPS = function(btn) {
             const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
             const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
 
-            // 1. 每次更新都將地圖中心移至目前位置 (維持目前的縮放層級)
+            // 1. 每次更新都將地圖中心移至目前位置
             map.setView([lat, lon], map.getZoom());
             btn.style.background = "#e8f0fe"; 
 
@@ -1058,38 +1058,38 @@ window.toggleGPS = function(btn) {
                 gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
             }
 
-						const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
-						const gMapIconBtn = `
-						    <a href="${gUrl}" target="_blank" title="於 Google Map 開啟導航" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
-						        <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
-						            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
-						        </svg>
-						    </a>`;
-						
-						const tipText = `
-						    <div style="font-size:13px; line-height:1.6; min-width:200px;">
-						        <div style="display:flex; align-items:center;">
-						            ${gMapIconBtn}
-						            <b style="color:#1a73e8; font-size:14px;">目前位置 (自動追蹤中)</b>
-						        </div>
-						        <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
-						        <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-						        <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
-						        <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
-						        
-						        <div style="display:flex; margin-top:10px; gap:8px;">
-						            <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
-						            <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
-						        </div>
-						
-						        <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
-						        <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
-						            ⚠️ 自動追蹤中，每 30 秒更新一次中心位置。
-						        </div>
-						    </div>
-						`;
+            // --- 修改部分：更新為立體圖片按鈕 ---
+            const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+            const gMapIconBtn = `
+                <a href="${gUrl}" target="_blank" title="於 Google Map 開啟導航" 
+                   style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); vertical-align: middle;">
+                    <img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px; display:block;" alt="GMap">
+                </a>`;
+            
+            const tipText = `
+                <div style="font-size:13px; line-height:1.6; min-width:200px;">
+                    <div style="display:flex; align-items:center;">
+                        ${gMapIconBtn}
+                        <b style="color:#d35400; font-size:14px;">目前位置 (自動追蹤中)</b>
+                    </div>
+                    <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
+                    <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+                    <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+                    <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
+                    
+                    <div style="display:flex; margin-top:10px; gap:8px;">
+                        <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+                        <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+                    </div>
+            
+                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
+                    <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
+                        ⚠️ 自動追蹤中，每 30 秒更新一次中心位置。
+                    </div>
+                </div>
+            `;
+            // --- 修改結束 ---
 
-            // 只有在第一次開啟，或使用者本來就打開著 Popup 時才更新 Popup
             if (isFirstTime || (gpsMarker.getPopup() && gpsMarker.getPopup().isOpen())) {
                 gpsMarker.bindPopup(tipText).openPopup();
             } else {
@@ -1197,24 +1197,23 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
   const p = trackPoints[idx];
   const lat = (realLat && realLon) ? realLat : p.lat;
   const lon = (realLat && realLon) ? realLon : p.lon;
-  // 修正網址格式
-  const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
   
-  let content = "";
+  // 標準 Google Maps 連結
+  const gUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+  
   let targetLatLng = [p.lat, p.lon];
-  
   if (typeof hoverMarker !== 'undefined' && hoverMarker) {
-        hoverMarker.setLatLng([p.lat, p.lon]).bringToFront();
-    }
+    hoverMarker.setLatLng([p.lat, p.lon]).bringToFront();
+  }
 
-  // 1. 定義 Google Map 圖示按鈕的 HTML (重複使用)
+  // 定義按鈕化的圖示連結
   const gMapIconBtn = `
-    <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
-        <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
-        </svg>
+    <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" 
+       style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); vertical-align: middle;">
+        <img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px; display:block;" alt="GMap">
     </a>`;
 
+  let content = "";
   if (offPathEle !== null) {
       const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
       const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
@@ -1223,7 +1222,7 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
         <div style="min-width:160px; font-size:13px; line-height:1.6;">
           <div style="display:flex; align-items:center; margin-bottom:5px;">
             ${gMapIconBtn}
-            <b style="font-size:14px;">${title}</b>
+            <b style="font-size:14px; color: #1a73e8;">${title}</b>
           </div>
           高度: ${offPathEle} m<br>
           WGS84: ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>
@@ -1236,23 +1235,19 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
   } else {
       const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
       const twd67 = proj4(WGS84_DEF, TWD67_DEF, [p.lon, p.lat]); 
-      const x97 = Math.round(twd97[0]);
-      const y97 = Math.round(twd97[1]);
-      const x67 = Math.round(twd67[0]); 
-      const y67 = Math.round(twd67[1]); 
-
+      
       content = `
         <div style="min-width:180px; font-size:13px; line-height:1.5;">
           <div style="display:flex; align-items:center; margin-bottom:5px;">
             ${gMapIconBtn}
-            <b style="font-size:14px;">${title}</b>
+            <b style="font-size:14px; color: #1a73e8;">${title}</b>
           </div>
           高度: ${p.ele.toFixed(0)} m<br>
           距離: ${p.distance.toFixed(2)} km<br>
           時間: ${p.timeLocal}<br>
           WGS84: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>
-          TWD97: ${x97}, ${y97}<br>
-          TWD67: ${x67}, ${y67}
+          TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
+          TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
           <div style="display:flex; margin-top:10px; gap:5px;">
             <button onclick="setAB('A', ${idx})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
             <button onclick="setAB('B', ${idx})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
@@ -1886,15 +1881,15 @@ function renderPeakTable(peaks) {
 // 執行地圖移動與標記顯示
 window.jumpToLocation = function(lat, lon) {
     const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
-    const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]); // 新增 TWD67 轉換
+    const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
     
-    // 定義 Google Map 連結與圖示
     const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+    
+    // 使用您指定的圖片位址，並加上按鈕化的 CSS
     const gMapIconBtn = `
-        <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" style="text-decoration:none; margin-right:6px; display:inline-block; vertical-align:middle;">
-            <svg width="20" height="20" viewBox="0 0 24 24" style="display:block;">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#EA4335"/>
-            </svg>
+        <a href="${gUrl}" target="_blank" 
+           style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.15); vertical-align: middle;">
+            <img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px;" alt="GMap">
         </a>`;
 
     const content = `
@@ -1920,8 +1915,6 @@ window.jumpToLocation = function(lat, lon) {
     map.setView([lat, lon], 16); 
     
     const jumpMarker = L.marker([lat, lon]).addTo(map);
-    
-    // 確保 marker 渲染後再套用濾鏡
     if (jumpMarker._icon) {
         jumpMarker._icon.style.filter = "hue-rotate(180deg) brightness(160%)";
     }
@@ -2318,3 +2311,23 @@ function toggleElevationChart() {
         btn.textContent = "展開高度表";
     }
 }
+
+const gMapIconBtn = `
+    <a href="${gUrl}" target="_blank" title="於 Google Map 開啟" 
+       style="text-decoration:none; 
+              margin-right:8px; 
+              display:inline-flex; 
+              align-items:center; 
+              justify-content:center;
+              width: 28px; 
+              height: 28px; 
+              background: #ffffff; 
+              border: 1px solid #ddd; 
+              border-radius: 50%; 
+              box-shadow: 0 2px 4px rgba(0,0,0,0.2); 
+              transition: all 0.2s ease;
+              vertical-align: middle;">
+        <img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" 
+             style="width:18px; height:18px; display:block;" 
+             alt="Google Maps">
+    </a>`;
