@@ -720,9 +720,9 @@ function loadRoute(index, customColor = null) { // 1. 新增參數 customColor
     }).addTo(map);
 
     // ... 以下縮放、起終點、航點繪製邏輯保持不變 ...
-    if (polyline.getBounds().isValid()) {
-        map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
-    }
+    // if (polyline.getBounds().isValid()) {
+    //    map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+    // }
 
     const mStart = L.marker([trackPoints[0].lat, trackPoints[0].lon], { icon: startIcon }).addTo(map);
     mStart.on('click', (e) => { L.DomEvent.stopPropagation(e); showCustomPopup(0, "起點"); });
@@ -1478,7 +1478,7 @@ function updateABUI() {
         infoB.innerHTML = "尚未設定";
     }
 
-    // --- 區間分析邏輯維持不變 ---
+    // --- 區間分析邏輯 ---
     if (pointA && pointB) {
         boxRes.style.display = "block";
         const bearing = getBearingInfo(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
@@ -1494,19 +1494,52 @@ function updateABUI() {
 
         let analysisContent = "";
 
+        // 判斷是否兩點都在路徑上 (idx 不等於 -1 代表是在路徑上)
+        const isBothOnPath = (pointA.idx !== -1 && pointB.idx !== -1);
+        let slopeText = "";
+
+				if (isBothOnPath) {
+            // 兩點都在路徑上，計算平均坡度
+            const hDiff = pointB.ele - pointA.ele; // 高度差
+            const dDiff = Math.abs(pointB.distance - pointA.distance) * 1000; // 沿路距離(公尺)
+            
+            if (dDiff > 0) {
+                const slope = (hDiff / dDiff) * 100;
+                // 使用 Math.abs(slope) 移除負號
+                const absSlope = Math.abs(slope).toFixed(1);
+                
+                if (slope > 0) {
+                    // 上坡：橘紅色，標註 (上坡)
+                    slopeText = `<br>平均坡度：<b style="color:#d35400;">${absSlope} % (上坡)</b>`;
+                } else if (slope < 0) {
+                    // 下坡：綠色，標註 (下坡)
+                    slopeText = `<br>平均坡度：<b style="color:#28a745;">${absSlope} % (下坡)</b>`;
+                } else {
+                    slopeText = `<br>平均坡度：<b>0.0 %</b>`;
+                }
+            } else {
+                slopeText = `<br>平均坡度：<b>0.0 %</b>`;
+            }
+        } else {
+            // 其中一點不是路徑點
+            slopeText = `<br>平均坡度：<span style="color:#888;">無高度資訊</span>`;
+        }
+
         if (pointA.idx === -1 || pointB.idx === -1) {
+            // --- 狀況 1: 直線分析 ---
             analysisContent = `
                 <div style="color:#d35400; font-weight:bold; margin-bottom:4px;">📍 直線分析 (非全路徑點)</div>
-                直線距離：<b>${directDist.toFixed(2)} km</b><br>
+                直線距離：<b>${directDist.toFixed(2)} km</b>${slopeText}<br>
                 移動方位：<span style="color:#007bff; font-weight:bold;">往 ${bearing.name} (${bearing.deg}°)</span>`;
         } else {
+            // --- 狀況 2: 沿路區間分析 ---
             const start = Math.min(pointA.idx, pointB.idx), end = Math.max(pointA.idx, pointB.idx);
             const section = trackPoints.slice(start, end + 1);
             const { gain, loss } = calculateElevationGainFiltered(section);
             const timeDiff = Math.abs(pointA.timeUTC - pointB.timeUTC);
             
             analysisContent = `
-                區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b><br>
+                區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b>${slopeText}<br>
                 沿路距離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
                 直線距離：<b>${directDist.toFixed(2)} km</b><br>
                 時　　間：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b><br>
@@ -1515,6 +1548,7 @@ function updateABUI() {
 
         infoRes.innerHTML = analysisContent;
 
+        // --- Marker Tooltip 更新 (維持原本邏輯) ---
         if (typeof markerB !== 'undefined' && markerB) {
             markerB.unbindTooltip();
             let tooltipDir = 'right';
@@ -2102,7 +2136,13 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
     if (multiGpxStack.length > 0) {
         document.getElementById('multiGpxBtnBar').style.display = 'flex';
         renderMultiGpxButtons();
-        map.fitBounds(allBounds);
+        // map.fitBounds(allBounds);
+        
+				const firstGpx = multiGpxStack[0];
+				    if (firstGpx && firstGpx.layer) {
+				        // 這裡手動呼叫縮放，不受 switchMultiGpx 內部的 window.event 限制
+				        map.fitBounds(firstGpx.layer.getBounds(), { padding: [20, 20], maxZoom: 16 });
+				    }
         
         // 最後切換到第一個軌跡
         switchMultiGpx(0); 
@@ -2140,7 +2180,11 @@ function switchMultiGpx(index) {
                 });
             
             
-            map.fitBounds(item.layer.getBounds(), { padding: [20, 20], maxZoom: 16 });
+            // map.fitBounds(item.layer.getBounds(), { padding: [20, 20], maxZoom: 16 });
+            if (window.event && window.event.type === 'click' && window.event.target.closest('.gpx-file-btn')) {
+    // 只有當「真正的點擊事件」發生在「GPX Bar 的按鈕」上時，才縮放地圖
+    map.fitBounds(item.layer.getBounds(), { padding: [20, 20], maxZoom: 16 });
+}
         } else {
             // --- 未選中的檔案 ---
             item.layer.setStyle({ 
