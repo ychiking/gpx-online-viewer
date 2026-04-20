@@ -655,21 +655,32 @@ function extractPoints(pts) {
     if (!isNaN(lat) && !isNaN(lon)) {
       const ele = eleNode ? parseFloat(eleNode.textContent) : 0;
       
-      const utc = timeNode ? new Date(timeNode.textContent) : new Date(0); 
-      const localTime = timeNode ? formatDate(new Date(utc.getTime() + 8*3600*1000)) : "無時間資訊";
+      // ✅ 修正點：必須檢查內容是否為空字串
+      let utc = null;
+      let localTime = "無時間資訊";
+      
+      if (timeNode && timeNode.textContent.trim() !== "") {
+        const d = new Date(timeNode.textContent);
+        if (!isNaN(d.getTime())) {
+          utc = d;
+          localTime = formatDate(new Date(utc.getTime() + 8*3600*1000));
+        }
+      }
 
       if (res.length > 0) {
         const a = res[res.length-1], R = 6371;
         const dLat = (lat-a.lat)*Math.PI/180, dLon = (lon-a.lon)*Math.PI/180;
         const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(lat*Math.PI/180)*Math.sin(dLon/2)**2;
-        total += 2 * R * Math.asin(Math.sqrt(x));
+        
+        // 使用 Math.max(0, x) 確保不會因為微小誤差導致負數產生 NaN
+        total += 2 * R * Math.asin(Math.sqrt(Math.max(0, x)));
       }
       
       res.push({ 
         lat, 
         lon, 
         ele, 
-        timeUTC: utc, 
+        timeUTC: utc ? utc.getTime() : null, // 存入數值或 null，不要存 Invalid Date
         timeLocal: localTime, 
         distance: total 
       });
@@ -677,7 +688,6 @@ function extractPoints(pts) {
   }
   return res;
 }
-
 
 function calculateElevationGainFiltered(points = trackPoints) {
   if (points.length < 3) return { gain: 0, loss: 0 };
@@ -713,7 +723,15 @@ function getBearingInfo(lat1, lon1, lat2, lon2) {
 // ================= 地圖載入與連動 =================
 function loadRoute(index, customColor = null) {
     window.currentActiveIndex = index;
-
+hoverMarker = L.circleMarker([0, 0], {
+    radius: 8,
+    color: '#fff',
+    fillColor: '#007bff',
+    fillOpacity: 1,
+    weight: 2,
+    interactive: true, // 必須開啟互動
+    draggable: true    // 核心：開啟拖拽
+}).addTo(map);
     map.closePopup();
     if (typeof window.clearABSettings === 'function') window.clearABSettings();
 
