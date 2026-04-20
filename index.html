@@ -502,6 +502,34 @@
       #map { height: 45vh; }
       #chartContainer { height: 220px; }
     }
+    
+    /* 優化滑動條在 iPhone 上的手感 */
+/* 強制在 iPhone 全螢幕模式下顯示 Bar */
+.iphone-fullscreen #map-control-bar {
+    display: flex !important;
+    z-index: 20000 !important; /* 提高層級，確保在 Leaflet 容器之上 */
+    bottom: 100px !important;
+    top: auto !important;
+}
+
+/* 讓滑動條在手機上更好操作 */
+#gpxProgressBar {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 10px;
+    background: #e0e0e0;
+    border-radius: 5px;
+}
+
+#gpxProgressBar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px; /* 加大按鈕讓手指好抓 */
+    height: 28px;
+    background: #1a73e8;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
   </style>
 </head>
 
@@ -551,6 +579,26 @@
         <circle cx="70" cy="70" r="4" fill="#333" stroke="white" stroke-width="1" />
       </svg>
     </div>
+    <div id="map-control-bar" style="
+    position: absolute; 
+    bottom: 80px; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    width: 70%; 
+    height: 45px; 
+    background: rgba(255, 255, 255, 0.9); 
+    z-index: 1000; 
+    display: none; /* 預設隱藏 */
+    align-items: center; 
+    padding: 0 15px; 
+    border-radius: 25px; 
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    pointer-events: auto;
+">
+    <input type="range" id="gpxProgressBar" min="0" max="100" value="0" style="flex: 1; cursor: pointer;">
+    <span id="progressBarInfo" style="margin-left: 10px; font-size: 13px; font-weight: bold; min-width: 70px; color: #333;">0.00 km</span>
+</div>
+</div>
   </div>
 
   <div id="routeSelectContainer" style="display: none; position: absolute; top: 10px; left: 60px; z-index: 9999;">
