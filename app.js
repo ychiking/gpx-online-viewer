@@ -815,7 +815,7 @@ function loadRoute(index, customColor = null) {
     markers = []; wptMarkers = []; polyline = null; 
 
     // --- 2. 繪製目前選中的高亮軌跡 ---
-    if (trackPoints && trackPoints.length > 0) {
+ if (trackPoints && trackPoints.length > 0) {
         const segments = breakTracks(trackPoints);
 
         polyline = L.polyline(segments, {
@@ -830,6 +830,7 @@ function loadRoute(index, customColor = null) {
         };
         checkAndFitBounds(polyline.getBounds());
 
+        // 軌跡點擊邏輯 (維持不變)
         polyline.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
             let minD = Infinity, idx = 0;
@@ -844,10 +845,38 @@ function loadRoute(index, customColor = null) {
             }
         });
 
+        // ✅ 修改後的起點與終點標記邏輯
         try {
-            markers.push(L.marker([trackPoints[0].lat, trackPoints[0].lon], { icon: startIcon }).addTo(map));
-            markers.push(L.marker([trackPoints.at(-1).lat, trackPoints.at(-1).lon], { icon: endIcon }).addTo(map));
-        } catch (err) {}
+            const startP = trackPoints[0];
+            const startMarker = L.marker([startP.lat, startP.lon], { 
+                icon: startIcon,
+                zIndexOffset: 1000 
+            }).addTo(map);
+            
+            startMarker.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                // 只要傳入索引 0，且不傳入 realLat/realLon，就會進入標準軌跡模式顯示時間
+                showCustomPopup(0, "起點"); 
+            });
+            markers.push(startMarker);
+
+            // 終點部分也建議同步
+            const lastIdx = trackPoints.length - 1;
+            const endMarker = L.marker([trackPoints[lastIdx].lat, trackPoints[lastIdx].lon], { 
+                icon: endIcon,
+                zIndexOffset: 1000 
+            }).addTo(map);
+            
+            endMarker.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                showCustomPopup(lastIdx, "終點");
+            });
+            markers.push(endMarker);
+            
+        } catch (err) {
+            console.error(">>> [ERR] Marker 綁定失敗:", err);
+        }
+
         if (typeof drawElevationChart === 'function') drawElevationChart();
     }
 
@@ -1267,20 +1296,17 @@ function showCustomPopup(idx, title, offPathEle = null, realLat = null, realLon 
   const lat = isWaypoint ? realLat : p.lat;
   const lon = isWaypoint ? realLon : p.lon;
   
-  // ✅ [新增] 尋找純航點的時間資料
-let waypointTime = null;
+  // ✅ 尋找純航點的時間資料
+  let waypointTime = null;
   if (isWaypoint) {
-      // 1. 取得目前選中的檔案索引 (考慮到多檔案模式)
       const activeIdx = (typeof window.currentMultiIndex !== 'undefined') ? window.currentMultiIndex : 0;
       const currentGpx = allTracks[activeIdx];
 
       if (currentGpx && currentGpx.waypoints) {
-          // 2. 透過座標比對找到該航點 (使用微小差距比對較安全)
           const wptData = currentGpx.waypoints.find(w => 
               Math.abs(w.lat - lat) < 0.000001 && Math.abs(w.lon - lon) < 0.000001
           );
 
-          // 3. 關鍵修正：您的 parseGPX 存的是 localTime 且已經格式化過了
           if (wptData && wptData.localTime && wptData.localTime !== "無時間資訊") {
               waypointTime = wptData.localTime;
           }
@@ -1303,7 +1329,15 @@ let waypointTime = null;
     </a>`;
 
   let content = "";
-  const noTrackData = (offPathEle !== null || !p.distance);
+  const noTrackData = (offPathEle !== null || (idx !== 0 && !p.distance));
+
+  // --- 關鍵修改：將 lat, lon 傳入 setAB 函式 ---
+  // 這樣當點擊航點時，setAB 就會收到精確座標而不是路徑座標
+  const abButtons = `
+    <div style="display:flex; margin-top:10px; gap:5px;">
+      <button onclick="setAB('A', ${idx}, ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
+      <button onclick="setAB('B', ${idx}, ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
+    </div>`;
 
   if (noTrackData) {
       const currentEle = offPathEle || (p.ele ? p.ele.toFixed(0) : "---");
@@ -1317,20 +1351,16 @@ let waypointTime = null;
             <b style="font-size:14px; color: #1a73e8;">${title}</b>
           </div>
           高度: ${currentEle} m<br>
-          ${waypointTime ? `時間: ${waypointTime}<br>` : ''} WGS84: ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>
+          ${waypointTime ? `時間: ${waypointTime}<br>` : ''} 
+          WGS84: ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>
           TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
           TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}<br>
           ${offPathEle !== null ? '<span style="color:red; font-weight:bold;">⚠️ 不在路徑上</span>' : ''}
-          
-          <div style="display:flex; margin-top:10px; gap:5px;">
-            <button onclick="setAB('A', ${idx})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
-            <button onclick="setAB('B', ${idx})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
-          </div>
+          ${abButtons}
         </div>`;
       
       targetLatLng = [lat, lon];
   } else {
-      // 標準軌跡點模式 (原本邏輯)
       const twd97 = proj4(WGS84_DEF, TWD97_DEF, [p.lon, p.lat]);
       const twd67 = proj4(WGS84_DEF, TWD67_DEF, [p.lon, p.lat]); 
       
@@ -1346,10 +1376,7 @@ let waypointTime = null;
           WGS84: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>
           TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
           TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
-          <div style="display:flex; margin-top:10px; gap:5px;">
-            <button onclick="setAB('A', ${idx})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
-            <button onclick="setAB('B', ${idx})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
-          </div>
+          ${abButtons}
         </div>`;
   }
 
@@ -1376,104 +1403,156 @@ function startHeightTipTimer() {
 let mouseX = null; 
 
 function drawElevationChart() {
-	
-	
-  const canvas = document.getElementById("elevationChart");
-  const ctx = canvas.getContext("2d");
-  if (chart) chart.destroy();
+    const canvas = document.getElementById("elevationChart");
+    const ctx = canvas.getContext("2d");
+    if (chart) chart.destroy();
 
-  const _handleSync = (e) => {
+    const _handleSync = (e) => {
     const points = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
     if (points.length) {
-      const idx = points[0].index;
-      const p = trackPoints[idx];
-      hoverMarker.setLatLng([p.lat, p.lon]);
-      showCustomPopup(idx, "位置資訊");
-      chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
-      chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
-      chart.update('none');
-      if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
-      if (isMouseDown) {
-        window.chartTipTimer = setTimeout(() => {
-          if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
-        }, 3000);
-      }
-    }
-  };
+        const idx = points[0].index;
+        const p = trackPoints[idx];
+        window.lastHoverIdx = idx;
 
-  const onMouseDown = (e) => { if (e.button === 0) { isMouseDown = true; if (mapTipTimer) clearTimeout(mapTipTimer); _handleSync(e); } };
-  const onTouchStart = (e) => { isMouseDown = true; if (mapTipTimer) clearTimeout(mapTipTimer); _handleSync(e); if (e.cancelable) e.preventDefault(); };
-  const onTouchMove = (e) => { if (isMouseDown) { _handleSync(e); if (e.cancelable) e.preventDefault(); } };
-  const onMouseMove = (e) => { 
-    const rect = canvas.getBoundingClientRect(); mouseX = e.clientX - rect.left;
-    if (isMouseDown) { _handleSync(e); } else {
-      if (chart && chart.getActiveElements().length > 0) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
-    }
-  };
-  const onMouseLeave = () => { mouseX = null; if (isMouseDown) { isMouseDown = false; startHeightOnlyTimer(); } if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); } };
-  const onEnd = () => { if (isMouseDown) { isMouseDown = false; startHeightOnlyTimer(); } if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); } };
+        // 1. 位置資訊顯示邏輯
+        const checkbox = document.getElementById("showChartTipCheckbox");
+        const isChecked = checkbox ? checkbox.checked : true;
 
-  canvas.replaceWith(canvas.cloneNode(true)); 
-  const newCanvas = document.getElementById("elevationChart");
-  const newCtx = newCanvas.getContext("2d");
+        if (isChecked) {
+            // 這裡傳入 "位置資訊" 作為標題，並確保彈窗開啟
+            showCustomPopup(idx, "位置資訊");
+        }
 
-  newCanvas.addEventListener('mousedown', onMouseDown);
-  newCanvas.addEventListener('touchstart', onTouchStart, { passive: false });
-  newCanvas.addEventListener('touchmove', onTouchMove, { passive: false });
-  newCanvas.addEventListener('mousemove', onMouseMove);
-  newCanvas.addEventListener('mouseleave', onMouseLeave);
-  newCanvas.addEventListener('touchend', onEnd);
+        // 2. 更新小藍點位置
+        if (hoverMarker) {
+            const newLatLng = [p.lat, p.lon];
+            hoverMarker.setLatLng(newLatLng).bringToFront();
 
-  window.removeEventListener('mouseup', onEnd); 
-  window.addEventListener('mouseup', onEnd);
-
-  document.getElementById('chartContainer').style.display = 'block';
-
-  chart = new Chart(newCtx, {
-    type: "line",
-    data: {
-      labels: trackPoints.map(p => p.distance.toFixed(2)),
-      datasets: [{ 
-        label: "高度 (m)", data: trackPoints.map(p => p.ele), fill: true, 
-        backgroundColor: 'rgba(54, 162, 235, 0.2)', borderColor: 'rgba(54, 162, 235, 1)', tension: 0.1, 
-        pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 8, pointHoverBackgroundColor: 'rgba(54, 162, 235, 0.8)', pointHoverBorderWidth: 2, pointHoverBorderColor: '#fff'
-      }]
-    },
-    options: {
-      animation: false,
-      responsive: true, maintainAspectRatio: false,
-      events: ['mousedown', 'mouseup', 'click', 'touchstart', 'touchmove', 'touchend'],
-      interaction: { intersect: false, mode: "index" },
-      hover: { mode: 'index', intersect: false, animiationDuration: 0 },
-      plugins: {
-        tooltip: {
-          enabled: true, displayColors: false, 
-          filter: () => isMouseDown || (chart && chart.getActiveElements().length > 0),
-          callbacks: {
-            title: () => "位置資訊", 
-            label: function(context) {
-              const p = trackPoints[context.dataIndex];
-              return [` ■ 距離: ${p.distance.toFixed(2)} km`, ` ■ 高度: ${p.ele.toFixed(0)} m`, ` ■ 時間: ${p.timeLocal ? p.timeLocal.split(' ')[1] : ''}`];
+            // 3. 地圖自動隨動邏輯
+            // 取得地圖目前的邊界
+            const bounds = map.getBounds();
+            // 如果小藍點座標不在目前的視窗範圍內
+            if (!bounds.contains(newLatLng)) {
+                // 平滑移動地圖中心到小藍點位置
+                map.panTo(newLatLng, { animate: true, duration: 0.5 });
             }
-          }
         }
-      }
-    },
-    plugins: [{
-      id: 'verticalLine',
-      afterDraw: (chart) => {
-        if (mouseX !== null) {
-          const x = mouseX; const topY = chart.chartArea.top; const bottomY = chart.chartArea.bottom; const _ctx = chart.ctx;
-          _ctx.save(); _ctx.beginPath(); _ctx.moveTo(x, topY); _ctx.lineTo(x, bottomY);
-          _ctx.lineWidth = 1; _ctx.strokeStyle = isMouseDown ? 'rgba(0, 123, 255, 0.8)' : 'rgba(150, 150, 150, 0.4)';
-          _ctx.setLineDash(isMouseDown ? [] : [5, 5]); _ctx.stroke();
-          if (!isMouseDown) { _ctx.fillStyle = 'rgba(150, 150, 150, 0.8)'; _ctx.font = '10px Arial'; _ctx.fillText(' 按住拖動 ', x + 5, topY + 15); }
-          _ctx.restore();
+
+        // 4. 更新圖表狀態 (Tooltip 與 Active Element)
+        chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+        chart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], { x: 0, y: 0 });
+        chart.update('none');
+
+        // 5. 自動消失計時器 (如果需要滑動停住後消失)
+        if (window.chartTipTimer) clearTimeout(window.chartTipTimer);
+        window.chartTipTimer = setTimeout(() => {
+            if (chart) { 
+                chart.tooltip.setActiveElements([], { x: 0, y: 0 }); 
+                chart.update('none'); 
+            }
+            // 如果 user 沒在拖動了，可以選擇是否關閉彈窗
+            // if (currentPopup) map.closePopup(); 
+        }, 3000);
+    }
+  };
+
+    const onMouseDown = (e) => { if (e.button === 0) { isMouseDown = true; if (window.mapTipTimer) clearTimeout(window.mapTipTimer); _handleSync(e); } };
+    const onTouchStart = (e) => { isMouseDown = true; if (window.mapTipTimer) clearTimeout(window.mapTipTimer); _handleSync(e); if (e.cancelable) e.preventDefault(); };
+    const onTouchMove = (e) => { if (isMouseDown) { _handleSync(e); if (e.cancelable) e.preventDefault(); } };
+    const onMouseMove = (e) => { 
+        const rect = canvas.getBoundingClientRect(); mouseX = e.clientX - rect.left;
+        if (isMouseDown) { _handleSync(e); } else {
+            if (chart && chart.getActiveElements().length > 0) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
         }
-      }
-    }]
-  });
+    };
+    const onMouseLeave = () => { mouseX = null; if (isMouseDown) { isMouseDown = false; if (typeof startHeightOnlyTimer === "function") startHeightOnlyTimer(); } if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); } };
+    const onEnd = () => { if (isMouseDown) { isMouseDown = false; if (typeof startHeightOnlyTimer === "function") startHeightOnlyTimer(); } if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); } };
+
+    canvas.replaceWith(canvas.cloneNode(true)); 
+    const newCanvas = document.getElementById("elevationChart");
+    const newCtx = newCanvas.getContext("2d");
+
+    newCanvas.addEventListener('mousedown', onMouseDown);
+    newCanvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    newCanvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    newCanvas.addEventListener('mousemove', onMouseMove);
+    newCanvas.addEventListener('mouseleave', onMouseLeave);
+    newCanvas.addEventListener('touchend', onEnd);
+
+    window.removeEventListener('mouseup', onEnd); 
+    window.addEventListener('mouseup', onEnd);
+
+    // 強制展開容器
+    const chartContainer = document.getElementById('chartContainer');
+    chartContainer.style.display = 'block';
+    
+    // 初始化 Checkbox 顯示邏輯
+    const tipLabel = document.getElementById("chartTipToggleLabel");
+    if (tipLabel) {
+        // 只有在「有航跡」且「高度表展開」時顯示
+        const hasTracks = trackPoints && trackPoints.length > 0;
+        tipLabel.style.display = hasTracks ? "flex" : "none";
+    }
+
+    chart = new Chart(newCtx, {
+        type: "line",
+        data: {
+            labels: trackPoints.map(p => p.distance.toFixed(2)),
+            datasets: [{ 
+                label: "高度 (m)", data: trackPoints.map(p => p.ele), fill: true, 
+                backgroundColor: 'rgba(54, 162, 235, 0.2)', borderColor: 'rgba(54, 162, 235, 1)', tension: 0.1, 
+                pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 8, pointHoverBackgroundColor: 'rgba(54, 162, 235, 0.8)', pointHoverBorderWidth: 2, pointHoverBorderColor: '#fff'
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: true, maintainAspectRatio: false,
+            events: ['mousedown', 'mouseup', 'click', 'touchstart', 'touchmove', 'touchend'],
+            interaction: { intersect: false, mode: "index" },
+            hover: { mode: 'index', intersect: false },
+            plugins: {
+                tooltip: {
+                    enabled: true, displayColors: false, 
+                    filter: () => isMouseDown || (chart && chart.getActiveElements().length > 0),
+                    callbacks: {
+                        title: () => "位置資訊", 
+                        label: function(context) {
+                            const p = trackPoints[context.dataIndex];
+                            return [` ■ 距離: ${p.distance.toFixed(2)} km`, ` ■ 高度: ${p.ele.toFixed(0)} m`, ` ■ 時間: ${p.timeLocal ? p.timeLocal.split(' ')[1] : ''}`];
+                        }
+                    }
+                }
+            }
+        },
+        plugins: [{
+            id: 'verticalLine',
+            afterDraw: (chart) => {
+                if (mouseX !== null) {
+                    const x = mouseX; const topY = chart.chartArea.top; const bottomY = chart.chartArea.bottom; const _ctx = chart.ctx;
+                    _ctx.save(); _ctx.beginPath(); _ctx.moveTo(x, topY); _ctx.lineTo(x, bottomY);
+                    _ctx.lineWidth = 1; _ctx.strokeStyle = isMouseDown ? 'rgba(0, 123, 255, 0.8)' : 'rgba(150, 150, 150, 0.4)';
+                    _ctx.setLineDash(isMouseDown ? [] : [5, 5]); _ctx.stroke();
+                    if (!isMouseDown) { _ctx.fillStyle = 'rgba(150, 150, 150, 0.8)'; _ctx.font = '10px Arial'; _ctx.fillText(' 按住拖動 ', x + 5, topY + 15); }
+                    _ctx.restore();
+                }
+            }
+        }]
+    });
 }
+
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'showChartTipCheckbox') {
+        if (e.target.checked) {
+            // 如果開啟且有紀錄過索引，立即顯示
+            if (window.lastHoverIdx !== null) {
+                showCustomPopup(window.lastHoverIdx, "位置資訊");
+            }
+        } else {
+            // 如果關閉，立即移除地圖上的彈窗
+            if (currentPopup) map.closePopup();
+        }
+    }
+});
 
   function handleSync(e) {
     const points = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
@@ -1506,13 +1585,11 @@ function startHeightOnlyTimer() {
 
 // ================= 航點導向功能 =================
 window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
-    // 1. 先關閉舊視窗，移動地圖
     map.closePopup();
     map.setView([lat, lon], 16);
     
     let minD = Infinity, idx = 0;
     
-    // 2. 安全檢查：只有在有軌跡點時才跑計算
     if (trackPoints && trackPoints.length > 0) {
         trackPoints.forEach((tp, i) => {
             let d = Math.sqrt((lat - tp.lat) ** 2 + (lon - tp.lon) ** 2);
@@ -1520,23 +1597,14 @@ window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
         });
     }
 
-    // 3. 移動地圖上的小藍點 (hoverMarker)
     if (hoverMarker) { 
         hoverMarker.setLatLng([lat, lon]).bringToFront(); 
     }
 
-    // 4. 判斷彈窗模式
-    // 如果是純航點 (trackPoints 為空) 或 距離過遠，強制傳入 lat, lon 以跳過 showCustomPopup 的檢查
-    const isPureWaypoint = !trackPoints || trackPoints.length === 0;
+    // 關鍵修正：無論是否為純航點，都把原始的 lat, lon 傳給彈窗
+    // 這樣彈窗產生的 "設為A點" 按鈕就能拿到精確座標
+    showCustomPopup(idx, name, ele, lat, lon);
     
-    if (isPureWaypoint || distToTrack > 100) {
-        // 傳入 lat, lon，這會讓 showCustomPopup 知道這是一個「獨立位置」
-        showCustomPopup(idx, name, ele, lat, lon);
-    } else {
-        showCustomPopup(idx, name);
-    }
-    
-    // 5. 圖表連動 (僅在有軌跡時執行)
     if (chart && trackPoints.length > 0) {
         chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
         chart.update('none');
@@ -1546,22 +1614,33 @@ window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
 };
 
 // ================= A/B 設定與資訊渲染 =================
-window.setAB = function(type, idx) {
-  // 1. 取得座標：優先從 trackPoints 找，找不到則從 hoverMarker (藍圈) 抓
+window.setAB = function(type, idx, forcedLat = null, forcedLon = null) {
   let lat, lon, targetPoint;
   
-  if (trackPoints && trackPoints[idx]) {
+  // 1. 取得座標邏輯
+  if (forcedLat !== null && forcedLon !== null) {
+    // ✅ 優先使用傳入的精確座標 (航點原始座標)
+    lat = forcedLat;
+    lon = forcedLon;
+    
+    // 同時保留索引資訊，以便計算 A-B 之間的距離與時間
+    if (trackPoints && trackPoints[idx]) {
+      targetPoint = { ...trackPoints[idx], lat, lon, idx }; 
+    } else {
+      targetPoint = { lat, lon, idx, ele: 0 };
+    }
+  } else if (trackPoints && trackPoints[idx]) {
+    // 從高度表或軌跡點點擊時
     targetPoint = { ...trackPoints[idx], idx };
     lat = targetPoint.lat;
     lon = targetPoint.lon;
   } else if (hoverMarker) {
-    // ✅ 純航點模式：直接抓地圖上小藍圈的位置
     const pos = hoverMarker.getLatLng();
     lat = pos.lat;
     lon = pos.lng;
-    targetPoint = { lat, lon, idx, ele: 0 }; // 建立虛擬點
+    targetPoint = { lat, lon, idx, ele: 0 };
   } else {
-    return; // 真的找不到點就跳出
+    return;
   }
 
   // 2. 設定 A 或 B 點
@@ -2582,16 +2661,33 @@ window.switchToTrack = function(id) {
 function toggleElevationChart() {
     const chartContainer = document.getElementById("chartContainer");
     const btn = document.getElementById("toggleChartBtn");
+    const tipLabel = document.getElementById("chartTipToggleLabel"); // 取得 Checkbox 容器
 
-    if (chartContainer.style.display === "none") {
+    if (chartContainer.style.display === "none" || chartContainer.style.display === "") {
+        // --- 執行展開 ---
         chartContainer.style.display = "block";
         btn.textContent = "收合高度表";
+        
+        // 修正：展開時，如果目前有軌跡資料，就顯示 Checkbox
+        if (tipLabel && trackPoints && trackPoints.length > 0) {
+            tipLabel.style.display = "flex";
+        }
+        
         if (window.chart) {
             window.chart.resize();
         }
     } else {
+        // --- 執行收合 ---
         chartContainer.style.display = "none";
         btn.textContent = "展開高度表";
+        
+        // 修正：收合時，強制隱藏 Checkbox
+        if (tipLabel) {
+            tipLabel.style.display = "none";
+        }
+        
+        // 收合時同步關閉地圖上的彈窗，避免殘留
+        if (currentPopup) map.closePopup();
     }
 }
 
