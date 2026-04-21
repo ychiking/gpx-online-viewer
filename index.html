@@ -503,13 +503,19 @@
       #chartContainer { height: 220px; }
     }
     
-    /* 優化滑動條在 iPhone 上的手感 */
-/* 強制在 iPhone 全螢幕模式下顯示 Bar */
-.iphone-fullscreen #map-control-bar {
+ .iphone-fullscreen #map-control-bar {
     display: flex !important;
-    z-index: 20000 !important; /* 提高層級，確保在 Leaflet 容器之上 */
+    z-index: 20000 !important;
     bottom: 100px !important;
     top: auto !important;
+    width: 80% !important; /* 加寬一點，確保 Checkbox 不會折行 */
+    max-width: 500px;
+}
+
+/* 讓手機更方便勾選 */
+#fs-check-group label {
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* 讓滑動條在手機上更好操作 */
@@ -535,13 +541,13 @@
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v260420</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604211</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
       <label for="multiGpxInput" class="custom-file-upload">匯入GPX</label>
       <span id="fileNameDisplay" style="font-weight:500; margin-left:5px;">尚未選擇檔案</span>
-      <span id="importHint" style="font-size: 12px; color: #777; margin-left: 0px;">(支援匯入多個GPX檔)</span>
+      <span id="importHint" style="font-size: 12px; color: #777; margin-left: 0px;">(支援拖拉匯入多個GPX檔)</span>
     </div>
     <div class="subtitle">
       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
@@ -596,7 +602,11 @@
     pointer-events: auto;
 ">
     <input type="range" id="gpxProgressBar" min="0" max="100" value="0" style="flex: 1; cursor: pointer;">
-    <span id="progressBarInfo" style="margin-left: 10px; font-size: 13px; font-weight: bold; min-width: 70px; color: #333;">0.00 km</span>
+    <span id="progressBarInfo" style="margin-left: 5px; font-size: 13px; font-weight: bold; min-width: 60px; color: #333;">0.00 km</span>
+		<div id="bar-check-container" style="display: flex; align-items: center; gap: 4px; margin-left: 10px; border-left: 1px solid #ccc; padding-left: 10px;">
+        <input type="checkbox" id="fsShowTipCheckbox" checked style="width: 16px; height: 16px; cursor: pointer;">
+        <label for="fsShowTipCheckbox" style="font-size: 12px; color: #333; margin: 0; white-space: nowrap; cursor: pointer;">資訊</label>
+    </div>
 </div>
 </div>
   </div>

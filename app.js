@@ -721,44 +721,74 @@ function getBearingInfo(lat1, lon1, lat2, lon2) {
 }
 
 // 在 setupProgressBar 函式中加入這段監聽器
+let fsPopupTimer = null;
+
 function setupProgressBar() {
     const barContainer = document.getElementById("map-control-bar");
     const progressBar = document.getElementById("gpxProgressBar");
+    const mainCheckbox = document.getElementById("showChartTipCheckbox");
+    const fsCheckbox = document.getElementById("fsShowTipCheckbox");
+
     if (!barContainer || !progressBar) return;
 
-    // 阻止滑動條的操作影響到地圖拖動 (手機上非常重要)
     L.DomEvent.disableClickPropagation(barContainer);
     L.DomEvent.disableScrollPropagation(barContainer);
 
-    // 統一檢查顯示狀態的邏輯
-    const updateVisibility = () => {
-        // 偵測是否處於全螢幕狀態 (電腦端 API || iPhone 專用的 Class)
-        const isStandardFull = !!(document.fullscreenElement || document.webkitFullscreenElement);
-        const isIphoneFull = document.body.classList.contains('iphone-fullscreen');
-        
-        // 只有在全螢幕「且」有資料時才顯示
-        if ((isStandardFull || isIphoneFull) && typeof trackPoints !== 'undefined' && trackPoints.length > 0) {
-            barContainer.style.setProperty('display', 'flex', 'important');
+    // --- 輔助功能：自動關閉彈窗計時器 ---
+    const startAutoCloseTimer = () => {
+        // 先清除之前的計時器，避免重複執行
+        if (fsPopupTimer) clearTimeout(fsPopupTimer);
+        // 設定 3 秒後關閉
+        fsPopupTimer = setTimeout(() => {
+            map.closePopup();
+        }, 3000);
+    };
+
+    // --- 核心修正：讓 Checkbox 切換時「立刻」反應 ---
+    const handleCheckboxChange = (isChecked) => {
+        if (mainCheckbox) mainCheckbox.checked = isChecked;
+        if (fsCheckbox) fsCheckbox.checked = isChecked;
+
+        if (!isChecked) {
+            map.closePopup();
+            if (fsPopupTimer) clearTimeout(fsPopupTimer); // 取消勾選時也停止計時
         } else {
-            barContainer.style.setProperty('display', 'none');
+            const idx = parseInt(progressBar.value);
+            if (typeof showCustomPopup === 'function' && trackPoints && trackPoints[idx]) {
+                showCustomPopup(idx, "位置資訊");
+                startAutoCloseTimer(); // 重新勾選也觸發計時
+            }
         }
     };
 
-    // 監聽電腦/安卓標準全螢幕事件
+    if (mainCheckbox) mainCheckbox.addEventListener('change', (e) => handleCheckboxChange(e.target.checked));
+    if (fsCheckbox) fsCheckbox.addEventListener('change', (e) => handleCheckboxChange(e.target.checked));
+
+    // 更新顯示狀態 (全螢幕偵測)
+    const updateVisibility = () => {
+        const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        const isIphoneFS = document.body.classList.contains('iphone-fullscreen');
+        
+        if ((isFS || isIphoneFS) && typeof trackPoints !== 'undefined' && trackPoints.length > 0) {
+            barContainer.style.setProperty('display', 'flex', 'important');
+        } else {
+            barContainer.style.setProperty('display', 'none');
+            map.closePopup(); 
+            if (fsPopupTimer) clearTimeout(fsPopupTimer);
+        }
+    };
+
     document.addEventListener('fullscreenchange', updateVisibility);
     document.addEventListener('webkitfullscreenchange', updateVisibility);
 
-    // 核心：監聽 iPhone 模式切換 (偵測 body 的 class 變化)
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
-            if (mutation.attributeName === 'class') {
-                updateVisibility();
-            }
+            if (mutation.attributeName === 'class') updateVisibility();
         });
     });
     observer.observe(document.body, { attributes: true });
 
-    // 進度條拉動邏輯
+    // 進度條拖動事件
     progressBar.addEventListener("input", function() {
         const idx = parseInt(this.value);
         if (!trackPoints || !trackPoints[idx]) return;
@@ -767,17 +797,28 @@ function setupProgressBar() {
         if (hoverMarker) {
             hoverMarker.setLatLng([p.lat, p.lon]).bringToFront();
             if (!map.getBounds().contains([p.lat, p.lon])) {
-                map.panTo([p.lat, p.lon], { animate: false }); // 手機關閉動畫較流暢
+                map.panTo([p.lat, p.lon], { animate: false });
             }
         }
         document.getElementById("progressBarInfo").textContent = `${p.distance.toFixed(2)} km`;
         
+        // 拖移時判斷
+        const isChecked = fsCheckbox ? fsCheckbox.checked : (mainCheckbox ? mainCheckbox.checked : true);
         if (typeof showCustomPopup === 'function') {
-            const checkbox = document.getElementById("showChartTipCheckbox");
-            if (!checkbox || checkbox.checked) {
+            if (isChecked) {
                 showCustomPopup(idx, "位置資訊");
+                // 每次拖動時都會「刷新」計時器
+                startAutoCloseTimer();
+            } else {
+                map.closePopup(); 
             }
         }
+    });
+
+    // 額外保險：當手指放開（結束拖動）時確保有啟動計時
+    progressBar.addEventListener("change", function() {
+        const isChecked = fsCheckbox ? fsCheckbox.checked : (mainCheckbox ? mainCheckbox.checked : true);
+        if (isChecked) startAutoCloseTimer();
     });
 }
 
@@ -1818,24 +1859,24 @@ function updateABUI() {
             
             if (dDiff > 0) {
                 const slope = (hDiff / dDiff) * 100;
-                // 使用 Math.abs(slope) 移除負號
+                // 計算角度：arctan(高度差 / 距離) 轉為角度
+                const angle = Math.atan(hDiff / dDiff) * (180 / Math.PI);
+                
                 const absSlope = Math.abs(slope).toFixed(1);
+                const absAngle = Math.abs(angle).toFixed(1);
                 
                 if (slope > 0) {
-                    // 上坡：橘紅色，標註 (上坡)
-                    slopeText = `<br>平均坡度：<b style="color:#d35400;">${absSlope} % (上坡)</b>`;
+                    // 上坡：橘紅色
+                    slopeText = `<br>平均坡度：<b style="color:#d35400;">${absSlope} % (${absAngle}°) (上坡)</b>`;
                 } else if (slope < 0) {
-                    // 下坡：綠色，標註 (下坡)
-                    slopeText = `<br>平均坡度：<b style="color:#28a745;">${absSlope} % (下坡)</b>`;
+                    // 下坡：綠色
+                    slopeText = `<br>平均坡度：<b style="color:#28a745;">${absSlope} % (${absAngle}°) (下坡)</b>`;
                 } else {
-                    slopeText = `<br>平均坡度：<b>0.0 %</b>`;
+                    slopeText = `<br>平均坡度：<b>0.0 % (0.0°)</b>`;
                 }
             } else {
-                slopeText = `<br>平均坡度：<b>0.0 %</b>`;
+                slopeText = `<br>平均坡度：<b>0.0 % (0.0°)</b>`;
             }
-        } else {
-            // 其中一點不是路徑點
-            slopeText = `<br>平均坡度：<span style="color:#888;">無高度資訊</span>`;
         }
 
         if (pointA.idx === -1 || pointB.idx === -1) {
@@ -2400,17 +2441,31 @@ function showMapToast(message) {
 
 // ================= 多檔案匯入專用邏輯 =================
 let multiGpxStack = []; 
-const multiColors = ['#FF0000', '#0000FF', '#FFA500', '#800080', '#FFD700', '#A52A2A', '#7FFF00', '#87CEFA', '#006400', '#FFC0CB'];
+// const multiColors = ['#FF0000', '#0000FF', '#FFA500', '#800080', '#FFD700', '#A52A2A', '#7FFF00', '#87CEFA', '#006400', '#FFC0CB'];
+const multiColors = [
+    '#0000FF', // 純藍
+    '#FF3300', // 亮橘紅
+    '#FF00FF', // 洋紅 (地圖上最不容易混淆的顏色)
+    '#FFD600', // 鮮黃
+    '#9C27B0', // 亮紫
+    '#33FF00', // 螢光黃綠
+    '#00FFFF', // 青色 (與陸地顏色反差大)
+    '#E91E63', // 桃紅
+    '#1A73E8', // Google 藍
+    '#00E676', // 翡翠綠
+    '#87CEFA'  // 天藍
+];
 
-document.getElementById("multiGpxInput").addEventListener("change", async (e) => {
+
+// 提取出來的公共函式：內容完全是你原本監聽器內的邏輯，沒有任何更動
+async function handleGpxFiles(files) {
+    if (!files || files.length === 0) return;
+
+    // --- 以下是你原本的清空與重置邏輯 ---
     clearEverything(); 
     if (typeof window.resetGPS === 'function') window.resetGPS();
     if (typeof polyline !== 'undefined' && polyline) map.removeLayer(polyline);
 
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    
-    // 關鍵 1：重置全域 allTracks，確保多檔模式下的索引與 multiGpxStack 一致
     allTracks = []; 
     
     document.getElementById("fileNameDisplay").innerHTML = `
@@ -2426,6 +2481,7 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
     
     let allBounds = L.latLngBounds([]);
 
+    // --- 這裡是你原本處理多檔匯入的核心迴圈 ---
     for (let i = 0; i < files.length; i++) {
         const text = await files[i].text();
         const pureFileName = files[i].name.replace(/\.[^/.]+$/, "");
@@ -2440,7 +2496,6 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
 
         if (combinedPoints.length === 0 && combinedWaypoints.length === 0) continue;
 
-        // 關鍵 2：預先建立完整的資料結構
         const gpxData = {
             name: files[i].name,
             fileName: pureFileName,
@@ -2455,7 +2510,6 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
             minElevation: 0
         };
 
-        // 同步到全域陣列，供 loadRoute 使用
         allTracks.push(gpxData);
 
         const color = multiColors[i % multiColors.length];
@@ -2465,18 +2519,16 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
         let currentBounds = L.latLngBounds([]);
 
         if (combinedPoints.length > 0) {
-            // 修正：在地圖線條建立時，直接把當前的索引 i 綁進去，確保 click 時抓到正確的 index
             layer = L.polyline(combinedPoints.map(p => [p.lat, p.lon]), {
                 color: color, 
                 weight: 4, 
                 opacity: 0.8, 
                 gpxId: gpxId,
-                trackIndex: allTracks.length - 1 // 儲存它在陣列中的位置
+                trackIndex: allTracks.length - 1
             }).addTo(map);
 
             layer.on('click', (e) => {
                 L.DomEvent.stopPropagation(e); 
-                // 恢復地圖點擊切換的核心：直接呼叫 switchMultiGpx 並傳入正確的索引
                 const targetIdx = e.target.options.trackIndex;
                 if (typeof switchMultiGpx === 'function') {
                     switchMultiGpx(targetIdx);
@@ -2509,9 +2561,7 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
     if (multiGpxStack.length > 0) {
         document.getElementById('multiGpxBtnBar').style.display = 'flex';
         renderMultiGpxButtons();
-        
-        if (multiGpxStack.length > 0) {
-   		switchMultiGpx(0);}
+        switchMultiGpx(0);
         
         const firstItem = multiGpxStack[0];
         let firstBounds;
@@ -2525,18 +2575,26 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
             map.fitBounds(firstBounds, { padding: [20, 20], maxZoom: 16 });
         }
         
-        // 關鍵 3：延遲並確保 currentMultiIndex 正確
+        // --- 保留你原本的 300ms 延遲渲染邏輯 ---
         setTimeout(() => {
              try {
                 window.currentMultiIndex = 0;
                 if (typeof loadRoute === 'function') {
                     loadRoute(0);
                 }
+                // 關鍵：確保進度條在匯入後重新初始化
+                if (typeof setupProgressBar === 'function') setupProgressBar();
             } catch (err) {
-                console.error(">>> [LOG] 最終渲染失敗:", err);
+                console.error("最終渲染失敗:", err);
             }
         }, 300);
     }
+}
+
+document.getElementById("multiGpxInput").addEventListener("change", async (e) => {
+    // 呼叫公共函式處理匯入
+    await handleGpxFiles(e.target.files);
+    // 保留原本的行為：清空 input 值
     e.target.value = ""; 
 });
 
@@ -2821,4 +2879,40 @@ function isGpxInView(gpxData) {
 
 window.addEventListener('DOMContentLoaded', (event) => {
     setupProgressBar(); // 啟動時先綁定好「拉動」的動作
+});
+
+// ================= 拖放匯入支援 =================
+
+document.addEventListener('dragover', (e) => {
+    e.preventDefault(); // 必須阻斷，否則瀏覽器會跳轉頁面
+    e.stopPropagation();
+    document.body.style.backgroundColor = "rgba(0,0,0,0.02)"; // 輕微視覺回饋
+});
+
+document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.backgroundColor = "";
+});
+
+document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.backgroundColor = "";
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+        // 過濾出 GPX 檔案
+        const gpxFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.gpx'));
+        if (gpxFiles.length > 0) {
+            await handleGpxFiles(gpxFiles);
+        }
+    }
+});
+
+// 監聽全螢幕狀態變化：確保全螢幕切換後，進度條的拖拉座標能重新校準
+document.addEventListener('fullscreenchange', () => {
+    setTimeout(() => {
+        if (typeof setupProgressBar === 'function') setupProgressBar();
+    }, 150);
 });
