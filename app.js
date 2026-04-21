@@ -838,6 +838,19 @@ function setupProgressBar() {
         }
         document.getElementById("progressBarInfo").textContent = `${p.distance.toFixed(2)} km`;
         
+        if (chart) { // 使用您的全域變數 chart
+            const meta = chart.getDatasetMeta(0);
+            const point = meta.data[idx];
+            if (point) {
+                chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+                chart.tooltip.setActiveElements(
+                    [{ datasetIndex: 0, index: idx }],
+                    { x: point.x, y: point.y }
+                );
+                chart.update('none'); // 使用 'none' 模式確保拖動流暢不卡頓
+            }
+        }
+        
         // 拖移時判斷
         const isChecked = fsCheckbox ? fsCheckbox.checked : (mainCheckbox ? mainCheckbox.checked : true);
         if (typeof showCustomPopup === 'function') {
@@ -991,14 +1004,50 @@ function loadRoute(index, customColor = null) {
         polyline.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
             let minD = Infinity, idx = 0;
+            
+            // 1. 找出距離點擊位置最近的軌跡點索引
             trackPoints.forEach((p, pIdx) => {
                 const d = Math.sqrt((p.lat - e.latlng.lat)**2 + (p.lon - e.latlng.lng)**2);
                 if (d < minD) { minD = d; idx = pIdx; }
             });
+            
+            // 2. 判斷點擊距離（約 15 公尺內觸發）
             if (minD * 111000 <= 15) {
-                if (!hoverMarker) hoverMarker = L.circleMarker([0,0], {radius: 7, color: 'yellow', fillOpacity: 1}).addTo(map);
-                hoverMarker.setLatLng([trackPoints[idx].lat, trackPoints[idx].lon]);
-                showCustomPopup(idx, "位置資訊");
+                // --- A. 同步進度軸 (ProgressBar) ---
+                const progressBar = document.getElementById('gpxProgressBar'); // 使用您程式碼中的 ID
+                if (progressBar) {
+                    progressBar.value = idx;
+                    // 重要：手動觸發 input 事件，讓 setupProgressBar 裡的監聽器執行（移動地圖標記、更新距離文字）
+                    const inputEvent = new Event('input', { bubbles: true });
+                    progressBar.dispatchEvent(inputEvent);
+                }
+
+                // --- B. 同步高度表 (Elevation Chart) ---
+                if (chart) { // 您 drawElevationChart 使用的是全域變數 chart
+                    const meta = chart.getDatasetMeta(0);
+                    const point = meta.data[idx];
+                    
+                    if (point) {
+                        // 模擬 Chart.js 的 Active 狀態與 Tooltip
+                        chart.setActiveElements([{ datasetIndex: 0, index: idx }]);
+                        chart.tooltip.setActiveElements(
+                            [{ datasetIndex: 0, index: idx }],
+                            { x: point.x, y: point.y }
+                        );
+                        chart.update('none'); // 使用 'none' 模式避免多餘動畫
+                    }
+                }
+
+                // --- C. 地圖指示點與彈窗 (您的原始邏輯) ---
+                if (!hoverMarker) {
+                    hoverMarker = L.circleMarker([0,0], {radius: 7, color: 'yellow', fillOpacity: 1}).addTo(map);
+                }
+                hoverMarker.setLatLng([trackPoints[idx].lat, trackPoints[idx].lon]).bringToFront();
+                
+                // 呼叫您定義的彈窗函式
+                if (typeof showCustomPopup === 'function') {
+                    showCustomPopup(idx, "位置資訊");
+                }
             }
         });
 
@@ -1572,6 +1621,14 @@ function drawElevationChart() {
         const idx = points[0].index;
         const p = trackPoints[idx];
         window.lastHoverIdx = idx;
+        
+        const progressBar = document.getElementById("gpxProgressBar");
+            if (progressBar) {
+                progressBar.value = idx;
+                // 同步更新旁邊的距離文字
+                const info = document.getElementById("progressBarInfo");
+                if (info) info.textContent = `${p.distance.toFixed(2)} km`;
+            }
 
         // 1. 位置資訊顯示邏輯
         const checkbox = document.getElementById("showChartTipCheckbox");
