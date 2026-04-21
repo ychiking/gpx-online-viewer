@@ -406,7 +406,7 @@
       top: 20%;
       height: 60%;
       width: 3px;
-      background: #ff4d4d;
+      background-color: var(--track-color) !important;
     }
 
     .gpx-file-btn.combined-btn {
@@ -503,6 +503,36 @@
       #chartContainer { height: 220px; }
     }
     
+    @media screen and (max-height: 500px) and (orientation: landscape) {
+    #map {
+        height: 70vh !important; /* 橫向時給予更多比例 */
+    }
+
+    #header {
+        padding: 2px 14px; /* 縮減標題欄高度 */
+    }
+
+    .upload-row {
+        transform: scale(0.9); /* 縮小一點點上傳按鈕 */
+        transform-origin: left;
+    }
+
+    /* 橫向時垂直空間極小，將進度條壓到最底部 */
+    #map-control-bar {
+        bottom: 5px !important;
+        width: 95% !important;
+        height: 35px !important;
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    /* 隱藏指北針或縮小它，避免擋住地圖 */
+    .map-compass {
+        transform: scale(0.7);
+        bottom: 5px !important;
+        left: -10px !important;
+    }
+}
+    
  .iphone-fullscreen #map-control-bar {
     display: flex !important;
     z-index: 20000 !important;
@@ -522,15 +552,15 @@
 #gpxProgressBar {
     -webkit-appearance: none;
     appearance: none;
-    height: 10px;
+    height: 8px;
     background: #e0e0e0;
     border-radius: 5px;
 }
 
 #gpxProgressBar::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 28px; /* 加大按鈕讓手指好抓 */
-    height: 28px;
+    width: 22px; /* 加大按鈕讓手指好抓 */
+    height: 22px;
     background: #1a73e8;
     border-radius: 50%;
     border: 3px solid white;
@@ -541,7 +571,7 @@
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604211</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604215</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
