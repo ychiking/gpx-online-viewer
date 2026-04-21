@@ -60,7 +60,7 @@ const overlayMaps = {
 
 L.control.layers(baseMaps, overlayMaps).addTo(map);
 
-happyman.addTo(map);
+//happyman.addTo(map);
 rudy.addTo(map);
 map.on('overlayadd', updateGrids);
 
