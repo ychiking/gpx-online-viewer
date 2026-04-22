@@ -283,11 +283,18 @@
     }
 
     .iphone-fullscreen #map {
-      flex: 1 !important;
       height: 100% !important;
       width: 100% !important;
+      position: relative;
     }
-
+    
+    .iphone-fullscreen #header, 
+		.iphone-fullscreen #routeInfo,
+		.iphone-fullscreen #toggleChartBtn,
+		.iphone-fullscreen #chartContainer {
+    display: none !important;
+		}
+    
     .iphone-fullscreen #multiGpxBtnBar {
       display: flex !important;
       z-index: 10001 !important;
@@ -542,6 +549,33 @@
     max-width: 500px;
 }
 
+
+/* 移除預設的 Zoom Control */
+.leaflet-control-zoom { display: none !important; }
+
+/* 讓地圖控制項細線化 */
+.custom-map-control {
+    background: white;
+    border: 1px solid rgba(0,0,0,0.2) !important;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.custom-map-control a {
+    width: 30px;
+    height: 30px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    color: #444;
+    cursor: pointer;
+    text-decoration: none;
+    background: white;
+}
+
+/* 斜向圖示旋轉 */
+.slant-icon { transform: rotate(45deg); display: inline-block; }
+
 /* 讓手機更方便勾選 */
 #fs-check-group label {
     user-select: none;
@@ -571,7 +605,7 @@
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604216</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604222</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
@@ -669,12 +703,14 @@
     </div>
   </div>
 
-  <button id="toggleChartBtn" onclick="toggleElevationChart()" style="display: none;">展開/收合高度表</button>
-	<label id="chartTipToggleLabel" style="display: none; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; color: #555; margin-top: 5px;">
-    <input type="checkbox" id="showChartTipCheckbox" checked style="margin-right: 5px;">
-    拖移時顯示位置資訊
-  </label>
-  <div id="chartContainer"><canvas id="elevationChart"></canvas></div>
+	<button id="toggleChartBtn" onclick="toggleElevationChart()" style="display: none;">展開/收合高度表</button>
+	
+	<label id="chartTipToggleLabel" style="display: none; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; color: #555; margin-top: 5px; width: fit-content; margin-left: auto; margin-right: auto;">
+	    <input type="checkbox" id="showChartTipCheckbox" checked style="margin-right: 5px; cursor: pointer;">
+	    拖移時顯示位置資訊
+	</label>
+	
+	<div id="chartContainer"><canvas id="elevationChart"></canvas></div>
 
   <div id="routeInfo">
     <div id="routeSummary">尚未讀取資料</div>
