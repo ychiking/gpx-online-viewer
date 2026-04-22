@@ -2776,16 +2776,43 @@ function switchMultiGpx(index) {
 
 function renderMultiGpxButtons() {
     const bar = document.getElementById('multiGpxBtnBar');
-    if (!bar) return;
+    if (!bar || !gpxManagerControlContainer) return;
 
+    // --- 1. 右側管理按鈕：使用 layers 圖示 (菱形 + 倒V) ---
     if (multiGpxStack && multiGpxStack.length > 0) {
         document.body.classList.add('has-gpx-bar');
+        gpxManagerControlContainer.style.display = 'block';
+        
+        // 使用 layers 圖示，這就是您描述的那個形狀
+        gpxManagerControlContainer.innerHTML = `
+            <a href="#" title="管理 GPX 顯示" style="
+                background-color: white; 
+                width: 45px; 
+                height: 45px; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                text-decoration: none; 
+                color: #333;
+            ">
+                <span class="material-icons" style="font-size: 30px;">layers</span>
+            </a>
+        `;
+
+        L.DomEvent.off(gpxManagerControlContainer, 'click');
+        L.DomEvent.on(gpxManagerControlContainer, 'click', (e) => {
+            L.DomEvent.stop(e);
+            showGpxManagementModal(); // 顯示管理選單
+        });
     } else {
         document.body.classList.remove('has-gpx-bar');
+        gpxManagerControlContainer.style.display = 'none';
     }
 
+    // --- 2. 下方 GPX Bar：處理勾選連動 ---
     bar.innerHTML = ''; 
     
+    // (原本的關閉按鈕邏輯)
     const closeBtn = document.createElement('button');
     closeBtn.className = 'gpx-file-btn close-btn';
     closeBtn.innerHTML = '✕ 關閉檔案';
@@ -2797,39 +2824,32 @@ function renderMultiGpxButtons() {
     bar.appendChild(closeBtn);
     
     multiGpxStack.forEach((gpx, i) => {
+        // 【核心邏輯】如果 visible 為 false (在 Modal 中被取消勾選)，則不顯示按鈕
+        if (gpx.visible === false) {
+            if (gpx.layerGroup) map.removeLayer(gpx.layerGroup); // 同步移除地圖線條
+            return; 
+        }
+
+        // 確保顯示中的檔案在地圖上
+        if (gpx.layerGroup && !map.hasLayer(gpx.layerGroup)) {
+            map.addLayer(gpx.layerGroup);
+        }
+
         const btn = document.createElement('button');
         btn.className = 'gpx-file-btn';
         btn.id = `multi-btn-${i}`;
-        
-        const maxLength = 40;
-        btn.textContent = gpx.name.length > maxLength 
-            ? gpx.name.substring(0, maxLength) + "..." 
-            : gpx.name;
-
-        btn.setAttribute('title', gpx.name); 
-
-        // 1. 設定左側的邊框顏色 (你原本的邏輯)
+        btn.textContent = gpx.name.length > 40 ? gpx.name.substring(0, 40) + "..." : gpx.name;
         btn.style.borderLeft = `5px solid ${gpx.color}`;
-        
-        // 2. 關鍵修正：透過 CSS 變數將 GPX 顏色傳遞給 CSS
-        // 這樣我們可以在 CSS 裡用 var(--track-color) 來取代原本死板的紅色
         btn.style.setProperty('--track-color', gpx.color);
         
         btn.onclick = (e) => {
             if (e) L.DomEvent.stopPropagation(e);
             switchMultiGpx(i);
         };
-        
         bar.appendChild(btn);
     });
 
     L.DomEvent.disableClickPropagation(bar);
-    L.DomEvent.disableScrollPropagation(bar);
-
-    const stopMe = (e) => e.stopPropagation();
-    bar.addEventListener('touchstart', stopMe, { passive: true });
-    bar.addEventListener('touchmove', stopMe, { passive: true });
-    bar.addEventListener('pointerdown', stopMe, { passive: true });
 }
 
 function clearAllMultiGPX() {
@@ -3225,3 +3245,174 @@ mapSizeCtrl.onAdd = function() {
 };
 
 mapSizeCtrl.addTo(map);
+
+
+let gpxManagerControlContainer; // 全域變數
+
+function initGpxManagerControl() {
+    const GpxManagerControl = L.Control.extend({
+        options: { position: 'topright' }, // 置於右側，會排在樣式按鈕下方
+        onAdd: function() {
+            // 建立容器，並給予 leaflet-bar 類別維持邊框樣式
+            gpxManagerControlContainer = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+            gpxManagerControlContainer.id = 'gpx-manager-control';
+            gpxManagerControlContainer.style.display = 'none'; // 初始隱藏
+            return gpxManagerControlContainer;
+        }
+    });
+    map.addControl(new GpxManagerControl());
+}
+initGpxManagerControl();
+
+function showGpxManagementModal() {
+    let modal = document.getElementById('gpxManageModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'gpxManageModal';
+        modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; backdrop-filter: blur(2px);";
+        document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+
+    const defaultColors = ['#0000FF', '#FF3300', '#FF00FF', '#FFD600', '#9C27B0', '#33FF00', '#00FFFF', '#E91E63', '#1A73E8', '#00E676', '#FF8C00', '#BF00FF', '#A5F2F3', '#FFF000', '#87CEFA', '#FF1493'];
+
+    let listHtml = `
+        <div style="background:white; padding:20px; border-radius:12px; width:300px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-height: 80vh; display: flex; flex-direction: column;">
+            <h3 style="margin:0 0 15px 0; font-size:18px; border-bottom:1px solid #eee; padding-bottom:10px;">管理軌跡</h3>
+            <div style="flex: 1; overflow-y:auto; padding-right:5px;">`;
+    
+    multiGpxStack.forEach((gpx, i) => {
+        const isChecked = gpx.visible !== false ? 'checked' : '';
+        // 【核心邏輯】判斷是否為當前 Focus 的軌跡
+        const isFocused = (window.currentMultiIndex === i);
+        
+        listHtml += `
+            <div style="margin-bottom: 10px; border: 1px solid ${isFocused ? '#1a73e8' : '#eee'}; border-radius: 8px; padding: 10px; background: ${isFocused ? '#f0f7ff' : '#fafafa'};">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <input type="checkbox" id="gpx-chk-${i}" ${isChecked} ${isFocused ? 'disabled' : ''} onchange="toggleGpx(${i})" 
+                        style="width:18px; height:18px; cursor: ${isFocused ? 'not-allowed' : 'pointer'};">
+                    
+                    <div onclick="toggleColorPicker(${i})" style="
+                        width: 22px; height: 22px; background: ${gpx.color}; 
+                        border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 0 1px #ddd;
+                        flex-shrink: 0;
+                    "></div>
+
+                    <label for="gpx-chk-${i}" style="font-size:14px; font-weight:500; cursor:${isFocused ? 'default' : 'pointer'}; color:${isFocused ? '#1a73e8' : '#333'}; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${gpx.name} ${isFocused ? '<span style="font-size:11px; margin-left:5px; background:#1a73e8; color:white; padding:1px 4px; border-radius:3px;">使用中</span>' : ''}
+                    </label>
+                </div>
+                
+                <div id="picker-${i}" style="display: none; margin-top: 12px; padding: 8px; background: white; border-radius: 6px; border: 1px solid #ddd; gap: 6px; flex-wrap: wrap; justify-content: center;">
+                    ${defaultColors.map(color => {
+                        const isSelected = gpx.color.toUpperCase() === color.toUpperCase();
+                        return `
+                            <div onclick="changeGpxColor(${i}, '${color}')" style="
+                                width: 24px; height: 24px; background: ${color}; 
+                                border-radius: 4px; cursor: pointer; position: relative;
+                                border: ${isSelected ? '2px solid #333' : '1px solid rgba(0,0,0,0.1)'};
+                            ">
+                                ${isSelected ? '<div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:6px; height:6px; background:white; border-radius:50%;"></div>' : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>`;
+    });
+
+    listHtml += `</div>
+            <button onclick="document.getElementById('gpxManageModal').style.display='none'" 
+                style="width:100%; margin-top:15px; padding:12px; background:#1a73e8; color:white; border:none; border-radius:8px; cursor:pointer; font-size:16px; font-weight:bold;">
+                完成
+            </button>
+        </div>`;
+    modal.innerHTML = listHtml;
+}
+
+window.toggleGpx = function(index) {
+    const item = multiGpxStack[index];
+    if (!item) return;
+
+    // 1. 切換顯示狀態
+    if (item.visible === undefined) item.visible = true;
+    item.visible = !item.visible;
+
+    // 2. 立即處理地圖上的原始圖層
+    if (item.layer) {
+        if (item.visible) {
+            if (!map.hasLayer(item.layer)) map.addLayer(item.layer);
+        } else {
+            map.removeLayer(item.layer);
+        }
+    }
+
+    // 3. 【關鍵修正】如果是目前的 Focus 軌跡被取消勾選，必須清除最上層 activeRouteLayer
+    if (!item.visible && window.currentMultiIndex === index) {
+        if (window.activeRouteLayer) {
+            map.removeLayer(window.activeRouteLayer);
+            window.activeRouteLayer = null;
+        }
+        if (window.hoverMarker) map.removeLayer(window.hoverMarker);
+        
+        // 隱藏高度表與相關資訊
+        const chartContainer = document.getElementById("chartContainer");
+        if (chartContainer) chartContainer.style.display = "none";
+        const wptList = document.getElementById("wptList");
+        if (wptList) wptList.style.display = "none";
+    }
+
+    // 4. 重新渲染管理視窗與下方 Bar (這會讓按鈕消失)
+    showGpxManagementModal();
+    renderMultiGpxButtons();
+};
+
+window.changeGpxColor = function(index, newColor) {
+    const item = multiGpxStack[index];
+    if (!item) return;
+
+    item.color = newColor;
+
+    // 1. 更新底層圖層顏色 (前提是它目前應該在地圖上)
+    if (item.layer && item.visible !== false) {
+        const isCurrent = (window.currentMultiIndex === index);
+        item.layer.setStyle({
+            color: newColor,
+            opacity: isCurrent ? 1.0 : 0.5,
+            weight: isCurrent ? 8 : 4
+        });
+    }
+
+    // 2. 如果是正在 Focus 的軌跡，且「它是顯示狀態」，才執行重繪
+    if (window.currentMultiIndex === index && item.visible !== false) {
+        if (window.activeRouteLayer) {
+            map.removeLayer(window.activeRouteLayer);
+        }
+        window.currentTrackColor = newColor;
+        
+        // 強制重繪
+        setTimeout(() => {
+            switchMultiGpx(index); 
+        }, 10);
+    }
+
+    // 3. 刷新 UI
+    showGpxManagementModal();
+    renderMultiGpxButtons();
+};
+
+window.toggleColorPicker = function(i) {
+    // 取得當前點擊的選單
+    const targetPicker = document.getElementById(`picker-${i}`);
+    const isCurrentlyHidden = (targetPicker.style.display === 'none');
+
+    // 關閉所有人的選單
+    multiGpxStack.forEach((_, idx) => {
+        const p = document.getElementById(`picker-${idx}`);
+        if (p) p.style.display = 'none';
+    });
+
+    // 如果剛才是關掉的，現在就打開它
+    if (isCurrentlyHidden) {
+        targetPicker.style.display = 'flex';
+    }
+};
