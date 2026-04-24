@@ -292,7 +292,7 @@
 		.iphone-fullscreen #routeInfo,
 		.iphone-fullscreen #toggleChartBtn,
 		.iphone-fullscreen #chartContainer {
-    display: none !important;
+      display: none !important;
 		}
     
     .iphone-fullscreen #multiGpxBtnBar {
@@ -439,9 +439,26 @@
       cursor: pointer;
     }
 
-    .gpx-file-btn.close-btn:hover {
-      background: rgba(255, 77, 77, 0.2);
+    /* 新增：匯出按鈕樣式 */
+    .gpx-file-btn.export-btn {
+      flex: 0 0 auto !important;
+      border: 1px solid #4CAF50 !important;
+      color: #4CAF50 !important;
+      background: transparent !important;
+      margin: 6px 2px 6px 5px !important;
+      height: 28px !important;
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px !important;
+      padding: 0 10px !important;
+      font-size: 13px !important;
+      white-space: nowrap;
+      cursor: pointer;
     }
+
+    .gpx-file-btn.close-btn:hover { background: rgba(255, 77, 77, 0.2); }
+    .gpx-file-btn.export-btn:hover { background: rgba(76, 175, 80, 0.2); }
 
     /* 邊界元件偏移 */
     body.has-gpx-bar .leaflet-bottom.leaflet-right {
@@ -505,6 +522,17 @@
       line-height: 1;
     }
 
+    /* 列表操作圖示 */
+    .wpt-action-icon {
+        font-size: 18px !important;
+        vertical-align: middle;
+        cursor: pointer;
+        margin-left: 5px;
+        color: #666;
+    }
+    .wpt-action-icon:hover { color: #1a73e8; }
+    .wpt-delete-icon:hover { color: #d93025; }
+
     @media (max-width: 768px) {
       #map { height: 45vh; }
       #chartContainer { height: 220px; }
@@ -512,27 +540,21 @@
     
     @media screen and (max-height: 500px) and (orientation: landscape) {
     #map {
-        height: 70vh !important; /* 橫向時給予更多比例 */
+        height: 70vh !important; 
     }
-
     #header {
-        padding: 2px 14px; /* 縮減標題欄高度 */
+        padding: 2px 14px; 
     }
-
     .upload-row {
-        transform: scale(0.9); /* 縮小一點點上傳按鈕 */
+        transform: scale(0.9); 
         transform-origin: left;
     }
-
-    /* 橫向時垂直空間極小，將進度條壓到最底部 */
     #map-control-bar {
         bottom: 5px !important;
         width: 95% !important;
         height: 35px !important;
         background: rgba(255, 255, 255, 0.95);
     }
-
-    /* 隱藏指北針或縮小它，避免擋住地圖 */
     .map-compass {
         transform: scale(0.7);
         bottom: 5px !important;
@@ -540,20 +562,17 @@
     }
 }
     
- .iphone-fullscreen #map-control-bar {
+.iphone-fullscreen #map-control-bar {
     display: flex !important;
     z-index: 20000 !important;
     bottom: 100px !important;
     top: auto !important;
-    width: 80% !important; /* 加寬一點，確保 Checkbox 不會折行 */
+    width: 80% !important; 
     max-width: 500px;
 }
 
-
-/* 移除預設的 Zoom Control */
 .leaflet-control-zoom { display: none !important; }
 
-/* 讓地圖控制項細線化 */
 .custom-map-control {
     background: white;
     border: 1px solid rgba(0,0,0,0.2) !important;
@@ -573,16 +592,13 @@
     background: white;
 }
 
-/* 斜向圖示旋轉 */
 .slant-icon { transform: rotate(45deg); display: inline-block; }
 
-/* 讓手機更方便勾選 */
 #fs-check-group label {
     user-select: none;
     -webkit-user-select: none;
 }
 
-/* 讓滑動條在手機上更好操作 */
 #gpxProgressBar {
     -webkit-appearance: none;
     appearance: none;
@@ -593,7 +609,7 @@
 
 #gpxProgressBar::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 22px; /* 加大按鈕讓手指好抓 */
+    width: 22px; 
     height: 22px;
     background: #1a73e8;
     border-radius: 50%;
@@ -601,28 +617,86 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 
-/* 復刻預設圖示控制項外觀 */
 #gpx-manager-control a.leaflet-control-layers-toggle {
-    background-size: 26px 26px; /* 強制設定預設圖示拼合的大小 */
-    background-position: center; /* 圖示置中 */
+    background-size: 26px 26px; 
+    background-position: center; 
 }
 
-/* 如果您發現按鈕比預設的大一點，可以取消 leaflet-bar 的背景色 */
 #gpx-manager-control {
     background: none !important;
+}
+
+.wpt-modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 99999;
+    display: none; /* 預設隱藏 */
+    align-items: center; /* 垂直置中 */
+    justify-content: center; /* 水平置中 */
+}
+
+.wpt-modal-content {
+    background: white;
+    width: 300px;
+    padding: 25px; /* 增加一點內距讓 X 按鈕不擁擠 */
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    position: relative; /* 關鍵：讓內部的 X 可以絕對定位 */
+}
+}
+
+/* 確保右側控制項容器使用 flex 並垂直排列，讓搜尋按鈕排在最後 */
+.leaflet-top.leaflet-right {
+    display: flex;
+    flex-direction: column;
+}
+
+/* 讓搜尋按鈕所在的容器排在最後面 (order 設大一點) */
+#searchControlContainer {
+    order: 99; 
+    margin-top: 5px; /* 與上方按鈕保持間距 */
+}
+
+/* 修正 Leaflet 預設邊框問題，讓 45x45 看起來乾淨 */
+#searchControlContainer a {
+    border: none !important;
+}
+/* 調整圖層選擇器的外框大小 */
+.leaflet-control-layers-toggle {
+    width: 35px !important;  /* 外框寬度改為 35px */
+    height: 35px !important; /* 外框高度改為 35px */
+    background-size: 25px 25px !important; /* 內部圖層圖示改為 22px */
+    background-position: center !important; /* 確保圖示置中 */
+}
+
+/* 為了美觀，調整右側控制項的間距與對齊 */
+.leaflet-top.leaflet-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.leaflet-control {
+    margin-right: 10px !important;
 }
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604226</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604251</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
       <label for="multiGpxInput" class="custom-file-upload">匯入GPX</label>
       <span id="fileNameDisplay" style="font-weight:500; margin-left:5px;">尚未選擇檔案</span>
       <span id="importHint" style="font-size: 12px; color: #777; margin-left: 0px;">(支援拖拉匯入多個GPX檔)</span>
+			<span class="material-icons" 
+      style="cursor:pointer; color:#1a73e8; vertical-align: middle; margin-left: 5px;" 
+      onclick="exportGpx()" 
+      title="匯出當前GPX">file_download</span>
     </div>
     <div class="subtitle">
       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
@@ -669,7 +743,7 @@
     height: 45px; 
     background: rgba(255, 255, 255, 0.9); 
     z-index: 1000; 
-    display: none; /* 預設隱藏 */
+    display: none; 
     align-items: center; 
     padding: 0 15px; 
     border-radius: 25px; 
@@ -684,15 +758,10 @@
     </div>
 </div>
 </div>
-  </div>
-
-  <div id="routeSelectContainer" style="display: none; position: absolute; top: 10px; left: 60px; z-index: 9999;">
-    <select id="routeSelect" style="width: 120px; height: 30px; border-radius: 15px; background: white; border: 1px solid #333333;"></select>
-  </div>
 
   <div id="coordModal" class="modal-overlay">
     <div class="modal-content" onclick="event.stopPropagation()">
-      <span style="position: absolute; top: 10px; right: 15px; font-size: 28px; cursor: pointer; color: #999;" onclick="document.getElementById('coordModal').style.display='none'; clearCoordInputs();">&times;</span>
+      <span style="position: absolute; top: 10px; right: 15px; font-size: 28px; cursor: pointer; color: #999;" onclick="document.getElementById('coordModal').style.display='none'; clearCoordInputs();">×</span>
       <h2 style="color: #1a73e8; text-align: center; margin-top: 0; margin-bottom: 20px;">座標定位與轉換</h2>
       <div class="coord-section">
         <h3>WGS84 ➜ TWD97</h3>
@@ -713,9 +782,62 @@
       </div>
     </div>
   </div>
-
+  
 	<button id="toggleChartBtn" onclick="toggleElevationChart()" style="display: none;">展開/收合高度表</button>
-	
+			<div id="wptEditModal" class="wpt-modal-overlay">
+  <div class="wpt-modal-content" onclick="event.stopPropagation()">
+    
+    <span style="position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #999;" 
+          onclick="document.getElementById('wptEditModal').style.display='none'">×</span>
+
+    <h3 style="margin: 0 0 15px 0; color: #1a73e8; text-align: center;">編輯航點</h3>
+    
+    <div style="margin-bottom: 10px;">
+      <label style="display: block; font-size: 12px; color: #666;">航點名稱</label>
+      <input type="text" id="modalWptName" style="width: 100%; padding: 8px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+      <label style="display: block; font-size: 12px; color: #666;">高度 (m)</label>
+      <input type="number" id="modalWptEle" style="width: 100%; padding: 8px; border: 1px solid #ccc; font-size: 16px; border-radius: 4px; box-sizing: border-box;">
+    </div>
+    
+    <button id="modalWptConfirm" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">確認儲存</button>
+  </div>
+</div>
+		
+		<div id="renameModal" class="wpt-modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10001; justify-content:center; align-items:center;"> 
+    <div class="wpt-modal-content" style="background:white; padding:25px; border-radius:12px; width:320px; position:relative;" onclick="event.stopPropagation()">
+        <span style="position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #999;" 
+              onclick="document.getElementById('renameModal').style.display='none'">×</span>
+        
+        <h3 style="margin: 0 0 15px 0; color: #1a73e8; text-align: center;">修改路線名稱</h3>
+        
+        <div style="margin-bottom: 15px;">
+              <input type="text" id="modalRouteName" style="width: 100%; font-size: 16px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; text-align: center;">
+        </div>
+
+        <p style="margin:0 0 20px 0; color:#e74c3c; font-size:13px; line-height:1.5; font-family: sans-serif; text-align: center; font-weight: bold;">
+            修改後切換不同檔案的GPX，<br>請先記得匯出。
+        </p>
+
+        <button id="modalRouteConfirm" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">確認更新</button>
+    </div>
+</div>
+<div id="deleteConfirmModal" style="display:none; position:fixed !important; top:0 !important; left:0 !important; width:100vw !important; height:100vh !important; background:rgba(0,0,0,0.7) !important; z-index:999999 !important; justify-content:center; align-items:center; backdrop-filter: blur(3px);">
+    <div style="background:white; padding:30px; border-radius:15px; width:320px; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,0.5); border: 1px solid #fff; position:relative;">
+        <div style="background:#fff5f0; width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin: 0 auto 15px;">
+            <span class="material-icons" style="font-size:40px; color:#d35400;">report_problem</span>
+        </div>
+        <h3 style="margin:0 0 10px 0; color:#2c3e50; font-size:20px; font-weight:bold; font-family: sans-serif;">確定要刪除嗎？</h3>
+        <p style="margin:0 0 25px 0; color:#7f8c8d; font-size:14px; line-height:1.6; font-family: sans-serif;">此動作無法復原。<br>您確定要刪除此航點？</p>
+        
+        <div style="display:flex; gap:12px; justify-content:center;">
+            <button id="modalDeleteCancel" style="flex:1; padding:12px; border:1px solid #ddd; background:#f8f9fa; color:#333; border-radius:8px; cursor:pointer; font-weight:bold;">取消</button>
+            <button id="modalDeleteConfirm" style="flex:1; padding:12px; border:none; background:#1a73e8; color:white; border-radius:8px; cursor:pointer; font-weight:bold;">確定刪除</button>
+        </div>
+    </div>
+</div>
 	<label id="chartTipToggleLabel" style="display: none; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; color: #555; margin-top: 5px; width: fit-content; margin-left: auto; margin-right: auto;">
 	    <input type="checkbox" id="showChartTipCheckbox" checked style="margin-right: 5px; cursor: pointer;">
 	    拖移時顯示位置資訊
@@ -746,18 +868,36 @@
     </div>
     <div id="wptList"></div>
   </div>
+
   <div id="gpxListModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
-  <div style="background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; max-height:80vh; overflow-y:auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
-      <h3 style="margin:0; font-size:18px;">GPX 顯示管理</h3>
-      <button onclick="closeGpxList()" style="border:none; background:none; cursor:pointer; font-size:20px; color:#999;">✕</button>
-    </div>
-    <div id="gpxItemsContainer">
+    <div style="background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; max-height:80vh; overflow-y:auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
+        <h3 style="margin:0; font-size:18px;">GPX 顯示管理</h3>
+        <button onclick="closeGpxList()" style="border:none; background:none; cursor:pointer; font-size:20px; color:#999;">✕</button>
       </div>
-    <div style="text-align:right; margin-top:15px;">
-      <button onclick="closeGpxList()" style="padding:6px 16px; background:#1a73e8; color:white; border:none; border-radius:4px; cursor:pointer;">關閉</button>
+      <div id="gpxItemsContainer"></div>
+      <div style="text-align:right; margin-top:15px;">
+        <button onclick="closeGpxList()" style="padding:6px 16px; background:#1a73e8; color:white; border:none; border-radius:4px; cursor:pointer;">關閉</button>
+      </div>
     </div>
   </div>
+  <div id="searchModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10001; justify-content:center; align-items:center;"> 
+    <div style="background:white; padding:25px; border-radius:12px; width:320px; position:relative;" onclick="event.stopPropagation()">
+        <span style="position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #999;" 
+              onclick="document.getElementById('searchModal').style.display='none'">×</span>
+        
+        <h3 style="margin: 0 0 15px 0; color: #1a73e8; text-align: center;">搜尋地點</h3>
+        
+        <div style="margin-bottom: 15px;">
+              <input type="text" id="searchInput" placeholder="請輸入地名或座標" style="width: 100%; font-size: 16px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; text-align: center;">
+        </div>
+
+        <p id="searchStatus" style="margin:0 0 20px 0; color:#666; font-size:13px; line-height:1.5; text-align: center;">
+            輸入關鍵字後按下搜尋。<br>例如：玉山、合歡山
+        </p>
+
+        <button id="searchConfirmBtn" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">立即搜尋</button>
+    </div>
 </div>
   <script src="app.js"></script>
 </body>
