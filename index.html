@@ -15,7 +15,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
 
   <style>
-    /* 基礎佈局 */
+
     body {
       margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont;
@@ -39,7 +39,6 @@
       display: none;
     }
 
-    /* 按鈕與元件樣式 */
     #toggleChartBtn {
       margin: 5px auto;
       padding: 5px 15px;
@@ -74,7 +73,6 @@
       line-height: 1.4;
     }
 
-    /* 彈出視窗 (Modal) */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -269,7 +267,6 @@
       background: #e0e0e0;
     }
 
-    /* iPhone 全螢幕模式適配 */
     .iphone-fullscreen {
       position: fixed !important;
       top: 0 !important;
@@ -321,7 +318,7 @@
       align-items: center;
       justify-content: center;
       height: 20px;
-      width: 80px;
+      width: 65px;
       text-align: center;
       flex-shrink: 0;
       white-space: nowrap;
@@ -460,7 +457,6 @@
     .gpx-file-btn.close-btn:hover { background: rgba(255, 77, 77, 0.2); }
     .gpx-file-btn.export-btn:hover { background: rgba(76, 175, 80, 0.2); }
 
-    /* 邊界元件偏移 */
     body.has-gpx-bar .leaflet-bottom.leaflet-right {
       margin-bottom: 46px !important;
     }
@@ -632,46 +628,46 @@
     width: 100vw; height: 100vh;
     background: rgba(0, 0, 0, 0.6);
     z-index: 99999;
-    display: none; /* 預設隱藏 */
-    align-items: center; /* 垂直置中 */
-    justify-content: center; /* 水平置中 */
+    display: none; 
+    align-items: center; 
+    justify-content: center; 
 }
 
 .wpt-modal-content {
     background: white;
     width: 300px;
-    padding: 25px; /* 增加一點內距讓 X 按鈕不擁擠 */
+    padding: 25px; 
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    position: relative; /* 關鍵：讓內部的 X 可以絕對定位 */
+    position: relative; 
 }
 }
 
-/* 確保右側控制項容器使用 flex 並垂直排列，讓搜尋按鈕排在最後 */
+
 .leaflet-top.leaflet-right {
     display: flex;
     flex-direction: column;
 }
 
-/* 讓搜尋按鈕所在的容器排在最後面 (order 設大一點) */
+
 #searchControlContainer {
     order: 99; 
-    margin-top: 5px; /* 與上方按鈕保持間距 */
+    margin-top: 5px; 
 }
 
-/* 修正 Leaflet 預設邊框問題，讓 45x45 看起來乾淨 */
+
 #searchControlContainer a {
     border: none !important;
 }
-/* 調整圖層選擇器的外框大小 */
+
 .leaflet-control-layers-toggle {
-    width: 35px !important;  /* 外框寬度改為 35px */
-    height: 35px !important; /* 外框高度改為 35px */
-    background-size: 25px 25px !important; /* 內部圖層圖示改為 22px */
-    background-position: center !important; /* 確保圖示置中 */
+    width: 35px !important;  
+    height: 35px !important; 
+    background-size: 25px 25px !important; 
+    background-position: center !important; 
 }
 
-/* 為了美觀，調整右側控制項的間距與對齊 */
+
 .leaflet-top.leaflet-right {
     display: flex;
     flex-direction: column;
@@ -686,15 +682,20 @@
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604251</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2604303</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
       <label for="multiGpxInput" class="custom-file-upload">匯入GPX</label>
-      <span id="fileNameDisplay" style="font-weight:500; margin-left:5px;">尚未選擇檔案</span>
-      <span id="importHint" style="font-size: 12px; color: #777; margin-left: 0px;">(支援拖拉匯入多個GPX檔)</span>
+      <span id="fileNameDisplay" style="font-weight:400; margin-left:2px;">尚未選擇檔案</span>
+      <span id="importHint" style="font-size: 10px; color: #777; margin-left: 0px;">(支援拖拉匯入多個GPX檔)</span>
+
+			<span id="refreshIcon" class="material-icons" 
+			      style="cursor:pointer; color:#777; vertical-align: middle; font-size: 16px; margin-left: 0px;" 
+			      onclick="location.reload()" 
+			      title="重新整理">refresh</span>
 			<span class="material-icons" 
-      style="cursor:pointer; color:#1a73e8; vertical-align: middle; margin-left: 5px;" 
+      style="cursor:pointer; color:#1a73e8; vertical-align: middle; margin-left: 0px;" 
       onclick="exportGpx()" 
       title="匯出當前GPX">file_download</span>
     </div>
@@ -802,7 +803,7 @@
       <input type="number" id="modalWptEle" style="width: 100%; padding: 8px; border: 1px solid #ccc; font-size: 16px; border-radius: 4px; box-sizing: border-box;">
     </div>
     
-    <button id="modalWptConfirm" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">確認儲存</button>
+    <button id="modalWptConfirm" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">確定儲存</button>
   </div>
 </div>
 		
