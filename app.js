@@ -3785,7 +3785,6 @@ window.handleWptEdit = function(existingIdx, lat, lon, ele, oldName, timeStr, or
 function processSave(finalName, finalEle) {
     const { existingIdx, lat, lon, timeStr, originalIdx, stackIdx, activeIdx } = currentEditTask;
 
-    
     const formatToStandard = (dateInput) => {
         const d = new Date(dateInput);
         if (isNaN(d.getTime())) return dateInput; 
@@ -3816,9 +3815,16 @@ function processSave(finalName, finalEle) {
         multiGpxStack[stackIdx].waypoints.push(targetWpt);
     }
 
-    allTracks.forEach(track => { track.waypoints = multiGpxStack[stackIdx].waypoints; });
+    
+    if (allTracks.length === 0) {
+        allTracks.push(multiGpxStack[stackIdx]);
+    } else {
+        allTracks.forEach(track => { track.waypoints = multiGpxStack[stackIdx].waypoints; });
+    }
+
     try {
         if (typeof updateWptTable === 'function') updateWptTable();
+        
         if (typeof renderWaypointsAndPeaks === 'function') renderWaypointsAndPeaks(allTracks[activeIdx]);
     } catch (e) {}
 
@@ -3831,16 +3837,17 @@ function processSave(finalName, finalEle) {
             icon: (typeof wptIcon !== 'undefined' ? wptIcon : new L.Icon.Default()) 
         }).addTo(map);
 
+        
         marker.bindTooltip(finalName, { 
-            permanent: (typeof showWptNameAlways !== 'undefined' ? showWptNameAlways : false), 
-            direction: 'top', offset: [0, -10] 
+            permanent: false, 
+            direction: 'top', 
+            offset: [0, -10] 
         });
 
-        if (window.showWptNameAlways) marker.openTooltip();
+        
 
         marker.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
-            
             showCustomPopup(originalIdx, finalName, finalEle, lat, lon);
         });
 
@@ -3849,9 +3856,7 @@ function processSave(finalName, finalEle) {
         }
     }
     
-    
     setTimeout(() => { 
-        
         map.eachLayer((layer) => {
             if (layer instanceof L.CircleMarker && !(layer instanceof L.Marker)) {
                 map.removeLayer(layer);
@@ -3862,10 +3867,8 @@ function processSave(finalName, finalEle) {
             radius: 7, color: '#ffffff', weight: 2, fillColor: '#1a73e8', fillOpacity: 1, interactive: false 
         }).addTo(map);
 
-        
         let targetIdx = parseInt(originalIdx);
 
-        
         if ((isNaN(targetIdx) || targetIdx === -1 || targetIdx === 999999) && typeof trackPoints !== 'undefined') {
             const minThreshold = 0.0005; 
             let minD = Infinity;
@@ -3876,29 +3879,27 @@ function processSave(finalName, finalEle) {
                     targetIdx = i;
                 }
             });
-            
             if (minD > minThreshold) targetIdx = -1;
         }
-        
 
         if (targetIdx !== -1 && !isNaN(targetIdx)) {
             const progressBar = document.getElementById('gpxProgressBar');
             if (progressBar) {
                 progressBar.value = targetIdx;
-                
                 progressBar.dispatchEvent(new Event('input', { bubbles: true }));
             }
         }
 
-        
         if (typeof wptMarkers !== 'undefined' && wptMarkers.length === 0) {
             const marker = L.marker([lat, lon], { 
                 icon: (typeof wptIcon !== 'undefined' ? wptIcon : new L.Icon.Default()) 
             }).addTo(map);
             
+            
             marker.bindTooltip(finalName, { 
-                permanent: (typeof showWptNameAlways !== 'undefined' ? showWptNameAlways : false), 
-                direction: 'top', offset: [0, -10] 
+                permanent: false, 
+                direction: 'top', 
+                offset: [0, -10] 
             });
 
             marker.on('click', (e) => {
@@ -3909,8 +3910,8 @@ function processSave(finalName, finalEle) {
             wptMarkers.push(marker);
         }
 
-        
         showCustomPopup(targetIdx, finalName, "wpt", lat, lon); 
+        renderRouteInfo()
         
     }, 350); 
 }
