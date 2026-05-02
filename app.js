@@ -1390,6 +1390,18 @@ const CombinedControl = L.Control.extend({
         return container;
     }
 });
+
+window.toggleWgsInput = function() {
+    const type = document.getElementById('wgs_type').value;
+    const dd = document.getElementById('wgs_dd_input');
+    const dms = document.getElementById('wgs_dms_input');
+    if (dd && dms) {
+        dd.style.display = (type === 'DD') ? 'flex' : 'none';
+        dms.style.display = (type === 'DMS') ? 'flex' : 'none';
+    }
+};
+
+
 map.addControl(new CombinedControl());
 
 let gpsInterval = null;
