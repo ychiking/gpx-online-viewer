@@ -1628,15 +1628,17 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
 
     if (lat === null || lon === null) return;
 
-    
-    if (window.activeFocusCircle) {
-        window.activeFocusCircle.setLatLng([lat, lon]);
-    } else {
-        
-        window.activeFocusCircle = L.circleMarker([lat, lon], {
-            radius: 7, color: '#fff', weight: 2, fillColor: '#1a73e8', fillOpacity: 1, interactive: false
-        }).addTo(map);
-    }
+    map.eachLayer(layer => {
+
+        if (layer instanceof L.CircleMarker && layer.options.radius === 7) {
+            map.removeLayer(layer);
+        }
+    });
+    window.activeFocusCircle = null; 
+
+    window.activeFocusCircle = L.circleMarker([lat, lon], {
+        radius: 7, color: '#fff', weight: 2, fillColor: '#1a73e8', fillOpacity: 1, interactive: false
+    }).addTo(map);
 
     
     let matchedPoint = (idx !== null && idx !== 999999 && typeof trackPoints !== 'undefined' && trackPoints[idx]) ? trackPoints[idx] : null;
@@ -3566,44 +3568,38 @@ function showGpxManagementModal() {
     const defaultColors = ['#0000FF', '#FF3300', '#FF00FF', '#FFD600', '#9C27B0', '#33FF00', '#00FFFF', '#E91E63', '#1A73E8', '#00E676', '#FF8C00', '#BF00FF', '#A5F2F3', '#FFF000', '#87CEFA', '#FF1493'];
 
     let listHtml = `
-        <div style="background:white; padding:20px; border-radius:12px; width:300px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-height: 80vh; display: flex; flex-direction: column;">
-            <h3 style="margin:0 0 15px 0; font-size:18px; border-bottom:1px solid #eee; padding-bottom:10px;">管理軌跡</h3>
+        <div style="background:white; padding:20px; border-radius:12px; width:320px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-height: 80vh; display: flex; flex-direction: column; position: relative;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
+                <h3 style="margin:0; font-size:18px;">管理軌跡</h3>
+                <button onclick="mergeSelectedGpx()" style="padding:5px 10px; background:#34a853; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">合併勾選</button>
+            </div>
             <div style="flex: 1; overflow-y:auto; padding-right:5px;">`;
     
     multiGpxStack.forEach((gpx, i) => {
+        // 修改：讓當前使用中的軌跡也能勾選，以便參與合併
         const isChecked = gpx.visible !== false ? 'checked' : '';
-        
         const isFocused = (window.currentMultiIndex === i);
         
         listHtml += `
             <div style="margin-bottom: 10px; border: 1px solid ${isFocused ? '#1a73e8' : '#eee'}; border-radius: 8px; padding: 10px; background: ${isFocused ? '#f0f7ff' : '#fafafa'};">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <input type="checkbox" id="gpx-chk-${i}" ${isChecked} ${isFocused ? 'disabled' : ''} onchange="toggleGpx(${i})" 
-                        style="width:18px; height:18px; cursor: ${isFocused ? 'not-allowed' : 'pointer'};">
+                    <input type="checkbox" id="gpx-chk-${i}" ${isChecked} onchange="toggleGpxVisibility(${i})" 
+                        style="width:18px; height:18px; cursor: pointer;">
                     
                     <div onclick="toggleColorPicker(${i})" style="
-                        width: 22px; height: 22px; background: ${gpx.color}; 
+                        width: 22px; height: 22px; background: ${gpx.color || '#ff0000'}; 
                         border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 0 1px #ddd;
                         flex-shrink: 0;
                     "></div>
 
-                    <label for="gpx-chk-${i}" style="font-size:14px; font-weight:500; cursor:${isFocused ? 'default' : 'pointer'}; color:${isFocused ? '#1a73e8' : '#333'}; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <label for="gpx-chk-${i}" style="font-size:14px; font-weight:500; cursor:pointer; color:${isFocused ? '#1a73e8' : '#333'}; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                         ${gpx.name} ${isFocused ? '<span style="font-size:11px; margin-left:5px; background:#1a73e8; color:white; padding:1px 4px; border-radius:3px;">使用中</span>' : ''}
                     </label>
                 </div>
-                
                 <div id="picker-${i}" style="display: none; margin-top: 12px; padding: 8px; background: white; border-radius: 6px; border: 1px solid #ddd; gap: 6px; flex-wrap: wrap; justify-content: center;">
                     ${defaultColors.map(color => {
-                        const isSelected = gpx.color.toUpperCase() === color.toUpperCase();
-                        return `
-                            <div onclick="changeGpxColor(${i}, '${color}')" style="
-                                width: 24px; height: 24px; background: ${color}; 
-                                border-radius: 4px; cursor: pointer; position: relative;
-                                border: ${isSelected ? '2px solid #333' : '1px solid rgba(0,0,0,0.1)'};
-                            ">
-                                ${isSelected ? '<div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:6px; height:6px; background:white; border-radius:50%;"></div>' : ''}
-                            </div>
-                        `;
+                        const isSelected = gpx.color && gpx.color.toUpperCase() === color.toUpperCase();
+                        return `<div onclick="changeGpxColor(${i}, '${color}')" style="width: 24px; height: 24px; background: ${color}; border-radius: 4px; cursor: pointer; position: relative; border: ${isSelected ? '2px solid #333' : '1px solid rgba(0,0,0,0.1)'};"></div>`;
                     }).join('')}
                 </div>
             </div>`;
@@ -3616,6 +3612,15 @@ function showGpxManagementModal() {
             </button>
         </div>`;
     modal.innerHTML = listHtml;
+}
+
+// 輔助函式：確保 toggle 狀態有存回 multiGpxStack
+function toggleGpxVisibility(idx) {
+    const chk = document.getElementById(`gpx-chk-${idx}`);
+    if (multiGpxStack[idx]) {
+        multiGpxStack[idx].visible = chk.checked;
+        if (typeof toggleGpx === 'function') toggleGpx(idx); // 呼叫原本的圖層切換
+    }
 }
 
 window.toggleGpx = function(index) {
@@ -3983,10 +3988,8 @@ window.exportGpx = function(index) {
     const routeSelect = document.getElementById("routeSelect");
     let activeIdx = parseInt(routeSelect?.value) || 0;
     
-    
     let currentRoute = (typeof allTracks !== 'undefined' && allTracks[activeIdx]) ? allTracks[activeIdx] : item;
 
-    
     if (!currentRoute && typeof allWpts !== 'undefined' && allWpts.length > 0) {
         currentRoute = {
             name: "New_Waypoints",
@@ -3996,50 +3999,59 @@ window.exportGpx = function(index) {
         };
     }
 
-    if (!currentRoute) return alert("找不到可匯出的資料（軌跡或航點）");
+    if (!currentRoute) return alert("找不到可匯出的資料");
+
+    const escapeXml = (unsafe) => {
+        if (!unsafe) return "";
+        return unsafe.toString()
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+    };
+
+    // --- 【新增】專門處理 BaseCamp 時間格式的函式 ---
+    const formatIsoTime = (timeStr) => {
+        if (!timeStr) return null;
+        // 確保將空白替換為 T，並確保符合 ISO 8601 格式
+        let formatted = timeStr.trim().replace(/\s+/g, 'T');
+        
+        // 如果結尾沒有 Z 或時區偏移，則補上 Z (代表 UTC)
+        if (!formatted.includes('Z') && !formatted.includes('+')) {
+            formatted += 'Z';
+        }
+        return formatted;
+    };
 
     const toTwDate = (timeStr) => {
         if (!timeStr) return null;
         const d = new Date(timeStr);
-        if (isNaN(d.getTime())) return timeStr.split('T')[0]; 
+        if (isNaN(d.getTime())) return null; 
         const twTime = new Date(d.getTime() + (8 * 60 * 60 * 1000));
         return twTime.toISOString().split('T')[0];
     };
 
-    
     const hasPoints = currentRoute.points && currentRoute.points.length > 0;
     const targetDate = hasPoints ? toTwDate(currentRoute.points[0].time) : null;
-    const trackName = (currentRoute.name || "Exported_Route").replace(/[/\\?%*:|<>]/g, '-');
+    const trackName = escapeXml(currentRoute.name || "Exported_Route");
 
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="YCHiking" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>${trackName}</name></metadata>`;
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.0" creator="YCHiking" 
+  xmlns="http://www.topografix.com/GPX/1/0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata><name>${trackName}</name></metadata>`;
 
-    
-    let tracksToExport = currentRoute.isCombined ? allTracks.filter(t => !t.isCombined) : [currentRoute];
-    tracksToExport.forEach(route => {
-        if (route.points?.length > 0) {
-            gpx += `\n  <trk><name>${route.name || "Track"}</name><trkseg>`;
-            route.points.forEach(p => {
-                gpx += `\n      <trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele || 0}</ele>${p.time ? `<time>${p.time}</time>` : ""}</trkpt>`;
-            });
-            gpx += `\n    </trkseg>\n  </trk>`;
-        }
-    });
-
-    
     let finalWpts = [];
     const rawWpts = currentRoute.waypoints || [];
-
     rawWpts.forEach(w => {
         let shouldInclude = false;
-        
-        if (currentRoute.isCombined || currentRoute.isCustomExport) {
-            
+        if (!hasPoints || currentRoute.isCombined || currentRoute.isCustomExport) {
             shouldInclude = true;
         } else {
-            
             if (w.isCustom || w.belongsToRoute !== undefined) {
-                
-                if (w.belongsToRoute === activeIdx || !hasPoints) shouldInclude = true;
+                if (w.belongsToRoute === activeIdx) shouldInclude = true;
             } else {
                 const wptTwDate = toTwDate(w.time);
                 if (targetDate && wptTwDate === targetDate) shouldInclude = true;
@@ -4049,18 +4061,40 @@ window.exportGpx = function(index) {
         if (shouldInclude) finalWpts.push(w);
     });
 
+
     finalWpts.forEach(w => {
-        gpx += `\n  <wpt lat="${w.lat}" lon="${w.lon}">\n    <ele>${w.ele || 0}</ele>\n    <name>${w.name || "未命名"}</name>${w.time ? `\n    <time>${w.time}</time>` : ""}\n  </wpt>`;
+        const name = escapeXml(w.name || "WayPoint");
+        const safeTime = formatIsoTime(w.time); 
+        gpx += `\n  <wpt lat="${Number(w.lat).toFixed(6)}" lon="${Number(w.lon).toFixed(6)}">`;
+        if (w.ele !== undefined) gpx += `\n    <ele>${Number(w.ele).toFixed(2)}</ele>`;
+        gpx += `\n    <name>${name}</name>`;
+        if (safeTime) gpx += `\n    <time>${safeTime}</time>`;
+        gpx += `\n  </wpt>`;
+    });
+
+    let tracksToExport = currentRoute.isCombined ? allTracks.filter(t => !t.isCombined) : [currentRoute];
+    tracksToExport.forEach(route => {
+        if (route.points?.length > 0) {
+            const trkName = escapeXml(route.name || "Track");
+            gpx += `\n  <trk>\n    <name>${trkName}</name>\n    <trkseg>`;
+            route.points.forEach(p => {
+                const safePTime = formatIsoTime(p.time); 
+                gpx += `\n      <trkpt lat="${Number(p.lat).toFixed(6)}" lon="${Number(p.lon).toFixed(6)}">`;
+                if (p.ele !== undefined) gpx += `<ele>${Number(p.ele).toFixed(2)}</ele>`;
+                if (safePTime) gpx += `<time>${safePTime}</time>`;
+                gpx += `</trkpt>`;
+            });
+            gpx += `\n    </trkseg>\n  </trk>`;
+        }
     });
 
     gpx += `\n</gpx>`;
 
-    
-    const blob = new Blob(["\ufeff" + gpx], { type: 'application/gpx+xml;charset=utf-8' });
+    const blob = new Blob([gpx], { type: 'application/gpx+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${trackName}.gpx`;
+    a.download = `${trackName.replace(/ /g, '_')}.gpx`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
@@ -4310,3 +4344,124 @@ searchConfirmBtn.onclick = performSearch;
 searchInput.onkeydown = function(e) {
     if (e.key === "Enter") performSearch();
 };
+
+function mergeSelectedGpx() {
+    console.log("%c >>> 模擬真實匯入模式 (解決直線與選單) <<< ", "background: #000; color: #00ff00; font-size: 18px;");
+
+    try {
+        const selectedIndices = [];
+        const checkboxes = document.querySelectorAll('input[type="checkbox"][id^="gpx-chk-"]');
+        checkboxes.forEach(chk => {
+            if (chk.checked) selectedIndices.push(parseInt(chk.id.replace('gpx-chk-', '')));
+        });
+
+        if (selectedIndices.length < 2) return alert("請至少選擇兩條軌跡");
+
+        const mergedName = "⭐合併成果_" + new Date().toLocaleTimeString('zh-TW', {hour12:false}).slice(0,5);
+        let gpxWaypointsXml = "";
+        let gpxTracksXml = `\n  <trk>\n    <name>${mergedName}</name>`; 
+
+        // 1. 物理構建 (模仿閂山鈴鳴結構)
+        selectedIndices.sort((a, b) => a - b).forEach((idx) => {
+            const gpx = multiGpxStack[idx];
+            if (!gpx || !gpx.points) return;
+            
+            gpxTracksXml += `\n    <trkseg>`;
+            gpx.points.forEach(p => {
+                gpxTracksXml += `\n      <trkpt lat="${p.lat}" lon="${p.lon}">${p.ele ? `<ele>${p.ele}</ele>` : ''}</trkpt>`;
+            });
+            gpxTracksXml += `\n    </trkseg>`;
+
+            (gpx.waypoints || []).forEach(w => {
+                const lat = w.lat || w.latitude;
+                const lon = w.lon || w.longitude;
+                gpxWaypointsXml += `\n  <wpt lat="${lat}" lon="${lon}"><name>${w.name || 'Wpt'}</name></wpt>`;
+            });
+        });
+        gpxTracksXml += `\n  </trk>`;
+
+        const gpxFullXml = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">${gpxWaypointsXml}${gpxTracksXml}</gpx>`;
+        const blob = new Blob([gpxFullXml], { type: 'application/gpx+xml' });
+
+        // 2. 備份下載
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${mergedName}.gpx`;
+        a.click();
+
+        // 3. 【終極大招】將 Blob 轉為 File，直接餵給系統的上傳入口
+        const dummyFile = new File([blob], `${mergedName}.gpx`, { type: "application/gpx+xml" });
+
+        // 嘗試找出你網頁的上傳 input (通常 ID 是 gpxInput 或 gpxFile)
+        const fileInput = document.getElementById('gpxInput') || 
+                          document.getElementById('gpxFile') || 
+                          document.querySelector('input[type="file"]');
+
+        if (fileInput) {
+            console.log("發現上傳點，執行模擬匯入...");
+            // 使用 DataTransfer 物件模擬使用者選取檔案
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(dummyFile);
+            fileInput.files = dataTransfer.files;
+
+            // 觸發 Change 事件，讓 app1042.js 接手後續工作
+            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            // 關閉合併視窗
+            document.getElementById('gpxManageModal').style.display = 'none';
+            alert("合併完成！已模擬重新匯入，這將消除直線並刷新子路線選單。");
+        } else {
+            // 萬一抓不到 input，則提示使用者手動上傳剛下載的檔案
+            alert("合併已完成並下載，請直接手動「匯入」該檔案，即可獲得完美的分段效果！");
+        }
+
+    } catch (err) {
+        console.error("合併錯誤:", err);
+        alert("合併過程中發生錯誤，請查看 Console。");
+    }
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// 關鍵函式：讓選單同步
+function refreshTopMenu() {
+    const routeSelect = document.getElementById("routeSelect");
+    if (!routeSelect) return;
+    
+    routeSelect.innerHTML = ""; // 清空
+    multiGpxStack.forEach((gpx, i) => {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = gpx.name;
+        routeSelect.appendChild(opt);
+    });
+    
+    // 確保容器顯示
+    const container = document.getElementById("routeSelectContainer");
+    if (container) container.style.display = "block";
+}
+
+
+function updateRouteSelectDropdown() {
+    const routeSelect = document.getElementById("routeSelect");
+    if (!routeSelect) return;
+
+    routeSelect.innerHTML = "";
+    multiGpxStack.forEach((gpx, i) => {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = gpx.name;
+        if (i === window.currentMultiIndex) opt.selected = true;
+        routeSelect.appendChild(opt);
+    });
+    
+    // 如果大於 1 個，確保選單容器可見
+    const container = document.getElementById("routeSelectContainer");
+    if (container) container.style.display = "block";
+}
