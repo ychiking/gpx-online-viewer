@@ -3964,26 +3964,31 @@ function executeDelete(idx) {
 
     if (!currentStackItem || !currentStackItem.waypoints) return;
 
-    
-    currentStackItem.waypoints.splice(idx, 1);
+    const target = currentStackItem.waypoints[idx];
+    if (!target) return;
 
-    
+    const targetName = target.name;
+    const targetLat = target.lat;
+    const targetLon = target.lon;
+
+    currentStackItem.waypoints = currentStackItem.waypoints.filter(w => {
+        const isSame = (w.name === targetName && w.lat === targetLat && w.lon === targetLon);
+        return !isSame; 
+    });
+
     if (typeof allTracks !== 'undefined' && Array.isArray(allTracks)) {
         allTracks.forEach(track => {
             track.waypoints = currentStackItem.waypoints;
         });
     }
 
-    
     if (typeof renderWaypointsAndPeaks === 'function') {
         renderWaypointsAndPeaks(allTracks[window.currentActiveIndex || 0]);
     }
 
-    
     if (typeof loadRoute === 'function') {
         loadRoute(window.currentActiveIndex || 0); 
     }
-    
     
     if (typeof currentPopup !== 'undefined' && currentPopup) map.closePopup();
 }
