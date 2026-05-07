@@ -4020,13 +4020,9 @@ window.exportGpx = function(index) {
             .replace(/'/g, '&apos;');
     };
 
-    // --- 【新增】專門處理 BaseCamp 時間格式的函式 ---
     const formatIsoTime = (timeStr) => {
         if (!timeStr) return null;
-        // 確保將空白替換為 T，並確保符合 ISO 8601 格式
         let formatted = timeStr.trim().replace(/\s+/g, 'T');
-        
-        // 如果結尾沒有 Z 或時區偏移，則補上 Z (代表 UTC)
         if (!formatted.includes('Z') && !formatted.includes('+')) {
             formatted += 'Z';
         }
@@ -4045,6 +4041,7 @@ window.exportGpx = function(index) {
     const targetDate = hasPoints ? toTwDate(currentRoute.points[0].time) : null;
     const trackName = escapeXml(currentRoute.name || "Exported_Route");
 
+    // --- 開始構建 GPX ---
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.0" creator="YCHiking" 
   xmlns="http://www.topografix.com/GPX/1/0"
@@ -4053,28 +4050,63 @@ window.exportGpx = function(index) {
   <metadata><name>${trackName}</name></metadata>`;
 
     let finalWpts = [];
-    const rawWpts = currentRoute.waypoints || [];
-    rawWpts.forEach(w => {
-        let shouldInclude = false;
-        if (!hasPoints || currentRoute.isCombined || currentRoute.isCustomExport) {
-            shouldInclude = true;
-        } else {
-            if (w.isCustom || w.belongsToRoute !== undefined) {
-                if (w.belongsToRoute === activeIdx) shouldInclude = true;
-            } else {
-                const wptTwDate = toTwDate(w.time);
-                if (targetDate && wptTwDate === targetDate) shouldInclude = true;
-                else if (!w.time) shouldInclude = true; 
-            }
-        }
-        if (shouldInclude) finalWpts.push(w);
-    });
 
+    const seenWpts = new Set();
+
+    const isMultiRoute = routeSelect && routeSelect.options.length > 1;
+
+    if (isMultiRoute) {
+        const rawWpts = (currentRoute.waypoints && currentRoute.waypoints.length > 0) 
+                        ? currentRoute.waypoints 
+                        : (typeof allWpts !== 'undefined' ? allWpts : []);
+
+        rawWpts.forEach(w => {
+
+            const wptKey = `${w.lat}_${w.lon}_${w.name || ''}_${w.time || ''}`;
+            if (seenWpts.has(wptKey)) return; 
+
+            let shouldInclude = false;
+            if (!hasPoints || currentRoute.isCombined || currentRoute.isCustomExport) {
+                shouldInclude = true;
+            } else {
+                if (w.isCustom || w.belongsToRoute !== undefined) {
+                    if (w.belongsToRoute === activeIdx) shouldInclude = true;
+                } else {
+                    const wptTwDate = toTwDate(w.time);
+                    if (targetDate && wptTwDate === targetDate) {
+                        shouldInclude = true;
+                    } else if (!w.time) {
+                        shouldInclude = true;
+                    } else if (!targetDate) {
+                        shouldInclude = true;
+                    }
+                }
+            }
+
+            if (shouldInclude) {
+                finalWpts.push(w);
+                seenWpts.add(wptKey); 
+            }
+        });
+    } else {
+         const rawSource = (typeof allWpts !== 'undefined' && allWpts.length > 0) ? allWpts : (currentRoute.waypoints || []);
+        
+        rawSource.forEach(w => {
+            const wptKey = `${w.lat}_${w.lon}_${w.name || ''}_${w.time || ''}`;
+            if (!seenWpts.has(wptKey)) {
+                finalWpts.push(w);
+                seenWpts.add(wptKey);
+            }
+        });
+    }
 
     finalWpts.forEach(w => {
         const name = escapeXml(w.name || "WayPoint");
         const safeTime = formatIsoTime(w.time); 
-        gpx += `\n  <wpt lat="${Number(w.lat).toFixed(6)}" lon="${Number(w.lon).toFixed(6)}">`;
+        const lat = isMultiRoute ? Number(w.lat).toFixed(6) : w.lat;
+        const lon = isMultiRoute ? Number(w.lon).toFixed(6) : w.lon;
+        
+        gpx += `\n  <wpt lat="${lat}" lon="${lon}">`;
         if (w.ele !== undefined) gpx += `\n    <ele>${Number(w.ele).toFixed(2)}</ele>`;
         gpx += `\n    <name>${name}</name>`;
         if (safeTime) gpx += `\n    <time>${safeTime}</time>`;
@@ -4088,7 +4120,10 @@ window.exportGpx = function(index) {
             gpx += `\n  <trk>\n    <name>${trkName}</name>\n    <trkseg>`;
             route.points.forEach(p => {
                 const safePTime = formatIsoTime(p.time); 
-                gpx += `\n      <trkpt lat="${Number(p.lat).toFixed(6)}" lon="${Number(p.lon).toFixed(6)}">`;
+                const pLat = isMultiRoute ? Number(p.lat).toFixed(6) : p.lat;
+                const pLon = isMultiRoute ? Number(p.lon).toFixed(6) : p.lon;
+                
+                gpx += `\n      <trkpt lat="${pLat}" lon="${pLon}">`;
                 if (p.ele !== undefined) gpx += `<ele>${Number(p.ele).toFixed(2)}</ele>`;
                 if (safePTime) gpx += `<time>${safePTime}</time>`;
                 gpx += `</trkpt>`;
