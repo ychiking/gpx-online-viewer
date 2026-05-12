@@ -13,6 +13,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <script src="https://unpkg.com/leaflet-tilelayer-wmts/dist/leaflet-tilelayer-wmts.js"></script>
 
   <style>
 
@@ -67,7 +69,7 @@
     }
 
     .subtitle {
-      margin-top: 8px;
+      margin-top: 0px;
       font-size: 14px;
       color: #555;
       line-height: 1.4;
@@ -347,7 +349,6 @@
       visibility: visible;
     }
 
-    /* 多檔案底部欄 */
     .multi-gpx-bar {
       position: absolute;
       bottom: 0;
@@ -436,7 +437,6 @@
       cursor: pointer;
     }
 
-    /* 新增：匯出按鈕樣式 */
     .gpx-file-btn.export-btn {
       flex: 0 0 auto !important;
       border: 1px solid #4CAF50 !important;
@@ -518,7 +518,6 @@
       line-height: 1;
     }
 
-    /* 列表操作圖示 */
     .wpt-action-icon {
         font-size: 18px !important;
         vertical-align: middle;
@@ -677,12 +676,219 @@
 .leaflet-control {
     margin-right: 10px !important;
 }
+
+.sortable-ghost {
+    background-color: #f0f7ff !important;
+    opacity: 0.5;
+    border: 1px dashed #1a73e8;
+}
+
+.drag-handle:hover {
+    color: #1a73e8 !important;
+}
+
+.wpt-table {
+    user-select: none;
+}
+
+.wpt-table tbody tr:hover {
+    background-color: rgba(26, 115, 232, 0.05);
+}
+
+.wpt-tableBody.is-dragging {
+    cursor: cell;
+}
+
+.wpt-checkbox {
+    -webkit-appearance: checkbox !important; 
+    appearance: checkbox !important;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent; 
+}
+
+.wpt-table {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+
+#map:fullscreen #navShortcuts::before,
+.iphone-fullscreen #navShortcuts::before,
+:fullscreen #navShortcuts::before {
+    content: none !important;
+    display: none !important;
+}
+
+:fullscreen ~ .wpt-modal-overlay,
+:fullscreen ~ .modal-overlay,
+:fullscreen ~ #deleteConfirmModal {
+    z-index: 2147483647 !important;
+    display: flex !important;
+}
+
+#navShortcuts {
+    display: flex;
+    flex-wrap: nowrap; 
+    align-items: center;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    gap: 4px;
+    width: 100%;
+    position: relative;
+    margin-top: 0px; 
+}
+
+
+#navShortcuts::before {
+    content: "";
+    display: flex;
+    width: 100vw;
+    height: 1px;
+    background-color: #ddd;
+    position: absolute;
+    top: -6px; 
+    flex-wrap: nowrap;
+    overflow-x: auto; 
+    -webkit-overflow-scrolling: touch;
+    white-space: nowra
+}
+
+#map:fullscreen #navShortcuts::before,
+.iphone-fullscreen #navShortcuts::before,
+#map:fullscreen #navShortcuts,
+.iphone-fullscreen #navShortcuts:empty {
+    content: none !important;
+    display: none !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+
+#routeSelectContainer {
+    display: none;
+    position: absolute !important;
+    top: 15px !important;
+    left: 10% !important;
+    transform: translateX(-50%) !important;
+    z-index: 10001 !important;
+    
+    background: white !important; 
+    padding: 4px 12px !important;
+    border-radius: 20px !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
+    white-space: nowrap !important;
+}
+
+#routeSelect {
+    border: none !important;
+    background: transparent !important;
+    color: #000000 !important;       
+    font-size: 14px !important;
+    outline: none !important;
+    cursor: pointer;
+    width: 240px;
+
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 20px;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right center;
+}
+
+#map:fullscreen #routeSelectContainer,
+.iphone-fullscreen #routeSelectContainer {
+    top: 30px !important; 
+}
+
+.navShortcuts-locked {
+    pointer-events: none !important; 
+    opacity: 0.4 !important;     
+    filter: grayscale(100%) !important;
+    transition: opacity 0.3s ease;  
+}
+
+.wpt-modal-content h3 {
+    font-size: 20px !important;   
+    margin-bottom: 15px !important;
+}
+
+.wpt-modal-content label {
+    font-size: 14px !important;   
+    font-weight: bold !important;
+}
+
+.wpt-modal-content input, 
+.wpt-modal-content button {
+    font-size: 16px !important;  
+}
+
+.wpt-modal-content span {
+    font-size: 24px !important;    
+}
+
+#gpxManageModal, 
+#searchModal, 
+#wptEditModal, 
+#deleteConfirmModal, 
+#renameModal, 
+#coordModal {
+    z-index: 2147483647 !important;
+}
+
+/* 針對全螢幕狀態的統一鎖定 */
+:fullscreen ~ .modal-class, /* 如果你的 Modal 有共同的 class */
+#map:fullscreen .modal-class,
+:fullscreen ~ [id$="Modal"], /* 或者選取所有 ID 結尾是 Modal 的元素 */
+#map:fullscreen [id$="Modal"],
+.iphone-fullscreen [id$="Modal"] {
+    z-index: 2147483647 !important;
+    position: absolute; /* 確保全螢幕下定位不跑掉 */
+}
+
+.map-side-bar {
+    position: absolute;
+    right: 15px;
+    top: 240px;
+    transform: translateY(-50%);
+    z-index: 1000; 
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.side-tool-btn {
+    width: 35px;
+    height: 35px;
+    background: white;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0;
+}
+
+.side-tool-btn:hover {
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+    filter: brightness(0.95);
+}
+
+.side-tool-btn .material-icons {
+    font-size: 22px;
+}
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605071</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605121</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
@@ -708,13 +914,14 @@
           </button>
         </div>
         <div id="routeSelectContainer" style="display: none; margin-top: 0;">
-          <select id="routeSelect" style="height: 28px; padding: 0 10px; border-radius: 16px; border: 1px solid #ccc; box-sizing: border-box;"></select>
+          <select id="routeSelect" style="height: 20px; padding: 0 10px; border-radius: 16px; border: 1px solid #ccc; box-sizing: border-box;"></select>
         </div>
       </div>
     </div>
   </div>
 
   <div id="map">
+  	<div id="side-toolbar" class="map-side-bar"></div>
     <div id="multiGpxBtnBar" class="multi-gpx-bar" style="display: none;"></div>
     <div id="mapCompass" class="map-compass">
       <svg width="100%" height="100%" viewBox="-10 -10 160 160">
@@ -783,9 +990,8 @@
       </div>
     </div>
   </div>
-  
 	<button id="toggleChartBtn" onclick="toggleElevationChart()" style="display: none;">展開/收合高度表</button>
-			<div id="wptEditModal" class="wpt-modal-overlay">
+	<div id="wptEditModal" class="wpt-modal-overlay">
   <div class="wpt-modal-content" onclick="event.stopPropagation()">
     
     <span style="position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #999;" 
@@ -803,7 +1009,9 @@
       <input type="number" id="modalWptEle" style="width: 100%; padding: 8px; border: 1px solid #ccc; font-size: 16px; border-radius: 4px; box-sizing: border-box;">
     </div>
     
-    <button id="modalWptConfirm" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">確定儲存</button>
+    <button id="modalWptConfirm" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 16px; cursor: pointer; font-weight: bold; margin-bottom: 8px;">確定儲存</button>
+
+    <button id="modalWptDelete" style="width: 100%; background: #fff; color: #dc3545; border: 1px solid #dc3545; padding: 10px; font-weight: bold; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; display: none;">刪除航點</button>
   </div>
 </div>
 		
@@ -817,11 +1025,7 @@
         <div style="margin-bottom: 15px;">
               <input type="text" id="modalRouteName" style="width: 100%; font-size: 16px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; text-align: center;">
         </div>
-
-        <p style="margin:0 0 20px 0; color:#e74c3c; font-size:13px; line-height:1.5; font-family: sans-serif; text-align: center; font-weight: bold;">
-            修改後切換不同檔案的GPX，<br>請先記得匯出。
-        </p>
-
+  			<button id="modalWptDelete" style="width: 100%; background: white; color: #dc3545; border: 1px solid #dc3545; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; display: none;">刪除航點</button>
         <button id="modalRouteConfirm" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">確認更新</button>
     </div>
 </div>
@@ -834,8 +1038,8 @@
         <p style="margin:0 0 25px 0; color:#7f8c8d; font-size:14px; line-height:1.6; font-family: sans-serif;">此動作無法復原。<br>您確定要刪除此航點？</p>
         
         <div style="display:flex; gap:12px; justify-content:center;">
-            <button id="modalDeleteCancel" style="flex:1; padding:12px; border:1px solid #ddd; background:#f8f9fa; color:#333; border-radius:8px; cursor:pointer; font-weight:bold;">取消</button>
-            <button id="modalDeleteConfirm" style="flex:1; padding:12px; border:none; background:#1a73e8; color:white; border-radius:8px; cursor:pointer; font-weight:bold;">確定刪除</button>
+            <button id="modalDeleteCancel" style="flex:1; padding:12px; font-weight: bold; font-size: 16px; border:1px solid #ddd; background:#f8f9fa; color:#333; border-radius:8px; cursor:pointer; font-weight:bold;">取消</button>
+            <button id="modalDeleteConfirm" style="flex:1; padding:12px; font-weight: bold; font-size: 16px; border:none; background:#1a73e8; color:white; border-radius:8px; cursor:pointer; font-weight:bold;">確定刪除</button>
         </div>
     </div>
 </div>
