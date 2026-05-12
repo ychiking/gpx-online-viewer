@@ -5446,14 +5446,13 @@ function handleFullscreenStateChange() {
                     display: block !important;
                     position: absolute !important;
                     top: 15px !important;
-                    left: 10% !important;
-                    transform: translateX(-50%) !important;
+                    left: 55px !important;
                     z-index: 2147483645 !important;
                     background: white !important; 
-                    padding: 4px 15px !important;
+                    padding: 4px 12px !important;
                     border-radius: 20px !important;
                     color: #000000 !important;
-                    width: auto !important;
+                    max-width: 240px !important;
                     font-size: 14px !important; 
                     border: 1px solid rgba(255,255,255,0.3) !important;
                     box-shadow: 0 2px 6px rgba(0,0,0,0.3) !important;
