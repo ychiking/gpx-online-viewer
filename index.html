@@ -837,14 +837,14 @@
     z-index: 2147483647 !important;
 }
 
-/* 針對全螢幕狀態的統一鎖定 */
-:fullscreen ~ .modal-class, /* 如果你的 Modal 有共同的 class */
+
+:fullscreen ~ .modal-class, 
 #map:fullscreen .modal-class,
-:fullscreen ~ [id$="Modal"], /* 或者選取所有 ID 結尾是 Modal 的元素 */
+:fullscreen ~ [id$="Modal"], 
 #map:fullscreen [id$="Modal"],
 .iphone-fullscreen [id$="Modal"] {
     z-index: 2147483647 !important;
-    position: absolute; /* 確保全螢幕下定位不跑掉 */
+    position: absolute; 
 }
 
 .map-side-bar {
@@ -881,12 +881,51 @@
 .side-tool-btn .material-icons {
     font-size: 22px;
 }
+
+.side-tool-btn.disabled {
+    color: #ccc !important;
+    background-color: #f5f5f5 !important;
+    cursor: not-allowed !important;
+    opacity: 0.6;
+    pointer-events: none; 
+}
+
+#deleteConfirmModal h3 {
+    font-size: 22px !important; 
+}
+
+#deleteConfirmModal p {
+    font-size: 14px !important; 
+    line-height: 1.5;      
+}
+
+#deleteConfirmModal button {
+    font-size: 16px !important;
+}
+
+#deleteConfirmModal .material-icons {
+    font-size: 32px !important;
+    color: #f39c12;            
+    display: block;         
+    margin: 10px auto;        
+    width: auto;
+    height: auto;
+}
+
+
+#deleteConfirmModal .modal-icon-container {
+    height: auto !important;
+    width: auto !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605122</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605123</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
@@ -1037,7 +1076,7 @@
         
         <div style="display:flex; gap:12px; justify-content:center;">
             <button id="modalDeleteCancel" style="flex:1; padding:12px; font-weight: bold; font-size: 16px; border:1px solid #ddd; background:#f8f9fa; color:#333; border-radius:8px; cursor:pointer; font-weight:bold;">取消</button>
-            <button id="modalDeleteConfirm" style="flex:1; padding:12px; font-weight: bold; font-size: 16px; border:none; background:#1a73e8; color:white; border-radius:8px; cursor:pointer; font-weight:bold;">確定刪除</button>
+            <button id="modalDeleteConfirm" style="flex:1; padding:12px; font-weight: bold; font-size: 16px; border:none; background:#1a73e8; color:white; border-radius:8px; cursor:pointer; font-weight:bold;">確定</button>
         </div>
     </div>
 </div>

@@ -1221,17 +1221,17 @@ function loadRoute(index, customColor = null, focusPos = null) {
 				
 				    const isAlways = typeof showWptNameAlways !== 'undefined' && showWptNameAlways;
 				    wm.bindTooltip(w.name, { 
-						    permanent: isAlways,           // 只有開啟「顯示名稱」時才永久顯示
+						    permanent: isAlways,           
 						    direction: isAlways ? 'right' : 'top', 
 						    offset: isAlways ? [10, 0] : [0, -10],
 						    className: isAlways ? 'wpt-label-label' : ''
 						});
 						
-						// 2. 初始狀態控制
+						
 						if (isAlways) {
 						    wm.openTooltip();
 						} else {
-						    wm.closeTooltip(); // 確保預設是不顯示的
+						    wm.closeTooltip(); 
 						}
 				
 				    wm.on('dragend', function(event) {
@@ -3297,12 +3297,12 @@ function renderMultiGpxButtons() {
     const bar = document.getElementById('multiGpxBtnBar');
     if (!bar || !gpxManagerControlContainer) return;
 
-    // 狀態處理：如果有檔案，顯示 Bar
+    
     if (multiGpxStack && multiGpxStack.length > 0) {
         document.body.classList.add('has-gpx-bar');
         gpxManagerControlContainer.style.display = 'block';
         
-        // 更新管理按鈕內容
+        
         gpxManagerControlContainer.innerHTML = `
             <a href="#" title="管理 GPX 顯示" style="
                 background-color: white; 
@@ -3328,10 +3328,10 @@ function renderMultiGpxButtons() {
         gpxManagerControlContainer.style.display = 'none';
     }
 
-    // 清空並重新構建按鈕
+    
     bar.innerHTML = ''; 
     
-    // 關閉檔案按鈕
+    
     const closeBtn = document.createElement('button');
     closeBtn.className = 'gpx-file-btn close-btn';
     closeBtn.innerHTML = '✕ 關閉檔案';
@@ -3343,13 +3343,13 @@ function renderMultiGpxButtons() {
     bar.appendChild(closeBtn);
     
     multiGpxStack.forEach((gpx, i) => {
-        // 如果軌跡被隱藏，則不顯示按鈕
+        
         if (gpx.visible === false) {
             if (gpx.layerGroup) map.removeLayer(gpx.layerGroup); 
             return; 
         }
 
-        // 確保圖層在地圖上
+        
         if (gpx.layerGroup && !map.hasLayer(gpx.layerGroup)) {
             map.addLayer(gpx.layerGroup);
         }
@@ -3358,15 +3358,15 @@ function renderMultiGpxButtons() {
         btn.className = 'gpx-file-btn';
         btn.id = `multi-btn-${i}`;
         
-        // 增加 active 狀態判斷
+        
         if (i === window.currentMultiIndex) {
             btn.classList.add('active');
         }
 
         btn.textContent = gpx.name.length > 40 ? gpx.name.substring(0, 40) + "..." : gpx.name;
         
-        // --- 核心修正：強制顏色寫入 ---
-        // 使用 setProperty 搭配 important 確保在全螢幕下樣式依然有效
+        
+        
         btn.style.setProperty('border-left', `5px solid ${gpx.color}`, 'important');
         btn.style.setProperty('--track-color', gpx.color, 'important');
         
@@ -3843,7 +3843,7 @@ function showGpxManagementModal() {
         const isChecked = isVisible ? 'checked' : '';
         const isFocused = (window.currentMultiIndex === i);
         
-        // 使用中的不能被取消勾選
+        
         const disabledAttr = isFocused ? 'disabled' : '';
         const cursorStyle = isFocused ? 'cursor: not-allowed; opacity: 0.6;' : 'cursor: pointer;';
 
@@ -3889,12 +3889,12 @@ function showGpxManagementModal() {
         </div>`;
     modal.innerHTML = listHtml;
 
-    // 這裡同步全螢幕字體設定，避免忽大忽小
+    
     if (isNowFS) {
         syncFSFontSettings(modal);
     }
 
-    // 事件阻斷設定 (關鍵：排除 checkbox，否則無法勾選)
+    
     modal.querySelectorAll('[onclick], button').forEach(el => {
         L.DomEvent.on(el, 'click', L.DomEvent.stopPropagation);
     });
@@ -3905,7 +3905,7 @@ function showGpxManagementModal() {
 
 window.toggleGpx = function(index) {
 		const e = window.event;
-    // 如果點擊目標是 color picker 或者是觸發顏色盤的按鈕，就不要執行切換顯示
+    
     if (e && (e.target.type === 'color' || e.target.classList.contains('color-btn'))) {
         return;
     }
@@ -3916,7 +3916,7 @@ window.toggleGpx = function(index) {
         return;
     }
 
-    // 修正點 1: 統一由 Checkbox 狀態決定，不再用 !item.visible 反轉
+    
     if (chk) {
         item.visible = chk.checked;
         
@@ -5548,48 +5548,65 @@ fsClassObserver.observe(document.body, { attributes: true });
 
 function renderSideToolbar() {
     const sideToolbar = document.getElementById('side-toolbar');
-    if (!sideToolbar) {
-        return;
-    }
+    if (!sideToolbar) return;
 
+    
     if (sideToolbar.innerHTML.trim() !== "") {
+        updateWptIconStatus(); 
         if (window.historyManager) historyManager.updateUI();
         return;
     }
 
-    sideToolbar.innerHTML = `
-		    <button type="button" id="sideWptNameBtn" class="side-tool-btn" title="顯示/隱藏航點名稱">
-		        <span class="material-icons" id="sideWptIcon">visibility</span>
-		    </button>
-		    <div style="height: 1px; background: rgba(0,0,0,0.1); margin: 2px 5px;"></div>
-		    <button type="button" id="undoBtn" class="side-tool-btn" title="復原 (Undo)">
-		        <span class="material-icons">undo</span>
-		    </button>
-		    <button type="button" id="redoBtn" class="side-tool-btn" title="重做 (Redo)">
-		        <span class="material-icons">redo</span>
-		    </button>
-		`;
-
     
+    sideToolbar.innerHTML = `
+        <button type="button" id="sideWptNameBtn" class="side-tool-btn" title="顯示/隱藏航點名稱">
+            <span class="material-icons" id="sideWptIcon">visibility</span>
+        </button>
+        <div style="height: 1px; background: rgba(0,0,0,0.1); margin: 2px 5px;"></div>
+        <button type="button" id="undoBtn" class="side-tool-btn" title="復原 (Undo)">
+            <span class="material-icons">undo</span>
+        </button>
+        <button type="button" id="redoBtn" class="side-tool-btn" title="重做 (Redo)">
+            <span class="material-icons">redo</span>
+        </button>
+    `;
+
     const btns = sideToolbar.querySelectorAll('.side-tool-btn');
     btns.forEach(btn => {
-        
         L.DomEvent.disableClickPropagation(btn);
         L.DomEvent.disableScrollPropagation(btn);
     });
 
-    
     document.getElementById('sideWptNameBtn').onclick = function(e) {
+        if (this.classList.contains('disabled')) return;
         toggleWptNames();
     };
-    document.getElementById('undoBtn').onclick = function(e) {
-        historyManager.undo();
-    };
-    document.getElementById('redoBtn').onclick = function(e) {
-        historyManager.redo();
-    };
+
+    document.getElementById('undoBtn').onclick = () => historyManager.undo();
+    document.getElementById('redoBtn').onclick = () => historyManager.redo();
+
+    
+    updateWptIconStatus();
 
     setTimeout(() => {
         if (window.historyManager) historyManager.updateUI();
     }, 50);
+}
+
+function updateWptIconStatus() {
+    const sideBtn = document.getElementById('sideWptNameBtn');
+    if (!sideBtn) return;
+
+    
+    
+    const wptTableBody = document.getElementById('wptTableBody');
+    const hasVisibleWaypoints = wptTableBody && wptTableBody.rows.length > 0;
+
+    if (hasVisibleWaypoints) {
+        sideBtn.classList.remove('disabled');
+        sideBtn.title = "顯示/隱藏航點名稱";
+    } else {
+        sideBtn.classList.add('disabled');
+        sideBtn.title = "目前無航點可顯示";
+    }
 }
