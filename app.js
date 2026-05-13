@@ -1330,6 +1330,7 @@ function loadRoute(index, customColor = null, focusPos = null) {
             radius: 7, color: '#ffffff', weight: 2, fillColor: '#1a73e8', fillOpacity: 1, interactive: false 
         }).addTo(map);
     }
+    if (typeof updateWptIconStatus === 'function') updateWptIconStatus();
 }
  
 function toggleWptNames() {
@@ -2557,6 +2558,8 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
             if (typeof initWptDragSelect === 'function') initWptDragSelect();
         }, 150);
     }
+    
+    if (typeof updateWptIconStatus === 'function') updateWptIconStatus();
     
 };
 
@@ -5371,24 +5374,34 @@ function renderSideToolbar() {
 
 function updateWptIconStatus() {
     const sideBtn = document.getElementById('side-toolbar')?.querySelector('#sideWptNameBtn');
-    if (!sideBtn) {
-        console.warn("[Toolbar] 找不到 sideWptNameBtn 按鈕");
-        return;
-    }
+    if (!sideBtn) return;
 
     const stackIdx = window.currentMultiIndex || 0;
     const activeIdx = window.currentActiveIndex || 0;
     const currentStack = (window.multiGpxStack && window.multiGpxStack[stackIdx]);
     const currentRoute = (window.allTracks && window.allTracks[activeIdx]);
+    
     const wptTableBody = document.getElementById('wptTableBody');
-    const hasWaypoints = !!((currentStack?.waypoints?.length > 0) || (currentRoute?.waypoints?.length > 0));
+    const hasVisibleWaypoints = (wptTableBody && wptTableBody.rows.length > 0) || 
+                                 !!(currentStack?.waypoints?.length > 0) || 
+                                 !!(currentRoute?.waypoints?.length > 0);
 
-    if (hasWaypoints) {
+    if (hasVisibleWaypoints) {
         sideBtn.classList.remove('disabled');
         sideBtn.title = "顯示/隱藏航點名稱";
+        
+        const isActive = (typeof showWptNameAlways !== 'undefined' && showWptNameAlways);
+        sideBtn.style.setProperty('background', isActive ? "#1a73e8" : "white", 'important');
+        sideBtn.style.setProperty('color', isActive ? "white" : "#5f6368", 'important');
+        const icon = sideBtn.querySelector('.material-icons');
+        if (icon) icon.innerText = isActive ? "visibility" : "visibility_off";
     } else {
         sideBtn.classList.add('disabled');
         sideBtn.title = "目前無航點可顯示";
+        sideBtn.style.setProperty('background', "white", 'important');
+        sideBtn.style.setProperty('color', "#ccc", 'important');
+        const icon = sideBtn.querySelector('.material-icons');
+        if (icon) icon.innerText = "visibility_off";
     }
 }
 
