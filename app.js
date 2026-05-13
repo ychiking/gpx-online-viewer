@@ -2971,11 +2971,14 @@ async function handleGpxFiles(files) {
     clearAllMultiGPX(); 
     
     document.getElementById("fileNameDisplay").innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <span>已匯入 ${files.length} 個 GPX 檔案</span>
-            <button type="button" class="shortcut-btn close-circle-btn" onclick="location.reload()">✕</button>
-        </div>
-    `;
+		    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+		        <span>已匯入 ${files.length} 個 GPX 檔案</span>
+		        <button type="button" 
+		            class="shortcut-btn close-circle-btn" 
+		            title="關閉檔案"
+		            onclick="window.confirmIfChanged(() => location.reload(), '確定關閉檔案？')">✕</button>
+		    </div>
+		`;
 
     const hint = document.getElementById('importHint');
     if (hint) hint.style.display = 'none';
@@ -3086,8 +3089,20 @@ async function handleGpxFiles(files) {
 }
 
 document.getElementById("multiGpxInput").addEventListener("change", async (e) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
     
-    await handleGpxFiles(e.target.files);
+    const fileArray = Array.from(selectedFiles);
+
+    
+    window.confirmIfChanged(async () => {
+        
+        await handleGpxFiles(fileArray); 
+    }, "匯入新檔案確認");
+
+    
+    
     
     e.target.value = ""; 
 });
@@ -3210,11 +3225,14 @@ function renderMultiGpxButtons() {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'gpx-file-btn close-btn';
     closeBtn.innerHTML = '✕ 關閉檔案';
-    closeBtn.onclick = (e) => {
-        if (e) L.DomEvent.stopPropagation(e); 
-        if (typeof clearAllMultiGPX === 'function') clearAllMultiGPX();
-        location.reload();
-    };
+		closeBtn.onclick = (e) => {
+		    if (e) L.DomEvent.stopPropagation(e);
+		    
+		    window.confirmIfChanged(() => {
+		        if (typeof clearAllMultiGPX === 'function') clearAllMultiGPX();
+		        location.reload();
+		    }, "確定關閉檔案？");
+		};
     bar.appendChild(closeBtn);
     
     multiGpxStack.forEach((gpx, i) => {
@@ -3409,10 +3427,14 @@ document.addEventListener('drop', async (e) => {
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-        
         const gpxFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.gpx'));
+        
         if (gpxFiles.length > 0) {
-            await handleGpxFiles(gpxFiles);
+            
+            window.confirmIfChanged(async () => {
+                await handleGpxFiles(gpxFiles);
+            }, "匯入新檔案確認");
+            
         }
     }
 });
@@ -3992,7 +4014,7 @@ function processSave(finalName, finalEle) {
         if (allTracks.length === 0) {
             allTracks.push(multiGpxStack[stackIdx]);
         } else {
-            // 同步資料：確保 allTracks 拿到的永遠是最新的 multiGpxStack 內容
+            
             allTracks.forEach(track => { track.waypoints = multiGpxStack[stackIdx].waypoints; });
         }
 
@@ -5369,3 +5391,40 @@ function updateWptIconStatus() {
         sideBtn.title = "目前無航點可顯示";
     }
 }
+
+window.skipUnsavedCheck = false;
+
+window.confirmIfChanged = function(action, customTitle = "是否確定離開") {
+
+    const hasChanges = typeof historyManager !== 'undefined' && 
+                       historyManager.undoStack.length > 0;
+
+    if (hasChanges) {
+        window.showAppConfirm(
+            customTitle,
+            "偵測到您已編輯過資料，請確認是否已下載存檔。若繼續操作，目前的編輯內容將會遺失。<br><br>確定繼續嗎？",
+            function() {
+                window.skipUnsavedCheck = true; 
+                action();
+            },
+            null,
+            "確定"
+        );
+    } else {
+
+        action();
+    }
+};
+
+
+window.addEventListener('beforeunload', function (e) {
+    if (window.skipUnsavedCheck) return;
+
+    const hasChanges = typeof historyManager !== 'undefined' && 
+                       historyManager.undoStack.length > 0;
+    
+    if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = ''; 
+    }
+});

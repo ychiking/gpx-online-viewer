@@ -925,7 +925,7 @@
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605131</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605132</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
@@ -934,8 +934,8 @@
       <span id="importHint" style="font-size: 10px; color: #777; margin-left: 0px;">(支援拖拉匯入多個GPX檔)</span>
 
 			<span id="refreshIcon" class="material-icons" 
-			      style="cursor:pointer; color:#777; vertical-align: middle; font-size: 16px; margin-left: 0px;" 
-			      onclick="location.reload()" 
+			      style="cursor:pointer; color:#777; vertical-align: middle; font-size: 16px;" 
+			      onclick="window.confirmIfChanged(() => location.reload(), '確定重新整理？')" 
 			      title="重新整理">refresh</span>
 			<span class="material-icons" 
       style="cursor:pointer; color:#1a73e8; vertical-align: middle; margin-left: 0px;" 
