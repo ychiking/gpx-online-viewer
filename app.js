@@ -5402,7 +5402,7 @@ window.confirmIfChanged = function(action, customTitle = "是否確定離開") {
     if (hasChanges) {
         window.showAppConfirm(
             customTitle,
-            "偵測到您已編輯過資料，請確認是否已下載存檔。若繼續操作，目前的編輯內容將會遺失。<br><br>確定繼續嗎？",
+            "偵測到您已編輯過資料，請確認是否已匯出存檔。若繼續操作，目前的編輯內容將會遺失。<br><br>確定繼續嗎？",
             function() {
                 window.skipUnsavedCheck = true; 
                 action();
