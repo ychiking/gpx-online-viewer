@@ -5,6 +5,7 @@ map.getContainer().style.touchAction = "none";
 
 document.body.style.overscrollBehavior = "none";
 
+
 document.addEventListener(
     'touchmove',
     function(e) {
@@ -16,6 +17,20 @@ document.addEventListener(
     },
     { passive: false }
 );
+
+const mapElForContextMenu =
+    document.getElementById("map");
+
+if (mapElForContextMenu) {
+    mapElForContextMenu.addEventListener(
+        "contextmenu",
+        function(e) {
+            e.preventDefault();
+            return false;
+        },
+        false
+    );
+}
 
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
 const otm = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 18, maxNativeZoom: 17, attribution: 'OpenTopoMap' });
@@ -125,12 +140,128 @@ let isScribbling = false;
 let lastScribbleLatLng = null;
 let tempDrawPoints = [];
 let isPinchingMap = false;
+let isCtrlPanningInDrawMode = false;
 
 map.on('click', (e) => {
     if (!e || !e.latlng) return;
 
+    if (window.splitRoutePickMode) {
+        if (
+            typeof window.executeSplitRoutePick === "function" &&
+            window.executeSplitRoutePick(e.latlng)
+        ) {
+            return;
+        }
+    }
+
+    const clickedRoute =
+        typeof window.findClickedRouteByPriority === "function"
+            ? window.findClickedRouteByPriority(e.latlng)
+            : null;
+
+    if (clickedRoute) {
+
+        
+        if (
+            clickedRoute.fileIdx === window.currentMultiIndex &&
+            clickedRoute.routeIdx !== window.currentActiveIndex
+        ) {
+            window.currentActiveIndex =
+                clickedRoute.routeIdx;
+
+            if (typeof syncDrawingGlobals === "function") {
+                const currentFile =
+                    window.multiGpxStack[clickedRoute.fileIdx];
+
+                syncDrawingGlobals(
+                    currentFile,
+                    clickedRoute.routeIdx
+                );
+            }
+
+            if (typeof updateRouteSelectDropdown === "function") {
+                updateRouteSelectDropdown();
+            }
+
+            const routeSelect =
+                document.getElementById("routeSelect");
+
+            if (routeSelect) {
+                routeSelect.value =
+                    String(clickedRoute.routeIdx);
+
+                routeSelect.selectedIndex =
+                    clickedRoute.routeIdx;
+            }
+
+            if (typeof loadRoute === "function") {
+                loadRoute(clickedRoute.routeIdx);
+            }
+
+            if (typeof renderRouteInfo === "function") {
+                renderRouteInfo();
+            }
+
+            return;
+        }
+
+        
+        if (clickedRoute.fileIdx !== window.currentMultiIndex) {
+            if (typeof switchMultiGpx === "function") {
+                switchMultiGpx(clickedRoute.fileIdx);
+            } else {
+                window.currentMultiIndex =
+                    clickedRoute.fileIdx;
+            }
+
+            window.currentActiveIndex =
+                clickedRoute.routeIdx;
+
+            const targetFile =
+                window.multiGpxStack[clickedRoute.fileIdx];
+
+            if (typeof syncDrawingGlobals === "function") {
+                syncDrawingGlobals(
+                    targetFile,
+                    clickedRoute.routeIdx
+                );
+            }
+
+            if (typeof updateRouteSelectDropdown === "function") {
+                updateRouteSelectDropdown();
+            }
+
+            const routeSelect =
+                document.getElementById("routeSelect");
+
+            if (routeSelect) {
+                routeSelect.value =
+                    String(clickedRoute.routeIdx);
+
+                routeSelect.selectedIndex =
+                    clickedRoute.routeIdx;
+            }
+
+            if (typeof loadRoute === "function") {
+                loadRoute(clickedRoute.routeIdx);
+            }
+
+            if (typeof renderRouteInfo === "function") {
+                renderRouteInfo();
+            }
+
+            if (typeof renderMultiGpxButtons === "function") {
+                renderMultiGpxButtons();
+            }
+
+            return;
+        }
+
+        
+    }
+
     if (isDrawingMode) {
-  
+
         if (clickTimeout) {
             clearTimeout(clickTimeout);
             clickTimeout = null;
@@ -139,34 +270,397 @@ map.on('click', (e) => {
         if (drawMethod === 'click') {
             addPointToTrack(e.latlng);
         }
+
         return;
     }
 
     if (e.originalEvent.target.closest('#side-toolbar')) return;
 
-    
     let closest = null;
     let minD = Infinity;
+
     if (trackPoints && trackPoints.length > 0) {
         trackPoints.forEach(p => {
-            const d = Math.sqrt(Math.pow(p.lat - e.latlng.lat, 2) + Math.pow(p.lon - e.latlng.lng, 2));
-            if (d < minD) { minD = d; closest = p; }
+            const d = Math.sqrt(
+                Math.pow(p.lat - e.latlng.lat, 2) +
+                Math.pow(p.lon - e.latlng.lng, 2)
+            );
+
+            if (d < minD) {
+                minD = d;
+                closest = p;
+            }
         });
     }
-    
+
     if (closest && minD * 111000 < 5) {
-        if (clickTimeout) clearTimeout(clickTimeout); 
+        if (clickTimeout) clearTimeout(clickTimeout);
+
         const idx = trackPoints.indexOf(closest);
+
         if (idx !== -1 && typeof showCustomPopup === 'function') {
-            showCustomPopup(idx, "位置資訊", null, closest.lat, closest.lon);
-            if (hoverMarker) hoverMarker.setLatLng([closest.lat, closest.lon]).addTo(map).bringToFront();
+            showCustomPopup(
+                idx,
+                "位置資訊",
+                null,
+                closest.lat,
+                closest.lon
+            );
+
+            if (hoverMarker) {
+                hoverMarker
+                    .setLatLng([closest.lat, closest.lon])
+                    .addTo(map)
+                    .bringToFront();
+            }
         }
+
     } else {
+
+        const fileIdxForDrawClick =
+            typeof window.currentMultiIndex === "number"
+                ? window.currentMultiIndex
+                : 0;
+
+        const routeIdxForDrawClick =
+            typeof window.currentActiveIndex === "number"
+                ? window.currentActiveIndex
+                : 0;
+
+        const currentFileForDrawClick =
+            window.multiGpxStack &&
+            window.multiGpxStack[fileIdxForDrawClick];
+
+        let routeForDrawClick = null;
+
+        if (
+            currentFileForDrawClick &&
+            Array.isArray(currentFileForDrawClick.routes) &&
+            currentFileForDrawClick.routes[routeIdxForDrawClick]
+        ) {
+            routeForDrawClick =
+                currentFileForDrawClick.routes[routeIdxForDrawClick];
+
+        } else if (
+            currentFileForDrawClick &&
+            (
+                currentFileForDrawClick.isDrawTrack === true ||
+                currentFileForDrawClick.isHandDrawRoute === true
+            )
+        ) {
+            routeForDrawClick =
+                currentFileForDrawClick;
+        }
+
+        
+        if (
+            routeForDrawClick &&
+            routeForDrawClick.isCombined !== true &&
+            Array.isArray(routeForDrawClick.points) &&
+            routeForDrawClick.points.length > 1 &&
+            typeof map !== "undefined" &&
+            map &&
+            typeof map.latLngToContainerPoint === "function"
+        ) {
+            const clickPoint =
+                map.latLngToContainerPoint(e.latlng);
+
+            let nearestSegmentDistance =
+                Infinity;
+
+            let nearestSegmentIdx =
+                -1;
+
+            let nearestProjectedLatLng =
+                null;
+
+            let nearestProjectedDistance =
+                null;
+
+            for (
+                let i = 0;
+                i < routeForDrawClick.points.length - 1;
+                i++
+            ) {
+                const p1 =
+                    routeForDrawClick.points[i];
+
+                const p2 =
+                    routeForDrawClick.points[i + 1];
+
+                if (!p1 || !p2) continue;
+
+                const p1Lat =
+                    Number(p1.lat);
+
+                const p1Lon =
+                    Number(p1.lon);
+
+                const p2Lat =
+                    Number(p2.lat);
+
+                const p2Lon =
+                    Number(p2.lon);
+
+                if (
+                    !Number.isFinite(p1Lat) ||
+                    !Number.isFinite(p1Lon) ||
+                    !Number.isFinite(p2Lat) ||
+                    !Number.isFinite(p2Lon)
+                ) {
+                    continue;
+                }
+
+                const a =
+                    map.latLngToContainerPoint(
+                        L.latLng(p1Lat, p1Lon)
+                    );
+
+                const b =
+                    map.latLngToContainerPoint(
+                        L.latLng(p2Lat, p2Lon)
+                    );
+
+                const abx =
+                    b.x - a.x;
+
+                const aby =
+                    b.y - a.y;
+
+                const apx =
+                    clickPoint.x - a.x;
+
+                const apy =
+                    clickPoint.y - a.y;
+
+                const abLenSq =
+                    abx * abx + aby * aby;
+
+                if (abLenSq === 0) continue;
+
+                let t =
+                    (apx * abx + apy * aby) / abLenSq;
+
+                t =
+                    Math.max(
+                        0,
+                        Math.min(1, t)
+                    );
+
+                const projX =
+                    a.x + abx * t;
+
+                const projY =
+                    a.y + aby * t;
+
+                const dx =
+                    clickPoint.x - projX;
+
+                const dy =
+                    clickPoint.y - projY;
+
+                const pixelDist =
+                    Math.sqrt(dx * dx + dy * dy);
+
+                if (pixelDist < nearestSegmentDistance) {
+                    nearestSegmentDistance =
+                        pixelDist;
+
+                    nearestSegmentIdx =
+                        i;
+
+                    const projLat =
+                        p1Lat + (p2Lat - p1Lat) * t;
+
+                    const projLon =
+                        p1Lon + (p2Lon - p1Lon) * t;
+
+                    nearestProjectedLatLng =
+                        {
+                            lat: projLat,
+                            lon: projLon
+                        };
+
+                    if (
+                        Number.isFinite(Number(p1.distance)) &&
+                        Number.isFinite(Number(p2.distance))
+                    ) {
+                        nearestProjectedDistance =
+                            Number(p1.distance) +
+                            (
+                                Number(p2.distance) -
+                                Number(p1.distance)
+                            ) * t;
+                    } else {
+                        nearestProjectedDistance =
+                            null;
+                    }
+                }
+            }
+
+            const isTouchDevice =
+                "ontouchstart" in window ||
+                navigator.maxTouchPoints > 0;
+
+            const maxPixelDistance =
+                isTouchDevice
+                    ? 40
+                    : 26;
+
+            if (
+                nearestSegmentIdx > -1 &&
+                nearestProjectedLatLng &&
+                nearestSegmentDistance <= maxPixelDistance
+            ) {
+                if (clickTimeout) {
+                    clearTimeout(clickTimeout);
+                    clickTimeout = null;
+                }
+
+                const basePoint =
+                    routeForDrawClick.points[nearestSegmentIdx];
+
+                const popupPoint = {
+                    lat: nearestProjectedLatLng.lat,
+                    lon: nearestProjectedLatLng.lon,
+                    ele: basePoint && basePoint.ele !== undefined
+                        ? basePoint.ele
+                        : 0,
+                    time: basePoint ? basePoint.time : null,
+                    timeLocal: basePoint ? basePoint.timeLocal : null,
+                    distance: nearestProjectedDistance
+                };
+
+                let tempIdx =
+                    -1;
+
+                if (
+                    typeof trackPoints !== "undefined" &&
+                    Array.isArray(trackPoints)
+                ) {
+                    trackPoints.push(popupPoint);
+                    tempIdx =
+                        trackPoints.length - 1;
+                }
+
+                if (typeof showCustomPopup === "function") {
+                    showCustomPopup(
+                        tempIdx,
+                        "位置資訊",
+                        null,
+                        nearestProjectedLatLng.lat,
+                        nearestProjectedLatLng.lon
+                    );
+                }
+
+                if (
+                    tempIdx > -1 &&
+                    Array.isArray(trackPoints)
+                ) {
+                    trackPoints.splice(tempIdx, 1);
+                }
+
+                if (hoverMarker) {
+                    hoverMarker
+                        .setLatLng([
+                            nearestProjectedLatLng.lat,
+                            nearestProjectedLatLng.lon
+                        ])
+                        .addTo(map)
+                        .bringToFront();
+                }
+
+                return;
+            }
+        }
+
         clickTimeout = setTimeout(() => {
-            if (typeof showFreeClickPopup === 'function') showFreeClickPopup(e.latlng);
+            if (typeof showFreeClickPopup === 'function') {
+                showFreeClickPopup(e.latlng);
+            }
         }, 200);
     }
 });
+
+if (!window.routeHoverCursorInstalled) {
+    window.routeHoverCursorInstalled = true;
+
+    
+    if (!document.getElementById("routeHoverCursorStyle")) {
+        const style =
+            document.createElement("style");
+
+        style.id =
+            "routeHoverCursorStyle";
+
+        style.innerHTML = `
+            #map.route-hover-pointer,
+            #map.route-hover-pointer *,
+            #map.route-hover-pointer .leaflet-interactive {
+                cursor: pointer !important;
+            }
+        `;
+
+        document.head.appendChild(style);
+    }
+
+    map.on("mousemove", function(e) {
+        if (!e || !e.latlng) return;
+
+        const mapEl =
+            document.getElementById("map");
+
+        if (!mapEl) return;
+
+        
+        if (
+            window.splitRoutePickMode ||
+            (
+                typeof isDrawingMode !== "undefined" &&
+                isDrawingMode
+            )
+        ) {
+            mapEl.classList.remove("route-hover-pointer");
+            return;
+        }
+
+        const hitRoute =
+            typeof window.findClickedRouteByPriority === "function"
+                ? window.findClickedRouteByPriority(e.latlng)
+                : null;
+
+        
+        const canSwitchSubRoute =
+            hitRoute &&
+            hitRoute.fileIdx === window.currentMultiIndex &&
+            hitRoute.routeIdx !== window.currentActiveIndex &&
+            hitRoute.route &&
+            hitRoute.route.isCombined !== true;
+
+        
+        const canSwitchOtherGpx =
+            hitRoute &&
+            hitRoute.fileIdx !== window.currentMultiIndex;
+
+        if (
+            canSwitchSubRoute ||
+            canSwitchOtherGpx
+        ) {
+            mapEl.classList.add("route-hover-pointer");
+        } else {
+            mapEl.classList.remove("route-hover-pointer");
+        }
+    });
+
+    map.on("mouseout", function() {
+        const mapEl =
+            document.getElementById("map");
+
+        if (mapEl) {
+            mapEl.classList.remove("route-hover-pointer");
+        }
+    });
+}
 
 
 function startScribble(latlng, originalEvent = null) {
@@ -174,6 +668,25 @@ function startScribble(latlng, originalEvent = null) {
     if (!isDrawingMode) return;
     if (drawMethod !== 'scribble') return;
     if (!latlng) return;
+
+		if (
+		    originalEvent &&
+		    (
+		        originalEvent.ctrlKey ||
+		        originalEvent.metaKey
+		    )
+		) {
+        isCtrlPanningInDrawMode = true;
+        isScribbling = false;
+        tempDrawPoints = [];
+        lastScribbleLatLng = null;
+
+        if (map && map.dragging) {
+            map.dragging.enable();
+        }
+
+        return;
+    }
 
     if (
         originalEvent &&
@@ -231,6 +744,8 @@ function startScribble(latlng, originalEvent = null) {
 }
 
 function moveScribble(latlng) {
+
+    if (isCtrlPanningInDrawMode) return;
 
     if (!isDrawingMode) return;
     if (!isScribbling) return;
@@ -359,18 +874,8 @@ function finishScribble() {
 
         do: function () {
 
-            /*
-                關鍵：Undo/Redo 可能在使用者切到別的 GPX 後才執行。
-                所以 do/undo 一開始就要先切回原本檔案，
-                否則 syncDrawingGlobals 會把 A 檔案寫進 B 的位置。
-            */
             window.currentMultiIndex = this.fileIndex;
 
-            /*
-                Redo 修正：如果 undo 時把這次新建立的「手繪路線」從 routes 移除了，
-                redo 時必須先把同一個 targetTrack 放回 routes，否則點會加到游離物件，
-                routeSelect 看不到，也無法重新匯出。
-            */
             if (
                 this.wasNewHandDrawRoute &&
                 this.currentFile &&
@@ -445,6 +950,34 @@ function finishScribble() {
 
             this.currentFile._dirtyDraw = true;
 
+            if (
+                this.currentFile &&
+                (
+                    !Array.isArray(this.currentFile.routes) ||
+                    this.currentFile.routes.length === 0
+                )
+            ) {
+                this.currentFile.isDrawTrack = true;
+                this.currentFile.isHandDrawRoute = true;
+                this.currentFile.isCombined = false;
+
+                this.currentFile.points =
+                    this.targetTrack.points;
+
+                this.currentFile.segments =
+                    this.targetTrack.segments;
+
+                window.allTracks = [this.currentFile];
+
+                if (typeof allTracks !== "undefined") {
+                    allTracks = window.allTracks;
+                }
+
+                window.currentActiveIndex = 0;
+                this.routeIndex = 0;
+                this.targetRouteIndex = 0;
+            }
+
             if (this.currentFile.isDrawTrack) {
 
                 this.currentFile.points =
@@ -509,16 +1042,49 @@ function finishScribble() {
             window.currentMultiIndex = this.fileIndex;
             window.currentActiveIndex = this.routeIndex;
 
+            if (
+                this.currentFile &&
+                this.currentFile.isDrawTrack === true &&
+                (
+                    !Array.isArray(window.allTracks) ||
+                    window.allTracks.length === 0
+                )
+            ) {
+                window.allTracks = [this.currentFile];
+
+                if (typeof allTracks !== "undefined") {
+                    allTracks = window.allTracks;
+                }
+
+                window.currentActiveIndex = 0;
+                this.routeIndex = 0;
+            }
+
             const routeSelect =
                 document.getElementById("routeSelect");
 
-            if (
-                routeSelect &&
-                routeSelect.options &&
-                routeSelect.options.length > this.routeIndex
-            ) {
-                routeSelect.value =
-                    String(this.routeIndex);
+            if (routeSelect) {
+                if (!routeSelect.options || routeSelect.options.length === 0) {
+                    const opt =
+                        document.createElement("option");
+
+                    opt.value = "0";
+                    opt.textContent =
+                        this.currentFile.routeDisplayName ||
+                        this.currentFile.displayName ||
+                        this.currentFile.name ||
+                        "自訂路線";
+
+                    routeSelect.appendChild(opt);
+                }
+
+                if (
+                    routeSelect.options &&
+                    routeSelect.options.length > this.routeIndex
+                ) {
+                    routeSelect.value =
+                        String(this.routeIndex);
+                }
             }
 
             if (typeof updateRouteSelectDropdown === "function") {
@@ -539,11 +1105,621 @@ function finishScribble() {
             }
 
             if (typeof loadRoute === 'function') {
-                loadRoute(this.routeIndex, null);
+                loadRoute(this.routeIndex || 0, null);
+            }
+
+            
+            if (
+                this.targetTrack &&
+                (
+                    this.targetTrack.isDrawTrack === true ||
+                    this.targetTrack.isHandDrawRoute === true
+                )
+            ) {
+                const drawRouteForHit =
+                    this.targetTrack;
+
+                const drawPoints =
+                    Array.isArray(drawRouteForHit.points)
+                        ? drawRouteForHit.points
+                        : [];
+
+                if (drawPoints.length >= 2) {
+                    const hitLatLngs =
+                        drawPoints.map(function(p) {
+                            return [
+                                p.lat,
+                                p.lon
+                            ];
+                        });
+
+function finishScribble() {
+
+    if (!isScribbling) return;
+
+    isScribbling = false;
+
+    if (!tempDrawPoints || tempDrawPoints.length === 0) {
+        tempDrawPoints = [];
+        return;
+    }
+
+    const {
+        currentFile,
+        targetTrack,
+        stackIdx,
+        routeIdx,
+        targetRouteIdx
+    } = getActiveDrawingTarget();
+
+    if (!currentFile || !targetTrack) {
+        tempDrawPoints = [];
+        return;
+    }
+
+    if (!Array.isArray(targetTrack.points)) targetTrack.points = [];
+    if (!Array.isArray(targetTrack.segments)) targetTrack.segments = [];
+
+    const pointsSnapshot =
+        tempDrawPoints.map(p => ({ ...p }));
+
+    const command = {
+
+        pointsToAdd: pointsSnapshot,
+        currentFile: currentFile,
+        targetTrack: targetTrack,
+        fileIndex: stackIdx,
+        routeIndex: routeIdx,
+        targetRouteIndex: targetRouteIdx,
+        wasNewHandDrawRoute:
+            targetTrack &&
+            targetTrack.isHandDrawRoute === true &&
+            targetTrack.points.length === 0,
+        skipAutoLoadRouteAfterUndo: true,
+
+        do: function () {
+
+            window.currentMultiIndex = this.fileIndex;
+
+            if (
+                this.wasNewHandDrawRoute &&
+                this.currentFile &&
+                Array.isArray(this.currentFile.routes) &&
+                this.currentFile.routes.indexOf(this.targetTrack) === -1
+            ) {
+                const insertIdx =
+                    (this.targetRouteIndex !== undefined && this.targetRouteIndex >= 0)
+                        ? Math.min(this.targetRouteIndex, this.currentFile.routes.length)
+                        : this.currentFile.routes.length;
+
+                this.currentFile.routes.splice(insertIdx, 0, this.targetTrack);
+
+                this.routeIndex = insertIdx;
+                this.targetRouteIndex = insertIdx;
+                window.currentActiveIndex = insertIdx;
+            }
+
+            let lastDistance = 0;
+
+            if (this.targetTrack.points.length > 0) {
+                lastDistance =
+                    this.targetTrack.points[
+                        this.targetTrack.points.length - 1
+                    ].distance || 0;
+            }
+
+            this.pointsToAdd.forEach((p, idx) => {
+
+                if (idx === 0) {
+
+                    if (this.targetTrack.points.length > 0) {
+                        const prev =
+                            this.targetTrack.points[
+                                this.targetTrack.points.length - 1
+                            ];
+
+                        lastDistance += calculateDistance(
+                            prev.lat,
+                            prev.lon,
+                            p.lat,
+                            p.lon
+                        );
+                    }
+
+                } else {
+
+                    const prev =
+                        this.pointsToAdd[idx - 1];
+
+                    lastDistance += calculateDistance(
+                        prev.lat,
+                        prev.lon,
+                        p.lat,
+                        p.lon
+                    );
+                }
+
+                p.distance =
+                    lastDistance;
+            });
+
+            this.targetTrack.points.push(
+                ...this.pointsToAdd
+            );
+
+            this.targetTrack.segments = [
+                this.targetTrack.points.map(
+                    p => [p.lat, p.lon]
+                )
+            ];
+
+            this.currentFile._dirtyDraw = true;
+
+            if (
+                this.currentFile &&
+                (
+                    !Array.isArray(this.currentFile.routes) ||
+                    this.currentFile.routes.length === 0
+                )
+            ) {
+                this.currentFile.isDrawTrack = true;
+                this.currentFile.isHandDrawRoute = true;
+                this.currentFile.isCombined = false;
+
+                this.currentFile.points =
+                    this.targetTrack.points;
+
+                this.currentFile.segments =
+                    this.targetTrack.segments;
+
+                window.allTracks = [this.currentFile];
+
+                if (typeof allTracks !== "undefined") {
+                    allTracks = window.allTracks;
+                }
+
+                window.currentActiveIndex = 0;
+                this.routeIndex = 0;
+                this.targetRouteIndex = 0;
+            }
+
+            if (this.currentFile.isDrawTrack) {
+
+                this.currentFile.points =
+                    this.targetTrack.points;
+
+                this.currentFile.segments =
+                    this.targetTrack.segments;
+
+                if (this.currentFile.layer instanceof L.Polyline) {
+                    this.currentFile.layer.setLatLngs(
+                        this.currentFile.segments
+                    );
+
+                    this.currentFile.layer.setStyle({
+                        color: this.currentFile.color || "#0000FF",
+                        weight: 6,
+                        opacity: 1,
+                        dashArray: null
+                    });
+                }
+
+                syncDrawingGlobals(this.currentFile, 0);
+
+            } else if (
+                Array.isArray(this.currentFile.routes) &&
+                this.currentFile.routes.length > 0
+            ) {
+
+                if (
+                    this.currentFile.routes.length > 1 &&
+                    this.currentFile.routes[0] &&
+                    this.currentFile.routes[0].isCombined === true
+                ) {
+                    rebuildCombinedRouteForFile(this.currentFile);
+                } else {
+                    this.currentFile.points =
+                        this.targetTrack.points;
+
+                    this.currentFile.segments =
+                        this.targetTrack.segments;
+                }
+
+                syncDrawingGlobals(
+                    this.currentFile,
+                    this.routeIndex
+                );
+
+            } else {
+
+                this.currentFile.points =
+                    this.targetTrack.points;
+
+                this.currentFile.segments =
+                    this.targetTrack.segments;
+
+                syncDrawingGlobals(
+                    this.currentFile,
+                    this.routeIndex
+                );
+            }
+
+            window.currentMultiIndex = this.fileIndex;
+            window.currentActiveIndex = this.routeIndex;
+
+            if (
+                this.currentFile &&
+                this.currentFile.isDrawTrack === true &&
+                (
+                    !Array.isArray(window.allTracks) ||
+                    window.allTracks.length === 0
+                )
+            ) {
+                window.allTracks = [this.currentFile];
+
+                if (typeof allTracks !== "undefined") {
+                    allTracks = window.allTracks;
+                }
+
+                window.currentActiveIndex = 0;
+                this.routeIndex = 0;
+            }
+
+            const routeSelect =
+                document.getElementById("routeSelect");
+
+            if (routeSelect) {
+                if (!routeSelect.options || routeSelect.options.length === 0) {
+                    const opt =
+                        document.createElement("option");
+
+                    opt.value = "0";
+                    opt.textContent =
+                        this.currentFile.routeDisplayName ||
+                        this.currentFile.displayName ||
+                        this.currentFile.name ||
+                        "自訂路線";
+
+                    routeSelect.appendChild(opt);
+                }
+
+                if (
+                    routeSelect.options &&
+                    routeSelect.options.length > this.routeIndex
+                ) {
+                    routeSelect.value =
+                        String(this.routeIndex);
+                }
+            }
+
+            if (typeof updateRouteSelectDropdown === "function") {
+                updateRouteSelectDropdown();
+            }
+
+            const routeSelectAfterUpdate = document.getElementById("routeSelect");
+            if (
+                routeSelectAfterUpdate &&
+                routeSelectAfterUpdate.options &&
+                routeSelectAfterUpdate.options.length > this.routeIndex
+            ) {
+                routeSelectAfterUpdate.value = String(this.routeIndex);
+            }
+
+            if (typeof renderMultiGpxButtons === "function") {
+                renderMultiGpxButtons();
+            }
+
+            if (typeof loadRoute === 'function') {
+                loadRoute(this.routeIndex || 0, null);
+            }
+
+            if (
+                this.targetTrack &&
+                (
+                    this.targetTrack.isDrawTrack === true ||
+                    this.targetTrack.isHandDrawRoute === true
+                )
+            ) {
+                const drawRouteForHit =
+                    this.targetTrack;
+
+                const drawPoints =
+                    Array.isArray(drawRouteForHit.points)
+                        ? drawRouteForHit.points
+                        : [];
+
+                if (drawPoints.length >= 2) {
+                    const hitLatLngs =
+                        drawPoints.map(function(p) {
+                            return [
+                                p.lat,
+                                p.lon
+                            ];
+                        });
+
+                    if (!drawRouteForHit.hitLayer) {
+                        drawRouteForHit.hitLayer = L.polyline(hitLatLngs, {
+                            color: "#000000",
+                            weight: 20,
+                            opacity: 0.01,
+                            interactive: true,
+                            bubblingMouseEvents: true
+                        }).addTo(map);
+
+                    } else {
+                        drawRouteForHit.hitLayer.setLatLngs(hitLatLngs);
+
+                        if (!map.hasLayer(drawRouteForHit.hitLayer)) {
+                            drawRouteForHit.hitLayer.addTo(map);
+                        }
+                    }
+
+                    
+                    drawRouteForHit.hitLayer.off("click");
+
+                    drawRouteForHit.hitLayer.on("click", function(e) {
+
+                        
+                        if (window.splitRoutePickMode) {
+                            L.DomEvent.stopPropagation(e);
+
+                            if (
+                                typeof window.executeSplitRoutePick === "function" &&
+                                window.executeSplitRoutePick(e.latlng)
+                            ) {
+                                return;
+                            }
+                        }
+
+                        
+                        const clickedRoute =
+                            typeof window.findClickedRouteByPriority === "function"
+                                ? window.findClickedRouteByPriority(e.latlng)
+                                : null;
+
+                        if (
+                            clickedRoute &&
+                            (
+                                clickedRoute.fileIdx !== window.currentMultiIndex ||
+                                clickedRoute.routeIdx !== window.currentActiveIndex
+                            )
+                        ) {
+                            L.DomEvent.stopPropagation(e);
+
+                            if (clickTimeout) {
+                                clearTimeout(clickTimeout);
+                                clickTimeout = null;
+                            }
+
+                            if (map && typeof map.closePopup === "function") {
+                                map.closePopup();
+                            }
+
+                            if (clickedRoute.fileIdx === window.currentMultiIndex) {
+                                window.currentActiveIndex =
+                                    clickedRoute.routeIdx;
+
+                                const currentFile =
+                                    window.multiGpxStack &&
+                                    window.multiGpxStack[clickedRoute.fileIdx];
+
+                                if (typeof syncDrawingGlobals === "function") {
+                                    syncDrawingGlobals(
+                                        currentFile,
+                                        clickedRoute.routeIdx
+                                    );
+                                }
+
+                                if (typeof updateRouteSelectDropdown === "function") {
+                                    updateRouteSelectDropdown();
+                                }
+
+                                const routeSelect =
+                                    document.getElementById("routeSelect");
+
+                                if (routeSelect) {
+                                    routeSelect.value =
+                                        String(clickedRoute.routeIdx);
+
+                                    routeSelect.selectedIndex =
+                                        clickedRoute.routeIdx;
+                                }
+
+                                if (typeof loadRoute === "function") {
+                                    loadRoute(clickedRoute.routeIdx);
+                                }
+
+                                if (typeof renderRouteInfo === "function") {
+                                    renderRouteInfo();
+                                }
+
+                                return;
+                            }
+
+                            if (clickedRoute.fileIdx !== window.currentMultiIndex) {
+                                if (typeof switchMultiGpx === "function") {
+                                    switchMultiGpx(clickedRoute.fileIdx);
+                                } else {
+                                    window.currentMultiIndex =
+                                        clickedRoute.fileIdx;
+                                }
+
+                                window.currentActiveIndex =
+                                    clickedRoute.routeIdx;
+
+                                const targetFile =
+                                    window.multiGpxStack &&
+                                    window.multiGpxStack[clickedRoute.fileIdx];
+
+                                if (typeof syncDrawingGlobals === "function") {
+                                    syncDrawingGlobals(
+                                        targetFile,
+                                        clickedRoute.routeIdx
+                                    );
+                                }
+
+                                if (typeof updateRouteSelectDropdown === "function") {
+                                    updateRouteSelectDropdown();
+                                }
+
+                                const routeSelect =
+                                    document.getElementById("routeSelect");
+
+                                if (routeSelect) {
+                                    routeSelect.value =
+                                        String(clickedRoute.routeIdx);
+
+                                    routeSelect.selectedIndex =
+                                        clickedRoute.routeIdx;
+                                }
+
+                                if (typeof loadRoute === "function") {
+                                    loadRoute(clickedRoute.routeIdx);
+                                }
+
+                                if (typeof renderRouteInfo === "function") {
+                                    renderRouteInfo();
+                                }
+
+                                if (typeof renderMultiGpxButtons === "function") {
+                                    renderMultiGpxButtons();
+                                }
+
+                                return;
+                            }
+                        }
+
+                        
+                        L.DomEvent.stopPropagation(e);
+
+                        const latestPoints =
+                            Array.isArray(drawRouteForHit.points)
+                                ? drawRouteForHit.points
+                                : [];
+
+                        if (latestPoints.length === 0) return;
+
+                        let minD =
+                            Infinity;
+
+                        let idx =
+                            0;
+
+                        latestPoints.forEach(function(p, i) {
+                            const d =
+                                Math.sqrt(
+                                    Math.pow(Number(p.lat) - Number(e.latlng.lat), 2) +
+                                    Math.pow(Number(p.lon) - Number(e.latlng.lng), 2)
+                                );
+
+                            if (d < minD) {
+                                minD =
+                                    d;
+
+                                idx =
+                                    i;
+                            }
+                        });
+
+                        const p =
+                            latestPoints[idx];
+
+                        if (
+                            p &&
+                            typeof showCustomPopup === "function"
+                        ) {
+                            showCustomPopup(
+                                idx,
+                                drawRouteForHit.routeDisplayName ||
+                                drawRouteForHit.displayName ||
+                                drawRouteForHit.name ||
+                                "自訂路線",
+                                "trk",
+                                p.lat,
+                                p.lon
+                            );
+                        }
+                    });
+
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        typeof drawRouteForHit.hitLayer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.hitLayer.bringToFront();
+                    }
+
+                    if (
+                        drawRouteForHit.layer &&
+                        typeof drawRouteForHit.layer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.layer.bringToFront();
+                    }
+
+                } else {
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        map.hasLayer(drawRouteForHit.hitLayer)
+                    ) {
+                        map.removeLayer(drawRouteForHit.hitLayer);
+                    }
+
+                    drawRouteForHit.hitLayer =
+                        null;
+                }
             }
 
             if (typeof renderRouteInfo === 'function') {
                 renderRouteInfo();
+            }
+
+            const toggleBtn =
+                document.getElementById("toggleChartBtn");
+
+            if (toggleBtn) {
+                toggleBtn.style.display = "block";
+            }
+
+            window.manualShowBar = false;
+
+            const barContainer =
+                document.getElementById("map-control-bar");
+
+            if (barContainer) {
+                barContainer.style.setProperty(
+                    "display",
+                    "none",
+                    "important"
+                );
+            }
+
+            const progressBar =
+                document.getElementById("gpxProgressBar");
+
+            if (
+                progressBar &&
+                Array.isArray(this.targetTrack.points)
+            ) {
+                progressBar.max =
+                    Math.max(0, this.targetTrack.points.length - 1);
+
+                progressBar.value =
+                    0;
+            }
+
+            if (typeof setupProgressBar === "function") {
+                setupProgressBar();
+            }
+
+            if (typeof initProgressBar === "function") {
+                initProgressBar();
+            }
+
+            if (typeof drawElevationChart === "function") {
+                drawElevationChart();
+            }
+
+            if (typeof window.updateVisibility === "function") {
+                window.updateVisibility();
             }
         },
 
@@ -570,10 +1746,6 @@ function finishScribble() {
             let nextRouteIndex =
                 this.routeIndex;
 
-            /*
-                如果這次 undo 清空的是「這次自動建立的手繪路線」，
-                要把 routeSelect 裡的手繪路線刪掉。
-            */
             if (
                 isEmpty &&
                 this.wasNewHandDrawRoute &&
@@ -652,19 +1824,65 @@ function finishScribble() {
                 );
             }
 
+            if (
+                isEmpty &&
+                this.currentFile &&
+                (
+                    !Array.isArray(this.currentFile.routes) ||
+                    this.currentFile.routes.length === 0
+                )
+            ) {
+                this.currentFile.isDrawTrack = true;
+                this.currentFile.isHandDrawRoute = true;
+                this.currentFile.isCombined = false;
+
+                this.currentFile.points = [];
+                this.currentFile.segments = [];
+
+                window.allTracks = [this.currentFile];
+
+                if (typeof allTracks !== "undefined") {
+                    allTracks = window.allTracks;
+                }
+
+                window.currentActiveIndex = 0;
+                nextRouteIndex = 0;
+
+                if (typeof trackPoints !== "undefined") {
+                    trackPoints = [];
+                }
+
+                window.trackPoints = [];
+            }
+
             window.currentMultiIndex = this.fileIndex;
             window.currentActiveIndex = nextRouteIndex;
 
             const routeSelect =
                 document.getElementById("routeSelect");
 
-            if (
-                routeSelect &&
-                routeSelect.options &&
-                routeSelect.options.length > nextRouteIndex
-            ) {
-                routeSelect.value =
-                    String(nextRouteIndex);
+            if (routeSelect) {
+                if (!routeSelect.options || routeSelect.options.length === 0) {
+                    const opt =
+                        document.createElement("option");
+
+                    opt.value = "0";
+                    opt.textContent =
+                        this.currentFile.routeDisplayName ||
+                        this.currentFile.displayName ||
+                        this.currentFile.name ||
+                        "自訂路線";
+
+                    routeSelect.appendChild(opt);
+                }
+
+                if (
+                    routeSelect.options &&
+                    routeSelect.options.length > nextRouteIndex
+                ) {
+                    routeSelect.value =
+                        String(nextRouteIndex);
+                }
             }
 
             if (typeof updateRouteSelectDropdown === "function") {
@@ -689,7 +1907,831 @@ function finishScribble() {
             }
 
             if (typeof loadRoute === 'function') {
-                loadRoute(nextRouteIndex, null);
+                loadRoute(nextRouteIndex || 0, null);
+            }
+
+            if (
+                this.targetTrack &&
+                (
+                    this.targetTrack.isDrawTrack === true ||
+                    this.targetTrack.isHandDrawRoute === true
+                )
+            ) {
+                const drawRouteForHit =
+                    this.targetTrack;
+
+                const drawPoints =
+                    Array.isArray(drawRouteForHit.points)
+                        ? drawRouteForHit.points
+                        : [];
+
+                if (drawPoints.length >= 2) {
+                    const hitLatLngs =
+                        drawPoints.map(function(p) {
+                            return [
+                                p.lat,
+                                p.lon
+                            ];
+                        });
+
+                    if (!drawRouteForHit.hitLayer) {
+                        drawRouteForHit.hitLayer = L.polyline(hitLatLngs, {
+                            color: "#000000",
+                            weight: 26,
+                            opacity: 0.01,
+                            interactive: true,
+                            bubblingMouseEvents: true
+                        }).addTo(map);
+
+                    } else {
+                        drawRouteForHit.hitLayer.setLatLngs(hitLatLngs);
+
+                        if (!map.hasLayer(drawRouteForHit.hitLayer)) {
+                            drawRouteForHit.hitLayer.addTo(map);
+                        }
+                    }
+
+                    
+                    drawRouteForHit.hitLayer.off("click");
+
+                    drawRouteForHit.hitLayer.on("click", function(e) {
+
+                        if (window.splitRoutePickMode) {
+                            L.DomEvent.stopPropagation(e);
+
+                            if (
+                                typeof window.executeSplitRoutePick === "function" &&
+                                window.executeSplitRoutePick(e.latlng)
+                            ) {
+                                return;
+                            }
+                        }
+
+                        const clickedRoute =
+                            typeof window.findClickedRouteByPriority === "function"
+                                ? window.findClickedRouteByPriority(e.latlng)
+                                : null;
+
+                        if (
+                            clickedRoute &&
+                            (
+                                clickedRoute.fileIdx !== window.currentMultiIndex ||
+                                clickedRoute.routeIdx !== window.currentActiveIndex
+                            )
+                        ) {
+                            L.DomEvent.stopPropagation(e);
+
+                            if (clickTimeout) {
+                                clearTimeout(clickTimeout);
+                                clickTimeout = null;
+                            }
+
+                            if (map && typeof map.closePopup === "function") {
+                                map.closePopup();
+                            }
+
+                            if (clickedRoute.fileIdx === window.currentMultiIndex) {
+                                window.currentActiveIndex =
+                                    clickedRoute.routeIdx;
+
+                                const currentFile =
+                                    window.multiGpxStack &&
+                                    window.multiGpxStack[clickedRoute.fileIdx];
+
+                                if (typeof syncDrawingGlobals === "function") {
+                                    syncDrawingGlobals(
+                                        currentFile,
+                                        clickedRoute.routeIdx
+                                    );
+                                }
+
+                                if (typeof updateRouteSelectDropdown === "function") {
+                                    updateRouteSelectDropdown();
+                                }
+
+                                const routeSelect =
+                                    document.getElementById("routeSelect");
+
+                                if (routeSelect) {
+                                    routeSelect.value =
+                                        String(clickedRoute.routeIdx);
+
+                                    routeSelect.selectedIndex =
+                                        clickedRoute.routeIdx;
+                                }
+
+                                if (typeof loadRoute === "function") {
+                                    loadRoute(clickedRoute.routeIdx);
+                                }
+
+                                if (typeof renderRouteInfo === "function") {
+                                    renderRouteInfo();
+                                }
+
+                                return;
+                            }
+
+                            if (clickedRoute.fileIdx !== window.currentMultiIndex) {
+                                if (typeof switchMultiGpx === "function") {
+                                    switchMultiGpx(clickedRoute.fileIdx);
+                                } else {
+                                    window.currentMultiIndex =
+                                        clickedRoute.fileIdx;
+                                }
+
+                                window.currentActiveIndex =
+                                    clickedRoute.routeIdx;
+
+                                const targetFile =
+                                    window.multiGpxStack &&
+                                    window.multiGpxStack[clickedRoute.fileIdx];
+
+                                if (typeof syncDrawingGlobals === "function") {
+                                    syncDrawingGlobals(
+                                        targetFile,
+                                        clickedRoute.routeIdx
+                                    );
+                                }
+
+                                if (typeof updateRouteSelectDropdown === "function") {
+                                    updateRouteSelectDropdown();
+                                }
+
+                                const routeSelect =
+                                    document.getElementById("routeSelect");
+
+                                if (routeSelect) {
+                                    routeSelect.value =
+                                        String(clickedRoute.routeIdx);
+
+                                    routeSelect.selectedIndex =
+                                        clickedRoute.routeIdx;
+                                }
+
+                                if (typeof loadRoute === "function") {
+                                    loadRoute(clickedRoute.routeIdx);
+                                }
+
+                                if (typeof renderRouteInfo === "function") {
+                                    renderRouteInfo();
+                                }
+
+                                if (typeof renderMultiGpxButtons === "function") {
+                                    renderMultiGpxButtons();
+                                }
+
+                                return;
+                            }
+                        }
+
+                        L.DomEvent.stopPropagation(e);
+
+                        const latestPoints =
+                            Array.isArray(drawRouteForHit.points)
+                                ? drawRouteForHit.points
+                                : [];
+
+                        if (latestPoints.length === 0) return;
+
+                        let minD =
+                            Infinity;
+
+                        let idx =
+                            0;
+
+                        latestPoints.forEach(function(p, i) {
+                            const d =
+                                Math.sqrt(
+                                    Math.pow(Number(p.lat) - Number(e.latlng.lat), 2) +
+                                    Math.pow(Number(p.lon) - Number(e.latlng.lng), 2)
+                                );
+
+                            if (d < minD) {
+                                minD =
+                                    d;
+
+                                idx =
+                                    i;
+                            }
+                        });
+
+                        const p =
+                            latestPoints[idx];
+
+                        if (
+                            p &&
+                            typeof showCustomPopup === "function"
+                        ) {
+                            showCustomPopup(
+                                idx,
+                                drawRouteForHit.routeDisplayName ||
+                                drawRouteForHit.displayName ||
+                                drawRouteForHit.name ||
+                                "自訂路線",
+                                "trk",
+                                p.lat,
+                                p.lon
+                            );
+                        }
+                    });
+
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        typeof drawRouteForHit.hitLayer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.hitLayer.bringToFront();
+                    }
+
+                    if (
+                        drawRouteForHit.layer &&
+                        typeof drawRouteForHit.layer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.layer.bringToFront();
+                    }
+
+                } else {
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        map.hasLayer(drawRouteForHit.hitLayer)
+                    ) {
+                        map.removeLayer(drawRouteForHit.hitLayer);
+                    }
+
+                    drawRouteForHit.hitLayer =
+                        null;
+                }
+            }
+
+            if (typeof renderRouteInfo === 'function') {
+                renderRouteInfo();
+            }
+
+            if (typeof renderWaypointsAndPeaks === 'function') {
+                const routeForWpt =
+                    this.currentFile.routes && this.currentFile.routes[nextRouteIndex]
+                        ? this.currentFile.routes[nextRouteIndex]
+                        : this.currentFile;
+
+                renderWaypointsAndPeaks(routeForWpt);
+            }
+
+            if (typeof syncProgressBarWithTrack === 'function') {
+                syncProgressBarWithTrack(true);
+            }
+        }
+    };
+
+    historyManager.undoStack.push(command);
+    historyManager.redoStack = [];
+
+    command.do();
+    historyManager.updateUI();
+
+    tempDrawPoints = [];
+}
+
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        typeof drawRouteForHit.hitLayer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.hitLayer.bringToFront();
+                    }
+
+                    if (
+                        drawRouteForHit.layer &&
+                        typeof drawRouteForHit.layer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.layer.bringToFront();
+                    }
+
+                } else {
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        map.hasLayer(drawRouteForHit.hitLayer)
+                    ) {
+                        map.removeLayer(drawRouteForHit.hitLayer);
+                    }
+
+                    drawRouteForHit.hitLayer =
+                        null;
+                }
+            }
+
+            if (typeof renderRouteInfo === 'function') {
+                renderRouteInfo();
+            }
+
+            const toggleBtn =
+                document.getElementById("toggleChartBtn");
+
+            if (toggleBtn) {
+                toggleBtn.style.display = "block";
+            }
+
+            window.manualShowBar = false;
+
+            const barContainer =
+                document.getElementById("map-control-bar");
+
+            if (barContainer) {
+                barContainer.style.setProperty(
+                    "display",
+                    "none",
+                    "important"
+                );
+            }
+
+            const progressBar =
+                document.getElementById("gpxProgressBar");
+
+            if (
+                progressBar &&
+                Array.isArray(this.targetTrack.points)
+            ) {
+                progressBar.max =
+                    Math.max(0, this.targetTrack.points.length - 1);
+
+                progressBar.value =
+                    0;
+            }
+
+            if (typeof setupProgressBar === "function") {
+                setupProgressBar();
+            }
+
+            if (typeof initProgressBar === "function") {
+                initProgressBar();
+            }
+
+            if (typeof drawElevationChart === "function") {
+                drawElevationChart();
+            }
+
+            if (typeof window.updateVisibility === "function") {
+                window.updateVisibility();
+            }
+        },
+
+        undo: function () {
+
+            window.currentMultiIndex = this.fileIndex;
+
+            this.targetTrack.points.splice(
+                -this.pointsToAdd.length
+            );
+
+            this.targetTrack.segments =
+                this.targetTrack.points.length > 0
+                    ? [
+                        this.targetTrack.points.map(
+                            p => [p.lat, p.lon]
+                        )
+                    ]
+                    : [];
+
+            const isEmpty =
+                this.targetTrack.points.length === 0;
+
+            let nextRouteIndex =
+                this.routeIndex;
+
+            if (
+                isEmpty &&
+                this.wasNewHandDrawRoute &&
+                this.currentFile &&
+                Array.isArray(this.currentFile.routes)
+            ) {
+                const idx =
+                    this.currentFile.routes.indexOf(this.targetTrack);
+
+                if (idx > -1) {
+                    this.currentFile.routes.splice(idx, 1);
+                }
+
+                nextRouteIndex = 0;
+            }
+
+            if (this.currentFile.isDrawTrack) {
+
+                this.currentFile.points =
+                    this.targetTrack.points;
+
+                this.currentFile.segments =
+                    this.targetTrack.segments;
+
+                if (this.currentFile.layer instanceof L.Polyline) {
+                    this.currentFile.layer.setLatLngs(
+                        this.currentFile.segments
+                    );
+                }
+
+                syncDrawingGlobals(this.currentFile, 0);
+                nextRouteIndex = 0;
+
+            } else if (
+                Array.isArray(this.currentFile.routes) &&
+                this.currentFile.routes.length > 0
+            ) {
+
+                if (
+                    this.currentFile.routes.length > 1 &&
+                    this.currentFile.routes[0] &&
+                    this.currentFile.routes[0].isCombined === true
+                ) {
+                    rebuildCombinedRouteForFile(this.currentFile);
+                } else {
+                    this.currentFile.points =
+                        this.targetTrack.points;
+
+                    this.currentFile.segments =
+                        this.targetTrack.segments;
+                }
+
+                if (
+                    nextRouteIndex < 0 ||
+                    nextRouteIndex >= this.currentFile.routes.length
+                ) {
+                    nextRouteIndex = 0;
+                }
+
+                syncDrawingGlobals(
+                    this.currentFile,
+                    nextRouteIndex
+                );
+
+            } else {
+
+                this.currentFile.points =
+                    this.targetTrack.points;
+
+                this.currentFile.segments =
+                    this.targetTrack.segments;
+
+                syncDrawingGlobals(
+                    this.currentFile,
+                    nextRouteIndex
+                );
+            }
+
+            if (
+                isEmpty &&
+                this.currentFile &&
+                (
+                    !Array.isArray(this.currentFile.routes) ||
+                    this.currentFile.routes.length === 0
+                )
+            ) {
+                this.currentFile.isDrawTrack = true;
+                this.currentFile.isHandDrawRoute = true;
+                this.currentFile.isCombined = false;
+
+                this.currentFile.points = [];
+                this.currentFile.segments = [];
+
+                window.allTracks = [this.currentFile];
+
+                if (typeof allTracks !== "undefined") {
+                    allTracks = window.allTracks;
+                }
+
+                window.currentActiveIndex = 0;
+                nextRouteIndex = 0;
+
+                if (typeof trackPoints !== "undefined") {
+                    trackPoints = [];
+                }
+
+                window.trackPoints = [];
+            }
+
+            window.currentMultiIndex = this.fileIndex;
+            window.currentActiveIndex = nextRouteIndex;
+
+            const routeSelect =
+                document.getElementById("routeSelect");
+
+            if (routeSelect) {
+                if (!routeSelect.options || routeSelect.options.length === 0) {
+                    const opt =
+                        document.createElement("option");
+
+                    opt.value = "0";
+                    opt.textContent =
+                        this.currentFile.routeDisplayName ||
+                        this.currentFile.displayName ||
+                        this.currentFile.name ||
+                        "自訂路線";
+
+                    routeSelect.appendChild(opt);
+                }
+
+                if (
+                    routeSelect.options &&
+                    routeSelect.options.length > nextRouteIndex
+                ) {
+                    routeSelect.value =
+                        String(nextRouteIndex);
+                }
+            }
+
+            if (typeof updateRouteSelectDropdown === "function") {
+                updateRouteSelectDropdown();
+            }
+
+            const routeSelectAfterUndoUpdate = document.getElementById("routeSelect");
+            if (
+                routeSelectAfterUndoUpdate &&
+                routeSelectAfterUndoUpdate.options &&
+                routeSelectAfterUndoUpdate.options.length > nextRouteIndex
+            ) {
+                routeSelectAfterUndoUpdate.value = String(nextRouteIndex);
+            }
+
+            if (isEmpty && polyline) {
+                polyline.setLatLngs([]);
+            }
+
+            if (typeof renderMultiGpxButtons === "function") {
+                renderMultiGpxButtons();
+            }
+
+            if (typeof loadRoute === 'function') {
+                loadRoute(nextRouteIndex || 0, null);
+            }
+
+            
+            if (
+                this.targetTrack &&
+                (
+                    this.targetTrack.isDrawTrack === true ||
+                    this.targetTrack.isHandDrawRoute === true
+                )
+            ) {
+                const drawRouteForHit =
+                    this.targetTrack;
+
+                const drawPoints =
+                    Array.isArray(drawRouteForHit.points)
+                        ? drawRouteForHit.points
+                        : [];
+
+                if (drawPoints.length >= 2) {
+                    const hitLatLngs =
+                        drawPoints.map(function(p) {
+                            return [
+                                p.lat,
+                                p.lon
+                            ];
+                        });
+
+                    if (!drawRouteForHit.hitLayer) {
+                        drawRouteForHit.hitLayer = L.polyline(hitLatLngs, {
+                            color: "#000000",
+                            weight: 26,
+                            opacity: 0.01,
+                            interactive: true
+                        }).addTo(map);
+
+                        drawRouteForHit.hitLayer.on("click", function(e) {
+                            L.DomEvent.stopPropagation(e);
+
+                            if (window.splitRoutePickMode) {
+                                if (
+                                    typeof window.executeSplitRoutePick === "function" &&
+                                    window.executeSplitRoutePick(e.latlng)
+                                ) {
+                                    return;
+                                }
+                            }
+
+                            const latestPoints =
+    Array.isArray(drawRouteForHit.points)
+        ? drawRouteForHit.points
+        : [];
+
+if (latestPoints.length === 0) return;
+
+
+let nearestSegmentDistance =
+    Infinity;
+
+let nearestSegmentIdx =
+    -1;
+
+let nearestProjectedLatLng =
+    null;
+
+let nearestProjectedDistance =
+    null;
+
+const clickPoint =
+    map.latLngToContainerPoint(e.latlng);
+
+for (let i = 0; i < latestPoints.length - 1; i++) {
+    const p1 =
+        latestPoints[i];
+
+    const p2 =
+        latestPoints[i + 1];
+
+    if (!p1 || !p2) continue;
+
+    const p1Lat =
+        Number(p1.lat);
+
+    const p1Lon =
+        Number(p1.lon);
+
+    const p2Lat =
+        Number(p2.lat);
+
+    const p2Lon =
+        Number(p2.lon);
+
+    if (
+        !Number.isFinite(p1Lat) ||
+        !Number.isFinite(p1Lon) ||
+        !Number.isFinite(p2Lat) ||
+        !Number.isFinite(p2Lon)
+    ) {
+        continue;
+    }
+
+    const a =
+        map.latLngToContainerPoint(
+            L.latLng(p1Lat, p1Lon)
+        );
+
+    const b =
+        map.latLngToContainerPoint(
+            L.latLng(p2Lat, p2Lon)
+        );
+
+    const abx =
+        b.x - a.x;
+
+    const aby =
+        b.y - a.y;
+
+    const apx =
+        clickPoint.x - a.x;
+
+    const apy =
+        clickPoint.y - a.y;
+
+    const abLenSq =
+        abx * abx + aby * aby;
+
+    if (abLenSq === 0) continue;
+
+    let t =
+        (apx * abx + apy * aby) / abLenSq;
+
+    t =
+        Math.max(
+            0,
+            Math.min(1, t)
+        );
+
+    const projX =
+        a.x + abx * t;
+
+    const projY =
+        a.y + aby * t;
+
+    const dx =
+        clickPoint.x - projX;
+
+    const dy =
+        clickPoint.y - projY;
+
+    const pixelDist =
+        Math.sqrt(dx * dx + dy * dy);
+
+    if (pixelDist < nearestSegmentDistance) {
+        nearestSegmentDistance =
+            pixelDist;
+
+        nearestSegmentIdx =
+            i;
+
+        nearestProjectedLatLng =
+            {
+                lat: p1Lat + (p2Lat - p1Lat) * t,
+                lon: p1Lon + (p2Lon - p1Lon) * t
+            };
+
+        if (
+            Number.isFinite(Number(p1.distance)) &&
+            Number.isFinite(Number(p2.distance))
+        ) {
+            nearestProjectedDistance =
+                Number(p1.distance) +
+                (
+                    Number(p2.distance) -
+                    Number(p1.distance)
+                ) * t;
+        } else {
+            nearestProjectedDistance =
+                null;
+             }
+			    }
+			}
+			
+			if (
+			    nearestSegmentIdx > -1 &&
+			    nearestProjectedLatLng &&
+			    typeof showCustomPopup === "function"
+			) {
+			    const basePoint =
+			        latestPoints[nearestSegmentIdx];
+			
+			    const popupPoint = {
+			        lat: nearestProjectedLatLng.lat,
+			        lon: nearestProjectedLatLng.lon,
+			        ele: basePoint && basePoint.ele !== undefined
+			            ? basePoint.ele
+			            : 0,
+			        time: basePoint ? basePoint.time : null,
+			        timeLocal: basePoint ? basePoint.timeLocal : null,
+			        distance: nearestProjectedDistance
+			    };
+			
+			    let tempIdx =
+			        -1;
+			
+			    if (
+			        typeof trackPoints !== "undefined" &&
+			        Array.isArray(trackPoints)
+			    ) {
+			        trackPoints.push(popupPoint);
+			        tempIdx =
+			            trackPoints.length - 1;
+			    }
+			
+			    showCustomPopup(
+			        tempIdx,
+			        drawRouteForHit.routeDisplayName ||
+			        drawRouteForHit.displayName ||
+			        drawRouteForHit.name ||
+			        "自訂路線",
+			        "trk",
+			        nearestProjectedLatLng.lat,
+			        nearestProjectedLatLng.lon
+			    );
+			
+			    if (
+			        tempIdx > -1 &&
+			        Array.isArray(trackPoints)
+			    ) {
+			        trackPoints.splice(tempIdx, 1);
+			    }
+			
+			    if (hoverMarker) {
+			        hoverMarker
+			            .setLatLng([
+			                nearestProjectedLatLng.lat,
+			                nearestProjectedLatLng.lon
+			            ])
+			            .addTo(map)
+			            .bringToFront();
+			    }
+			}
+                        });
+
+                    } else {
+                        drawRouteForHit.hitLayer.setLatLngs(hitLatLngs);
+
+                        if (!map.hasLayer(drawRouteForHit.hitLayer)) {
+                            drawRouteForHit.hitLayer.addTo(map);
+                        }
+                    }
+
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        typeof drawRouteForHit.hitLayer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.hitLayer.bringToFront();
+                    }
+
+                    if (
+                        drawRouteForHit.layer &&
+                        typeof drawRouteForHit.layer.bringToFront === "function"
+                    ) {
+                        drawRouteForHit.layer.bringToFront();
+                    }
+
+                } else {
+                    if (
+                        drawRouteForHit.hitLayer &&
+                        map.hasLayer(drawRouteForHit.hitLayer)
+                    ) {
+                        map.removeLayer(drawRouteForHit.hitLayer);
+                    }
+
+                    drawRouteForHit.hitLayer =
+                        null;
+                }
             }
 
             if (typeof renderRouteInfo === 'function') {
@@ -722,18 +2764,106 @@ function finishScribble() {
 
 map.on('mousedown', (e) => {
     if (!e || !e.latlng) return;
+
+    if (
+        isDrawingMode &&
+        drawMethod === 'scribble' &&
+        e.originalEvent &&
+        e.originalEvent.ctrlKey
+    ) {
+        isCtrlPanningInDrawMode = true;
+        isScribbling = false;
+        tempDrawPoints = [];
+        lastScribbleLatLng = null;
+
+        if (map && map.dragging) {
+            map.dragging.enable();
+        }
+
+        return;
+    }
+
     startScribble(e.latlng, e.originalEvent);
 });
 
 map.on('mousemove', (e) => {
     if (!e || !e.latlng) return;
+
+    if (isCtrlPanningInDrawMode) {
+        return;
+    }
+
     moveScribble(e.latlng);
 });
 
 window.addEventListener('mouseup', () => {
+    if (isCtrlPanningInDrawMode) {
+        isCtrlPanningInDrawMode = false;
+        isScribbling = false;
+        tempDrawPoints = [];
+        lastScribbleLatLng = null;
+
+        if (
+            isDrawingMode &&
+            map &&
+            map.dragging
+        ) {
+            map.dragging.disable();
+        }
+
+        return;
+    }
+
     finishScribble();
 });
 
+window.addEventListener('keydown', function(e) {
+				if (
+				    (
+				        e.key === "Control" ||
+				        e.key === "Meta"
+				    ) &&
+				    isDrawingMode &&
+				    drawMethod === 'scribble'
+				) {
+        isCtrlPanningInDrawMode = true;
+
+        if (map && map.dragging) {
+            map.dragging.enable();
+        }
+
+        const mapEl =
+            document.getElementById('map');
+
+        if (mapEl) {
+            mapEl.style.cursor = 'grab';
+        }
+    }
+});
+
+window.addEventListener('keyup', function(e) {
+				if (
+				    e.key === "Control" ||
+				    e.key === "Meta"
+				) {
+				    isCtrlPanningInDrawMode = false;
+
+        if (
+            isDrawingMode &&
+            map &&
+            map.dragging
+        ) {
+            map.dragging.disable();
+        }
+
+        const mapEl =
+            document.getElementById('map');
+
+        if (mapEl) {
+            mapEl.style.cursor = '';
+        }
+    }
+});
 
 
 map.on('touchstart', (e) => {
@@ -769,17 +2899,13 @@ map.on('touchend', (e) => {
 });
 
 document.addEventListener(
+
     'touchstart',
     function(e) {
         if (!isDrawingMode) return;
         if (drawMethod !== 'scribble') return;
         if (!e.touches || !e.touches[0]) return;
 
-        /*
-            雙指縮放：
-            不開始畫線、不 finishScribble、不 preventDefault。
-            讓 Leaflet 自己處理縮放。
-        */
         if (e.touches.length > 1) {
             isPinchingMap = true;
             isScribbling = false;
@@ -788,11 +2914,6 @@ document.addEventListener(
             return;
         }
 
-        /*
-            如果剛剛還在雙指縮放狀態，
-            單指殘留不要接續畫線。
-            等所有手指放開後才解除。
-        */
         if (isPinchingMap) {
             return;
         }
@@ -864,15 +2985,11 @@ document.addEventListener(
 
 
 document.addEventListener(
+
     'touchmove',
     function(e) {
         if (!isDrawingMode) return;
 
-        /*
-            雙指縮放：
-            不畫線、不 finishScribble、不 preventDefault。
-            讓 Leaflet 自己縮放。
-        */
         if (e.touches && e.touches.length > 1) {
             isPinchingMap = true;
             isScribbling = false;
@@ -881,10 +2998,6 @@ document.addEventListener(
             return;
         }
 
-        /*
-            雙指縮放後，若還有單指殘留，
-            不要把它接成線。
-        */
         if (isPinchingMap) {
             return;
         }
@@ -908,10 +3021,6 @@ document.addEventListener(
             touch.clientY >= mapRect.top &&
             touch.clientY <= mapRect.bottom;
 
-        /*
-            手指離開整個地圖範圍：
-            結束這一筆，但不要補點。
-        */
         if (!insideMap) {
             finishScribble();
             isScribbling = false;
@@ -919,10 +3028,6 @@ document.addEventListener(
             return;
         }
 
-        /*
-            手指移到地圖上的 UI 控制區：
-            不畫、不補點、不結束。
-        */
         if (
             !target ||
             !mapEl.contains(target) ||
@@ -972,11 +3077,6 @@ document.addEventListener(
     'touchend',
     function(e) {
 
-        /*
-            雙指縮放結束：
-            不 finishScribble，不補線。
-            等所有手指都離開後，解除 pinch 狀態。
-        */
         if (isPinchingMap) {
             if (!e.touches || e.touches.length === 0) {
                 isPinchingMap = false;
@@ -1034,13 +3134,6 @@ function syncDrawingGlobals(currentFile, activeRouteIdx = 0) {
 
     if (!currentFile) return;
 
-    /*
-        Step 1 核心規則：
-        multiGpxStack 永遠只放「GPX 檔案層級」。
-        allTracks 才放「目前檔案內的 routeSelect 路線」。
-        絕對不能把 currentFile.routes / allTracks 指派給 multiGpxStack。
-    */
-
     if (typeof multiGpxStack === "undefined" || !Array.isArray(multiGpxStack)) {
         multiGpxStack = [];
     }
@@ -1090,6 +3183,771 @@ function syncDrawingGlobals(currentFile, activeRouteIdx = 0) {
     window.currentActiveIndex = activeRouteIdx;
 }
 
+function routeHasTrackData(route) {
+    if (!route) return false;
+
+    if (
+        Array.isArray(route.points) &&
+        route.points.length > 0
+    ) {
+        return true;
+    }
+
+    if (
+        Array.isArray(route.segments) &&
+        route.segments.some(seg => Array.isArray(seg) && seg.length > 0)
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function fileHasTrackData(file) {
+    if (!file) return false;
+
+    if (
+        Array.isArray(file.routes) &&
+        file.routes.some(route => routeHasTrackData(route))
+    ) {
+        return true;
+    }
+
+    if (routeHasTrackData(file)) {
+        return true;
+    }
+
+    return false;
+}
+
+function getNextCustomRouteName(currentFile) {
+    const routes =
+        currentFile && Array.isArray(currentFile.routes)
+            ? currentFile.routes
+            : [];
+
+    let maxNo = 0;
+
+    routes.forEach(route => {
+        const name =
+            route &&
+            (route.displayName || route.name || "");
+
+        const match =
+            String(name).match(/^自訂路線\s*(\d+)?$/);
+
+        if (match) {
+            const n =
+                match[1]
+                    ? parseInt(match[1], 10)
+                    : 1;
+
+            if (Number.isFinite(n)) {
+                maxNo = Math.max(maxNo, n);
+            }
+        }
+    });
+
+    return maxNo === 0
+        ? "自訂路線"
+        : `自訂路線 ${maxNo + 1}`;
+}
+
+
+function ensureCombinedRouteForCurrentFile(currentFile) {
+
+    if (!currentFile) return false;
+
+    if (!Array.isArray(currentFile.routes)) {
+        currentFile.routes = [];
+    }
+
+    const routes = currentFile.routes;
+
+    if (
+        routes.length > 0 &&
+        routes[0] &&
+        routes[0].isCombined === true
+    ) {
+        return true;
+    }
+
+    const childRoutes = routes.filter(route =>
+        route &&
+        !route.isCombined &&
+        (
+            (Array.isArray(route.points) && route.points.length > 0) ||
+            (Array.isArray(route.segments) && route.segments.length > 0)
+        )
+    );
+
+    if (childRoutes.length === 0) {
+        return false;
+    }
+
+    let combinedPoints = [];
+    let combinedSegments = [];
+
+    childRoutes.forEach(route => {
+        const pts = Array.isArray(route.points) ? route.points : [];
+
+        if (pts.length > 0) {
+            combinedPoints = combinedPoints.concat(pts);
+        }
+
+        if (
+            Array.isArray(route.segments) &&
+            route.segments.length > 0
+        ) {
+            route.segments.forEach(seg => {
+                if (Array.isArray(seg) && seg.length > 0) {
+                    combinedSegments.push(seg);
+                }
+            });
+        } else if (pts.length > 0) {
+            combinedSegments.push(
+                pts.map(p => [p.lat, p.lon])
+            );
+        }
+    });
+
+    let totalDist = 0;
+
+    const recalculatedPoints =
+        combinedPoints.map((p, idx, arr) => {
+            if (idx > 0) {
+                const prev = arr[idx - 1];
+                totalDist += calculateDistance(
+                    prev.lat,
+                    prev.lon,
+                    p.lat,
+                    p.lon
+                );
+            }
+
+            return {
+                ...p,
+                distance: totalDist
+            };
+        });
+
+    const combinedRoute = {
+        id: "combined_" + Date.now(),
+        name: currentFile.displayName || currentFile.fileName || currentFile.name || "結合路線",
+        displayName: currentFile.displayName || currentFile.fileName || currentFile.name || "結合路線",
+        fileName: currentFile.fileName || currentFile.name || "GPX",
+        color: currentFile.color || "#0000FF",
+        points: recalculatedPoints,
+        segments: combinedSegments,
+        waypoints: currentFile.waypoints || [],
+        visible: true,
+        isCombined: true
+    };
+
+    currentFile.routes.unshift(combinedRoute);
+    currentFile.points = recalculatedPoints;
+    currentFile.segments = combinedSegments;
+
+    if (currentFile.layer instanceof L.Polyline) {
+        currentFile.layer.setLatLngs(combinedSegments);
+    }
+
+    return true;
+}
+
+function createNewDrawingRouteForCurrentFile() {
+
+    const stackIdx =
+        window.currentMultiIndex || 0;
+
+    let currentFile =
+        window.multiGpxStack &&
+        window.multiGpxStack[stackIdx];
+
+		const currentFileNameForDraw =
+		    String(
+		        currentFile &&
+		        (
+		            currentFile.fileName ||
+		            currentFile.displayName ||
+		            currentFile.routeDisplayName ||
+		            currentFile.name ||
+		            ""
+		        )
+		    );
+		
+		const isBlankCustomDrawFile =
+		    currentFile &&
+		    (
+		        currentFile.isDrawTrack === true ||
+		        currentFileNameForDraw.startsWith("自訂路線")
+		    );
+		
+		const currentFileHasPoints =
+		    currentFile &&
+		    Array.isArray(currentFile.points) &&
+		    currentFile.points.length > 0;
+		
+		const currentFileHasSegments =
+		    currentFile &&
+		    Array.isArray(currentFile.segments) &&
+		    currentFile.segments.length > 0;
+		
+		const currentFileHasRouteData =
+		    currentFile &&
+		    Array.isArray(currentFile.routes) &&
+		    currentFile.routes.some(function(route) {
+		        if (!route) return false;
+		
+		        return (
+		            (
+		                Array.isArray(route.points) &&
+		                route.points.length > 0
+		            ) ||
+		            (
+		                Array.isArray(route.segments) &&
+		                route.segments.length > 0
+		            )
+		        );
+		    });
+		
+		if (
+		    isBlankCustomDrawFile &&
+		    !currentFileHasPoints &&
+		    !currentFileHasSegments &&
+		    !currentFileHasRouteData
+		) {
+		    currentFile.isDrawTrack = true;
+		    currentFile.isHandDrawRoute = true;
+		    currentFile.isCombined = false;
+		
+		    currentFile.points = [];
+		    currentFile.segments = [];
+		
+		    if (!Array.isArray(currentFile.waypoints)) {
+		        currentFile.waypoints = [];
+		    }
+		
+		    if (Array.isArray(currentFile.routes)) {
+		        delete currentFile.routes;
+		    }
+		
+		    window.drawTargetMode = "direct-draw";
+		    window.currentMultiIndex = stackIdx;
+		    window.currentActiveIndex = 0;
+		
+		    if (typeof syncDrawingGlobals === "function") {
+		        syncDrawingGlobals(currentFile, 0);
+		    }
+		
+		    if (typeof updateRouteSelectDropdown === "function") {
+		        updateRouteSelectDropdown();
+		    }
+		
+		    const routeSelect =
+		        document.getElementById("routeSelect");
+		
+		    if (
+		        routeSelect &&
+		        routeSelect.options &&
+		        routeSelect.options.length > 0
+		    ) {
+		        routeSelect.value = "0";
+		    }
+		
+		    return {
+		        currentFile: currentFile,
+		        routeIdx: 0,
+		        route: currentFile
+		    };
+		}
+
+    if (!currentFile) {
+        currentFile = ensureCustomDrawTrack();
+
+        window.drawTargetMode = "direct-draw";
+
+        return {
+            currentFile,
+            routeIdx: 0,
+            route: currentFile
+        };
+    }
+
+    function patchFirstDrawHistoryTarget(firstRoute) {
+        if (
+            !firstRoute ||
+            typeof historyManager === "undefined" ||
+            !historyManager
+        ) {
+            return;
+        }
+
+        const patchStack = function(stack) {
+            if (!Array.isArray(stack)) return;
+
+            stack.forEach(function(command) {
+                if (!command) return;
+
+                if (
+                    command.currentFile === currentFile &&
+                    command.targetTrack === currentFile &&
+                    command.fileIndex === stackIdx
+                ) {
+                    const actualIdx =
+                        Array.isArray(currentFile.routes)
+                            ? currentFile.routes.indexOf(firstRoute)
+                            : -1;
+
+                    command.targetTrack =
+                        firstRoute;
+
+                    if (actualIdx >= 0) {
+                        command.routeIndex =
+                            actualIdx;
+
+                        command.targetRouteIndex =
+                            actualIdx;
+                    }
+                }
+            });
+        };
+
+        patchStack(historyManager.undoStack);
+        patchStack(historyManager.redoStack);
+    }
+
+    let convertedFirstRoute = null;
+
+    if (currentFile.isDrawTrack === true) {
+
+        const hasExistingPoints =
+            Array.isArray(currentFile.points) &&
+            currentFile.points.length > 0;
+
+        const hasExistingSegments =
+            Array.isArray(currentFile.segments) &&
+            currentFile.segments.length > 0;
+
+        if (!hasExistingPoints && !hasExistingSegments) {
+            window.drawTargetMode = "direct-draw";
+
+            syncDrawingGlobals(currentFile, 0);
+
+            return {
+                currentFile,
+                routeIdx: 0,
+                route: currentFile
+            };
+        }
+
+        if (!Array.isArray(currentFile.routes)) {
+            const firstRouteName =
+                currentFile.routeDisplayName ||
+                currentFile.displayName ||
+                currentFile.name ||
+                "自訂路線";
+
+            const firstRoute = {
+                id: currentFile.id || ("draw_route_" + Date.now()),
+                name: firstRouteName,
+                displayName: firstRouteName,
+                routeDisplayName: firstRouteName,
+                fileName: currentFile.fileName || currentFile.name || "自訂路線",
+                color: currentFile.color || "#0000FF",
+
+                points: Array.isArray(currentFile.points)
+                    ? currentFile.points
+                    : [],
+
+                segments: Array.isArray(currentFile.segments)
+                    ? currentFile.segments
+                    : [],
+
+                waypoints: Array.isArray(currentFile.waypoints)
+                    ? currentFile.waypoints
+                    : [],
+
+                visible: true,
+                isCombined: false,
+                isDrawTrack: true,
+                isHandDrawRoute: true
+            };
+
+            currentFile.routes =
+                [firstRoute];
+
+            convertedFirstRoute =
+                firstRoute;
+        }
+
+        currentFile.isDrawTrack = false;
+        currentFile.isHandDrawRoute = false;
+        currentFile.isCombined = false;
+
+        currentFile.name =
+            currentFile.fileName ||
+            currentFile.name ||
+            "自訂路線";
+
+        currentFile.displayName =
+            currentFile.displayName ||
+            currentFile.name ||
+            "自訂路線";
+
+        currentFile.fileName =
+            currentFile.fileName ||
+            currentFile.name ||
+            "自訂路線";
+    }
+
+    if (!Array.isArray(currentFile.routes)) {
+        currentFile.routes = [];
+    }
+
+    if (fileHasTrackData(currentFile)) {
+        ensureCombinedRouteForCurrentFile(currentFile);
+    }
+
+    if (convertedFirstRoute) {
+        patchFirstDrawHistoryTarget(convertedFirstRoute);
+    }
+
+    let routeName =
+        getNextCustomRouteName(currentFile);
+
+    if (
+        routeName === undefined ||
+        routeName === null ||
+        routeName === "" ||
+        routeName === "NaN" ||
+        String(routeName).trim() === "" ||
+        String(routeName).trim() === "NaN"
+    ) {
+        routeName = "自訂路線";
+    }
+
+    const newRoute = {
+        id: "draw_route_" + Date.now(),
+        name: routeName,
+        displayName: routeName,
+        routeDisplayName: routeName,
+        fileName: currentFile.fileName || currentFile.name || "自訂路線",
+        color: currentFile.color || "#0000FF",
+
+        points: [],
+        segments: [],
+        waypoints: currentFile.waypoints || [],
+
+        visible: true,
+        isCombined: false,
+        isDrawTrack: true,
+        isHandDrawRoute: true
+    };
+
+    currentFile.routes.push(newRoute);
+
+    const routeIdx =
+        currentFile.routes.length - 1;
+
+    window.currentMultiIndex =
+        stackIdx;
+
+    window.currentActiveIndex =
+        routeIdx;
+
+    window.drawTargetMode =
+        "new-route";
+
+    if (
+        currentFile.routes.length > 1 &&
+        currentFile.routes[0] &&
+        currentFile.routes[0].isCombined === true
+    ) {
+        rebuildCombinedRouteForFile(currentFile);
+    }
+
+    if (convertedFirstRoute) {
+        patchFirstDrawHistoryTarget(convertedFirstRoute);
+    }
+
+    syncDrawingGlobals(
+        currentFile,
+        routeIdx
+    );
+
+    if (typeof updateRouteSelectDropdown === "function") {
+        updateRouteSelectDropdown();
+    }
+
+    const routeSelect =
+        document.getElementById("routeSelect");
+
+    if (
+        routeSelect &&
+        routeSelect.options &&
+        routeSelect.options.length > routeIdx
+    ) {
+        routeSelect.value =
+            String(routeIdx);
+    }
+
+    if (typeof renderMultiGpxButtons === "function") {
+        renderMultiGpxButtons();
+    }
+
+    if (typeof loadRoute === "function") {
+        loadRoute(routeIdx);
+    }
+
+    return {
+        currentFile,
+        routeIdx,
+        route: newRoute
+    };
+}
+
+function showDrawingRouteChoiceModal(onCreateNew, onEditCurrent, onCancel) {
+    const modal = document.getElementById('deleteConfirmModal');
+    if (!modal) return;
+
+    const h3Tag = modal.querySelector('h3');
+    const pTag = modal.querySelector('p');
+
+    const primaryBtn = document.getElementById('modalDeleteConfirm'); 
+    const cancelBtn = document.getElementById('modalDeleteCancel'); 
+
+    if (!primaryBtn || !cancelBtn) return;
+
+    if (h3Tag) {
+        h3Tag.innerText = "繪製路線";
+        h3Tag.style.textAlign = "center";
+        h3Tag.style.fontSize = "20px";
+        h3Tag.style.fontWeight = "700";
+        h3Tag.style.margin = "0 0 14px 0";
+        h3Tag.style.color = "#2c3e50";
+    }
+
+    if (pTag) {
+        pTag.innerHTML = `
+            目前 GPX 已有軌跡。<br>
+            請選擇要建立新路線，或編輯目前選取的路線。
+        `;
+        pTag.style.textAlign = "center";
+        pTag.style.fontSize = "15px";
+        pTag.style.lineHeight = "1.7";
+        pTag.style.color = "#444";
+        pTag.style.margin = "0 0 18px 0";
+    }
+
+    let secondaryBtn = document.getElementById("modalThirdChoiceBtn");
+
+    if (!secondaryBtn) {
+        secondaryBtn = document.createElement("button");
+        secondaryBtn.id = "modalThirdChoiceBtn";
+        secondaryBtn.type = "button";
+    }
+
+    primaryBtn.innerText = "建立新路線";
+    secondaryBtn.innerText = "編輯目前選取路線";
+    cancelBtn.innerText = "取消";
+
+    const btnParent = primaryBtn.parentNode;
+
+    if (btnParent) {
+        btnParent.innerHTML = "";
+
+        btnParent.appendChild(primaryBtn);
+        btnParent.appendChild(secondaryBtn);
+        btnParent.appendChild(cancelBtn);
+
+        btnParent.style.display = "flex";
+        btnParent.style.flexDirection = "column";
+        btnParent.style.justifyContent = "center";
+        btnParent.style.alignItems = "stretch";
+        btnParent.style.gap = "10px";
+        btnParent.style.flexWrap = "nowrap";
+        btnParent.style.width = "100%";
+        btnParent.style.marginTop = "18px";
+    }
+
+    [primaryBtn, secondaryBtn, cancelBtn].forEach(btn => {
+        if (!btn) return;
+
+        btn.style.width = "100%";
+        btn.style.minHeight = "44px";
+        btn.style.fontSize = "15px";
+        btn.style.fontWeight = "600";
+        btn.style.padding = "10px 16px";
+        btn.style.borderRadius = "8px";
+        btn.style.boxSizing = "border-box";
+        btn.style.margin = "0";
+        btn.style.cursor = "pointer";
+    });
+
+    primaryBtn.style.background = "#d35400";
+    primaryBtn.style.color = "white";
+    primaryBtn.style.border = "none";
+
+    secondaryBtn.style.background = "#1a73e8";
+    secondaryBtn.style.color = "white";
+    secondaryBtn.style.border = "none";
+
+    cancelBtn.style.background = "#ffffff";
+    cancelBtn.style.color = "#333";
+    cancelBtn.style.border = "1px solid #ddd";
+
+    modal.style.display = "flex";
+
+    if (typeof L !== "undefined" && L.DomEvent) {
+        L.DomEvent.disableClickPropagation(modal);
+    }
+
+    primaryBtn.onclick = function() {
+        modal.style.display = "none";
+
+        if (onCreateNew) {
+            onCreateNew();
+        }
+    };
+
+    secondaryBtn.onclick = function() {
+        modal.style.display = "none";
+
+        if (onEditCurrent) {
+            onEditCurrent();
+        }
+    };
+
+    cancelBtn.onclick = function() {
+        modal.style.display = "none";
+
+        if (onCancel) {
+            onCancel();
+        }
+    };
+}
+
+function activateDrawingModeUi() {
+    isDrawingMode = true;
+    drawMethod = 'scribble';
+
+    const drawBtn = document.getElementById('drawModeBtn');
+    if (drawBtn) {
+        drawBtn.style.setProperty('background', "#d35400", 'important');
+        drawBtn.style.setProperty('color', "white", 'important');
+    }
+
+    const methodBtn = document.getElementById('drawMethodBtn');
+    if (methodBtn) {
+        methodBtn.style.display = "block";
+    }
+
+    const mapEl = document.getElementById('map');
+    if (mapEl) {
+        mapEl.style.cursor = "crosshair";
+    }
+
+    if (typeof showMapToast === 'function') {
+        showMapToast("手繪模式：按住拖曳繪製\n\n電腦：按住 Ctrl 移動地圖\n手機：兩指按住移動地圖");
+    }
+
+    if (map && map.dragging) {
+        map.dragging.disable();
+    }
+}
+
+function prepareDrawingModeStart() {
+
+    const stackIdx =
+        window.currentMultiIndex || 0;
+
+    const currentFile =
+        window.multiGpxStack &&
+        window.multiGpxStack[stackIdx];
+
+    if (!currentFile) {
+        createNewDrawingRouteForCurrentFile();
+        return true;
+    }
+
+    const hasTrack =
+        fileHasTrackData(currentFile);
+
+    if (!hasTrack) {
+        if (!Array.isArray(currentFile.routes)) {
+            currentFile.routes = [];
+        }
+
+        if (currentFile.routes.length === 0) {
+            const routeName =
+                currentFile.displayName ||
+                currentFile.fileName ||
+                currentFile.name ||
+                "航點資料";
+
+            currentFile.routes.push({
+                id: "waypoint_only_draw_" + Date.now(),
+                name: routeName,
+                displayName: routeName,
+                fileName: currentFile.fileName || currentFile.name || "GPX",
+                color: currentFile.color || "#0000FF",
+                points: [],
+                segments: [],
+                waypoints: currentFile.waypoints || [],
+                visible: true,
+                isCombined: false,
+                isDrawTrack: false,
+                isWaypointOnly: true
+            });
+        }
+
+        window.currentMultiIndex = stackIdx;
+        window.currentActiveIndex = 0;
+        window.drawTargetMode = "edit-selected";
+
+        syncDrawingGlobals(currentFile, 0);
+
+        if (typeof updateRouteSelectDropdown === "function") {
+            updateRouteSelectDropdown();
+        }
+
+        const routeSelect = document.getElementById("routeSelect");
+        if (routeSelect && routeSelect.options && routeSelect.options.length > 0) {
+            routeSelect.value = "0";
+        }
+
+        if (typeof loadRoute === "function") {
+            loadRoute(0);
+        }
+
+        return true;
+    }
+
+    showDrawingRouteChoiceModal(
+        function() {
+            createNewDrawingRouteForCurrentFile();
+            activateDrawingModeUi();
+        },
+        function() {
+            window.drawTargetMode = "edit-selected";
+
+            const activeIdx =
+                window.currentActiveIndex || 0;
+
+            if (typeof loadRoute === "function") {
+                loadRoute(activeIdx);
+            }
+
+            activateDrawingModeUi();
+        },
+        function() {
+            window.drawTargetMode = null;
+        }
+    );
+
+    return "pending";
+}
 
 function ensureCustomDrawTrack() {
 
@@ -1259,10 +4117,6 @@ function getActiveDrawingTarget() {
         };
     }
 
-    /*
-        空白地圖 / 自訂手繪：
-        直接畫在檔案本身。
-    */
     if (currentFile.isDrawTrack) {
 
         if (!Array.isArray(currentFile.points)) {
@@ -1288,11 +4142,6 @@ function getActiveDrawingTarget() {
         };
     }
 
-    /*
-        匯入 GPX：
-        routes 是目前檔案內的 routeSelect 路線。
-        注意：不能把 routes 放進 multiGpxStack。
-    */
     let routes =
         Array.isArray(currentFile.routes) && currentFile.routes.length > 0
             ? currentFile.routes
@@ -1326,10 +4175,6 @@ function getActiveDrawingTarget() {
     currentFile.routes =
         routes;
 
-    /*
-        如果目前選到「結合路線」，不要直接寫入 routes[0]。
-        建立/使用「手繪路線」子路線，並直接切換 routeSelect 到它。
-    */
     if (
         routeIdx === 0 &&
         routes.length > 1 &&
@@ -1848,14 +4693,57 @@ function showFreeClickPopup(latlng, searchTitle = null, searchAddr = null) {
             </div>
         </div>`;
     
-    if (currentPopup && map.hasLayer(currentPopup)) {
-        currentPopup.setLatLng(latlng).setContent(content);
-    } else {
-        currentPopup = L.popup({ autoClose: false, closeOnClick: false,})
-            .setLatLng(latlng)
-            .setContent(content)
-            .openOn(map);
-    }
+    if (!window.activeFocusCircle) {
+		    window.activeFocusCircle = L.circleMarker(latlng, {
+		        radius: 7,
+		        color: '#ffffff',
+		        weight: 2,
+		        fillColor: '#1a73e8',
+		        fillOpacity: 1,
+		        interactive: false
+		    }).addTo(map);
+				} else {
+				    window.activeFocusCircle.setLatLng(latlng);
+				
+				    if (!map.hasLayer(window.activeFocusCircle)) {
+				        window.activeFocusCircle.addTo(map);
+				    }
+				}
+    
+		if (currentPopup && map.hasLayer(currentPopup)) {
+		    currentPopup
+		        .setLatLng(latlng)
+		        .setContent(content);
+		} else {
+		    currentPopup = L.popup({
+		            autoClose: false,
+		            closeOnClick: false
+		        })
+		        .setLatLng(latlng)
+		        .setContent(content)
+		        .openOn(map);
+		}
+		
+		if (currentPopup._freeClickRemoveHandler) {
+		    currentPopup.off(
+		        "remove",
+		        currentPopup._freeClickRemoveHandler
+		    );
+		}
+		
+		currentPopup._freeClickRemoveHandler = function() {
+		    if (
+		        window.activeFocusCircle &&
+		        map.hasLayer(window.activeFocusCircle)
+		    ) {
+		        map.removeLayer(window.activeFocusCircle);
+		    }
+		};
+		
+		currentPopup.on(
+		    "remove",
+		    currentPopup._freeClickRemoveHandler
+		);
     const routeSelect = document.getElementById('routeSelectContainer');
     
     const isRouteSelectVisible = routeSelect && 
@@ -1920,9 +4808,42 @@ window.setFreeAB = function(type, lat, lon) {
 };
 
 routeSelect.addEventListener("change", (e) => {
-    const selectedIndex = parseInt(e.target.value, 10) || 0;
-    window.currentActiveIndex = selectedIndex;
+
+    const selectedIndex =
+        parseInt(e.target.value, 10) || 0;
+
+    
+    const chartBox =
+        document.getElementById("elevationChartContainer") ||
+        document.getElementById("chartContainer") ||
+        document.getElementById("elevationPanel") ||
+        document.querySelector(".elevation-chart-container") ||
+        document.querySelector(".elevation-panel");
+
+    const wasHidden =
+        chartBox &&
+        (
+            chartBox.style.display === "none" ||
+            chartBox.classList.contains("collapsed") ||
+            chartBox.dataset.collapsed === "true"
+        );
+
+    window.currentActiveIndex =
+        selectedIndex;
+
     loadRoute(selectedIndex);
+
+    setTimeout(() => {
+        if (chartBox && wasHidden) {
+            chartBox.style.display = "none";
+            chartBox.classList.add("collapsed");
+            chartBox.dataset.collapsed = "true";
+        }
+
+        if (typeof window.refreshGpxManagerIfOpen === "function") {
+            window.refreshGpxManagerIfOpen();
+        }
+    }, 0);
 });
 
 const startIcon = new L.Icon({
@@ -1981,7 +4902,7 @@ document.getElementById("gpxInput").addEventListener("change", e => {
 });
 
 function clearEverything() {
-    
+
     if (typeof window.resetGPS === 'function') window.resetGPS();
     
     
@@ -2216,6 +5137,7 @@ function getBearingInfo(lat1, lon1, lat2, lon2) {
 let fsPopupTimer = null;
 
 function setupProgressBar() {
+
     const barContainer = document.getElementById("map-control-bar");
     const progressBar = document.getElementById("gpxProgressBar");
     const mainCheckbox = document.getElementById("showChartTipCheckbox");
@@ -2368,6 +5290,7 @@ function setupProgressBar() {
 }
 
 function initProgressBar() {
+
     const bar = document.getElementById("gpxProgressBar");
     if (typeof trackPoints !== 'undefined' && trackPoints.length > 0 && bar) {
         bar.max = trackPoints.length - 1;
@@ -2378,6 +5301,19 @@ function initProgressBar() {
 }
 
 function loadRoute(index, customColor = null, focusPos = null) {
+	
+	const shouldSkipAutoFitBounds =
+    focusPos &&
+    focusPos.skipAutoFitBounds === true;
+
+	const hasValidFocusPos =
+    focusPos &&
+    Number.isFinite(Number(focusPos.lat)) &&
+    Number.isFinite(Number(focusPos.lng));
+	
+	if (typeof window.renderRouteToolControl === "function") {
+    window.renderRouteToolControl();
+}
 
     if (typeof customColor !== 'string') customColor = null;
 
@@ -2394,7 +5330,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
         }
     }, 10);
 
-    
     map.eachLayer(layer => {
         if (
             layer instanceof L.CircleMarker &&
@@ -2424,12 +5359,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
     if (!currentFile) return;
 
-    /*
-        取得目前檔案內的 routeList。
-        有 routes 就用 routes；
-        沒有 routes 就用 allTracks；
-        再沒有就用 currentFile 本身。
-    */
     let routeList = [];
 
     if (
@@ -2463,6 +5392,14 @@ function loadRoute(index, customColor = null, focusPos = null) {
         (
             sel.name &&
             String(sel.name).includes("結合")
+        ) ||
+        (
+            sel.displayName &&
+            String(sel.displayName).includes("結合")
+        ) ||
+        (
+            sel.routeDisplayName &&
+            String(sel.routeDisplayName).includes("結合")
         );
 
     trackPoints =
@@ -2479,7 +5416,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
         sel.color ||
         "#0000FF";
 
-    
     const fileName =
         window.currentFileNameForDisplay ||
         currentFile.fileName ||
@@ -2577,14 +5513,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
             ? sel.segments
             : breakTracks(trackPoints);
 
-    /*
-        ============================================================
-        重要修正 1：
-        檔案層 item.layer 不再拿來畫「子路線虛線」。
-        如果目前 GPX 有子路線，item.layer 只會被隱藏。
-        子路線顯示改由下面 routePreviewLayers 負責。
-        ============================================================
-    */
     multiGpxStack.forEach((item, i) => {
 
         const layer =
@@ -2601,11 +5529,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
             if (hasChildRoutes) {
 
-                /*
-                    有子路線的目前 GPX：
-                    不用 item.layer 畫半透明虛線。
-                    否則會把 combined points 串成錯誤直線。
-                */
                 layer.setStyle({
                     opacity: 0,
                     weight: 0,
@@ -2615,10 +5538,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
             } else {
 
-                /*
-                    沒有子路線的目前 GPX：
-                    正常顯示實線。
-                */
                 layer.setStyle({
                     color: item.color || "#0000FF",
                     opacity: item.visible === false ? 0 : 1.0,
@@ -2630,30 +5549,68 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
         } else {
 
-            /*
-                非目前 GPX：
-                保持淡色實線。
-            */
-            layer.setStyle({
-                color: item.color || "#0000FF",
-                opacity: item.visible === false ? 0 : 0.4,
-                weight: 4,
-                dashArray: null,
-                interactive: true
-            });
-        }
+				    if (
+				        item &&
+				        Array.isArray(item.routes) &&
+				        item.routes.length > 1
+				    ) {
+				        let backgroundSegments = [];
+
+				        if (
+				            item.routes[0] &&
+				            item.routes[0].isCombined === true &&
+				            Array.isArray(item.routes[0].segments) &&
+				            item.routes[0].segments.length > 0
+				        ) {
+				            backgroundSegments =
+				                item.routes[0].segments;
+				
+				        } else {
+
+				            item.routes.forEach(function(route) {
+				                if (!route || route.isCombined === true) return;
+				
+				                if (
+				                    Array.isArray(route.segments) &&
+				                    route.segments.length > 0
+				                ) {
+				                    route.segments.forEach(function(seg) {
+				                        if (
+				                            Array.isArray(seg) &&
+				                            seg.length > 0
+				                        ) {
+				                            backgroundSegments.push(seg);
+				                        }
+				                    });
+				
+				                } else if (
+				                    Array.isArray(route.points) &&
+				                    route.points.length > 0
+				                ) {
+				                    backgroundSegments.push(
+				                        route.points.map(function(p) {
+				                            return [p.lat, p.lon];
+				                        })
+				                    );
+				                }
+				            });
+				        }
+				
+				        if (backgroundSegments.length > 0) {
+				            layer.setLatLngs(backgroundSegments);
+				        }
+				    }
+				
+				    layer.setStyle({
+				        color: item.color || "#0000FF",
+				        opacity: item.visible === false ? 0 : 0.4,
+				        weight: 4,
+				        dashArray: null,
+				        interactive: true
+				    });
+				}
     });
 
-    /*
-        ============================================================
-        重要修正 2：
-        用 routePreviewLayers 畫所有子路線。
-        這樣：
-        - 選中的子路線：實線
-        - 其它子路線：虛線
-        且不會出現 item.layer 造成的錯誤直線。
-        ============================================================
-    */
     if (Array.isArray(window.routePreviewLayers)) {
         window.routePreviewLayers.forEach(layer => {
             if (layer && map.hasLayer(layer)) {
@@ -2674,10 +5631,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
             if (!route) return;
 
-            /*
-                不另外畫 routes[0] 結合路線本身。
-                結合路線是子路線合成結果，畫它容易重疊或出現錯誤直線。
-            */
             if (
                 routeIdx === 0 &&
                 route.isCombined === true
@@ -2720,13 +5673,13 @@ function loadRoute(index, customColor = null, focusPos = null) {
                             isSelected ? 6 : 4,
 
                         opacity:
-                            isSelected ? 1.0 : 0.35,
+                            isSelected ? 1.0 : 0.5,
 
                         dashArray:
                             isSelected ? null : "5,8",
 
                         interactive:
-                            false
+                            isSelected 
                     }
                 ).addTo(map);
 
@@ -2738,10 +5691,20 @@ function loadRoute(index, customColor = null, focusPos = null) {
             ) {
                 previewLayer.bringToFront();
             }
+
+            if (
+                (isSelected || isSelectingCombined) &&
+                typeof window.bindRouteActionMenuToLayer === "function"
+            ) {
+                window.bindRouteActionMenuToLayer(
+                    previewLayer,
+                    stackIdx,
+                    routeIdx
+                );
+            }
         });
     }
 
-    
     markers.forEach(m => {
         if (m && map.hasLayer(m)) {
             map.removeLayer(m);
@@ -2775,7 +5738,8 @@ function loadRoute(index, customColor = null, focusPos = null) {
                 color: trackColor,
                 weight: 6,
                 opacity: 1.0,
-                dashArray: null
+                dashArray: null,
+                interactive: true
             }
         ).addTo(map);
 
@@ -2784,10 +5748,6 @@ function loadRoute(index, customColor = null, focusPos = null) {
         trackPoints.length > 0
     ) {
 
-        /*
-            主 polyline 只畫目前選到的 route。
-            routePreviewLayers 已經負責畫其它子路線。
-        */
         const selectedSegments =
             Array.isArray(sel.segments) &&
             sel.segments.length > 0
@@ -2802,12 +5762,14 @@ function loadRoute(index, customColor = null, focusPos = null) {
             color: trackColor,
             weight: 6,
             opacity: 1.0,
-            dashArray: null
+            dashArray: null,
+            interactive: true
         });
 
         polyline.bringToFront();
 
         if (
+        		!shouldSkipAutoFitBounds &&
             polyline.getBounds &&
             polyline.getBounds().isValid()
         ) {
@@ -2825,12 +5787,21 @@ function loadRoute(index, customColor = null, focusPos = null) {
             }
         }
 
-        polyline.on('click', (e) => {
+				polyline.on('click', (e) => {
+				
+				    L.DomEvent.stopPropagation(e);
 
-            L.DomEvent.stopPropagation(e);
-
-            let minD = Infinity;
-            let idx = 0;
+				    if (window.splitRoutePickMode) {
+				        if (
+				            typeof window.executeSplitRoutePick === "function" &&
+				            window.executeSplitRoutePick(e.latlng)
+				        ) {
+				            return;
+				        }
+				    }
+				
+				    let minD = Infinity;
+				    let idx = 0;
 
             trackPoints.forEach((p, pIdx) => {
 
@@ -2846,7 +5817,7 @@ function loadRoute(index, customColor = null, focusPos = null) {
                 }
             });
 
-            if (minD * 111000 <= 15) {
+            if (minD * 111000 <= 50) {
 
                 const progressBar =
                     document.getElementById('gpxProgressBar');
@@ -2928,6 +5899,17 @@ function loadRoute(index, customColor = null, focusPos = null) {
             }
         });
 
+        if (
+						    polyline &&
+						    typeof window.bindRouteActionMenuToLayer === "function"
+						) {
+						    window.bindRouteActionMenuToLayer(
+						        polyline,
+						        stackIdx,
+						        index
+						    );
+						}
+
         try {
 
             const startMarker =
@@ -2948,6 +5930,7 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
                 const progressBar =
                     document.getElementById('gpxProgressBar');
+                    
 
                 if (progressBar) {
                     progressBar.value = 0;
@@ -3033,13 +6016,14 @@ function loadRoute(index, customColor = null, focusPos = null) {
         }
     }
 
-    /*
-        航點渲染邏輯：保留你原本的流程。
-    */
-    if (
-        sel.waypoints &&
-        sel.waypoints.length > 0
-    ) {
+				
+				let visibleWaypointsForStart = [];
+				
+				
+				if (
+				    sel.waypoints &&
+				    sel.waypoints.length > 0
+				) {
 
         const activeIdx =
             window.currentActiveIndex || 0;
@@ -3068,10 +6052,20 @@ function loadRoute(index, customColor = null, focusPos = null) {
         const displayWaypoints =
             sel.waypoints.filter(w => {
 
+                
+                if (typeof window.isWaypointVisibleOnCurrentRoute === "function") {
+                    return window.isWaypointVisibleOnCurrentRoute(
+                        w,
+                        activeIdx,
+                        sel
+                    );
+                }
+
+                
                 if (activeIdx === 0) return true;
 
                 if (w.belongsToRoute !== undefined) {
-                    return w.belongsToRoute === activeIdx;
+                    return Number(w.belongsToRoute) === Number(activeIdx);
                 }
 
                 const wTimeVal =
@@ -3096,7 +6090,8 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
                 return true;
             });
-
+				visibleWaypointsForStart =  displayWaypoints;
+				
         displayWaypoints.forEach((w) => {
 
             let initialTIdx = null;
@@ -3124,7 +6119,7 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
                 if (
                     nearestIdx !== -1 &&
-                    minD * 111000 <= 15
+                    minD * 111000 <= 30
                 ) {
                     initialTIdx = nearestIdx;
                 }
@@ -3134,28 +6129,23 @@ function loadRoute(index, customColor = null, focusPos = null) {
             let drawLon = w.lon;
             let isFocusTarget = false;
 
-            if (focusPos) {
-
-                const distToFocus =
-                    Math.sqrt(
-                        Math.pow(w.lat - focusPos.lat, 2) +
-                        Math.pow(w.lon - focusPos.lng, 2)
-                    );
-
-                if (
-                    distToFocus < 0.00001 ||
-                    (
-                        window.currentEditTask &&
-                        w.name === window.currentEditTask.oldName
-                    )
-                ) {
-                    drawLat = focusPos.lat;
-                    drawLon = focusPos.lng;
-                    isFocusTarget = true;
-                    w.lat = focusPos.lat;
-                    w.lon = focusPos.lng;
-                }
-            }
+						 if (hasValidFocusPos) {
+						    window.activeFocusCircle =
+						        L.circleMarker(
+						            [
+						                focusPos.lat,
+						                focusPos.lng
+						            ],
+						            {
+						                radius: 7,
+						                color: '#ffffff',
+						                weight: 2,
+						                fillColor: '#1a73e8',
+						                fillOpacity: 1,
+						                interactive: false
+						            }
+						        ).addTo(map);
+						}
 
             const wm =
                 L.marker(
@@ -3203,6 +6193,11 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
                 const newLatLng =
                     marker.getLatLng();
+                    
+                const mapViewBeforeWptDrag = {
+								    center: map.getCenter(),
+								    zoom: map.getZoom()
+								};
 
                 const newLat =
                     newLatLng.lat;
@@ -3234,7 +6229,7 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
                 const isOnPath =
                     nearestIdx !== -1 &&
-                    minD * 111000 <= 15;
+                    minD * 111000 <= 30;
 
                 const confirmMsg =
                     isOnPath
@@ -3272,115 +6267,180 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
                             fileIdx: currentFileIdx,
 
-                            do: function() {
+                 do: function() {
 
-                                if (
-                                    window.currentMultiIndex !== this.fileIdx
-                                ) {
-                                    if (
-                                        typeof switchMultiGpx === 'function'
-                                    ) {
-                                        switchMultiGpx(this.fileIdx);
-                                    }
-                                }
+									    if (
+									        window.currentMultiIndex !== this.fileIdx
+									    ) {
+									        if (
+									            typeof switchMultiGpx === 'function'
+									        ) {
+									            switchMultiGpx(this.fileIdx);
+									        }
+									    }
+									
+									    window.isDraggingWpt = true;
+									
+									    
+									    const activeRouteIdxAtMove =
+									        typeof window.currentActiveIndex === "number"
+									            ? window.currentActiveIndex
+									            : 0;
+									
+									    const activeRouteAtMove =
+									        window.allTracks &&
+									        window.allTracks[activeRouteIdxAtMove]
+									            ? window.allTracks[activeRouteIdxAtMove]
+									            : null;
+									
+									    const wasVisibleOnCurrentRouteBeforeMove =
+									        typeof window.isWaypointVisibleOnCurrentRoute === "function"
+									            ? window.isWaypointVisibleOnCurrentRoute(
+									                w,
+									                activeRouteIdxAtMove,
+									                activeRouteAtMove
+									            )
+									            : true;
+									
+									    const updateLogic =
+									        (targetWpt) => {
+									
+									            targetWpt.lat =
+									                endPos.lat;
+									
+									            targetWpt.lon =
+									                endPos.lng;
+									
+									            if (isOnPath) {
+									
+									                const tp =
+									                    trackPoints[nearestIdx];
+									
+									                targetWpt.ele =
+									                    tp.ele;
+									
+									                targetWpt.time =
+									                    tp.time;
+									
+									                targetWpt.localTime =
+									                    tp.timeLocal;
+									
+									                targetWpt.distance =
+									                    tp.distance;
+									
+									            } else {
+									
+									                targetWpt.ele = 0;
+									
+									                targetWpt.time =
+									                    new Date().toISOString();
+									
+									                targetWpt.localTime =
+									                    formatDate(
+									                        new Date(
+									                            new Date().getTime() + 8 * 3600000
+									                        )
+									                    );
+									
+									                targetWpt.distance =
+									                    undefined;
+									            }
+									
+									            
+									            if (wasVisibleOnCurrentRouteBeforeMove) {
+									                if (!Array.isArray(targetWpt.visibleRouteIndexes)) {
+									                    targetWpt.visibleRouteIndexes = [];
+									                }
+									
+									                if (!Array.isArray(targetWpt.hiddenRouteIndexes)) {
+									                    targetWpt.hiddenRouteIndexes = [];
+									                }
+									
+									                targetWpt.visibleRouteIndexes =
+									                    targetWpt.visibleRouteIndexes
+									                        .map(Number)
+									                        .filter(function(idx) {
+									                            return Number.isFinite(idx);
+									                        });
+									
+									                targetWpt.hiddenRouteIndexes =
+									                    targetWpt.hiddenRouteIndexes
+									                        .map(Number)
+									                        .filter(function(idx) {
+									                            return Number.isFinite(idx);
+									                        });
+									
+									                if (
+									                    !targetWpt.visibleRouteIndexes.includes(
+									                        Number(activeRouteIdxAtMove)
+									                    )
+									                ) {
+									                    targetWpt.visibleRouteIndexes.push(
+									                        Number(activeRouteIdxAtMove)
+									                    );
+									                }
+									
+									                targetWpt.hiddenRouteIndexes =
+									                    targetWpt.hiddenRouteIndexes.filter(function(idx) {
+									                        return idx !== Number(activeRouteIdxAtMove);
+									                    });
+									            }
+									        };
+									
+									    syncCombinedWaypoints(
+									        w.name,
+									        L.latLng(
+									            startPos.lat,
+									            startPos.lng
+									        ),
+									        w.time,
+									        updateLogic
+									    );
+									
+									    updateLogic(w);
+									
+									    updateRawGpxContent(
+									        w.name,
+									        L.latLng(
+									            startPos.lat,
+									            startPos.lng
+									        ),
+									        endPos.lat,
+									        endPos.lng
+									    );
+									
+									    previousLatLng =
+									        L.latLng(
+									            endPos.lat,
+									            endPos.lng
+									        );
+									
+									    wasOnPath =
+									        isOnPath;
+									
+											loadRoute(
+											    window.currentActiveIndex || 0,
+											    null,
+											    {
+											        lat: endPos.lat,
+											        lng: endPos.lng,
+											        skipAutoFitBounds: true
+											    }
+											);
+									
+									    if (
+									        !document.fullscreenElement &&
+									        typeof renderWaypointsAndPeaks === 'function'
+									    ) {
+									        renderWaypointsAndPeaks(sel);
+									    }
+									
+									    setTimeout(() => {
+									        window.isDraggingWpt = false;
+									    }, 100);
+									},
 
-                                window.isDraggingWpt = true;
-
-                                const updateLogic =
-                                    (targetWpt) => {
-
-                                        targetWpt.lat =
-                                            endPos.lat;
-
-                                        targetWpt.lon =
-                                            endPos.lng;
-
-                                        if (isOnPath) {
-
-                                            const tp =
-                                                trackPoints[nearestIdx];
-
-                                            targetWpt.ele =
-                                                tp.ele;
-
-                                            targetWpt.time =
-                                                tp.time;
-
-                                            targetWpt.localTime =
-                                                tp.timeLocal;
-
-                                            targetWpt.distance =
-                                                tp.distance;
-
-                                        } else {
-
-                                            targetWpt.ele = 0;
-
-                                            targetWpt.time =
-                                                new Date().toISOString();
-
-                                            targetWpt.localTime =
-                                                formatDate(
-                                                    new Date(
-                                                        new Date().getTime() + 8 * 3600000
-                                                    )
-                                                );
-
-                                            targetWpt.distance =
-                                                undefined;
-                                        }
-                                    };
-
-                                syncCombinedWaypoints(
-                                    w.name,
-                                    L.latLng(
-                                        startPos.lat,
-                                        startPos.lng
-                                    ),
-                                    w.time,
-                                    updateLogic
-                                );
-
-                                updateLogic(w);
-
-                                updateRawGpxContent(
-                                    w.name,
-                                    L.latLng(
-                                        startPos.lat,
-                                        startPos.lng
-                                    ),
-                                    endPos.lat,
-                                    endPos.lng
-                                );
-
-                                previousLatLng =
-                                    L.latLng(
-                                        endPos.lat,
-                                        endPos.lng
-                                    );
-
-                                wasOnPath =
-                                    isOnPath;
-
-                                loadRoute(
-                                    window.currentActiveIndex || 0,
-                                    null,
-                                    endPos
-                                );
-
-                                if (
-                                    !document.fullscreenElement &&
-                                    typeof renderWaypointsAndPeaks === 'function'
-                                ) {
-                                    renderWaypointsAndPeaks(sel);
-                                }
-
-                                setTimeout(() => {
-                                    window.isDraggingWpt = false;
-                                }, 100);
-                            },
-
-                            undo: function() {
+                  undo: function() {
 
                                 if (
                                     window.currentMultiIndex !== this.fileIdx
@@ -3416,11 +6476,15 @@ function loadRoute(index, customColor = null, focusPos = null) {
                                 wasOnPath =
                                     oldWptSnapshot.distance !== undefined;
 
-                                loadRoute(
-                                    window.currentActiveIndex || 0,
-                                    null,
-                                    startPos
-                                );
+																loadRoute(
+																    window.currentActiveIndex || 0,
+																    null,
+																    {
+																        lat: startPos.lat,
+																        lng: startPos.lng,
+																        skipAutoFitBounds: true
+																    }
+																);
 
                                 if (
                                     !document.fullscreenElement &&
@@ -3464,7 +6528,7 @@ function loadRoute(index, customColor = null, focusPos = null) {
                         }
                     });
 
-                    if (minD * 111000 > 15) {
+                    if (minD * 111000 > 50) {
                         clickTIdx = null;
                     }
                 }
@@ -3482,55 +6546,70 @@ function loadRoute(index, customColor = null, focusPos = null) {
         });
     }
 
-    
-    const startLat =
-        trackPoints.length > 0
-            ? trackPoints[0].lat
-            : (
-                sel.waypoints &&
-                sel.waypoints[0]
-                    ? sel.waypoints[0].lat
-                    : null
-            );
-
-    const startLon =
-        trackPoints.length > 0
-            ? trackPoints[0].lon
-            : (
-                sel.waypoints &&
-                sel.waypoints[0]
-                    ? sel.waypoints[0].lon
-                    : null
-            );
-
-    if (
-        startLat !== null &&
-        startLon !== null
-    ) {
-        if (!hoverMarker) {
-            hoverMarker =
-                L.circleMarker(
-                    [
-                        startLat,
-                        startLon
-                    ],
-                    {
-                        radius: 7,
-                        color: "#ffffff",
-                        fillColor: "#1a73e8",
-                        fillOpacity: 1,
-                        weight: 2
-                    }
-                ).addTo(map);
-        } else {
-            hoverMarker
-                .setLatLng([
-                    startLat,
-                    startLon
-                ])
-                .bringToFront();
-        }
-    }
+		const startLat =
+		    trackPoints.length > 0
+		        ? trackPoints[0].lat
+		        : (
+		            visibleWaypointsForStart &&
+		            visibleWaypointsForStart[0]
+		                ? visibleWaypointsForStart[0].lat
+		                : null
+		        );
+		
+		const startLon =
+		    trackPoints.length > 0
+		        ? trackPoints[0].lon
+		        : (
+		            visibleWaypointsForStart &&
+		            visibleWaypointsForStart[0]
+		                ? visibleWaypointsForStart[0].lon
+		                : null
+		        );
+		
+		if (
+		    startLat !== null &&
+		    startLon !== null
+		) {
+		    if (!hoverMarker) {
+		        hoverMarker =
+		            L.circleMarker(
+		                [
+		                    startLat,
+		                    startLon
+		                ],
+		                {
+		                    radius: 7,
+		                    color: "#ffffff",
+		                    fillColor: "#1a73e8",
+		                    fillOpacity: 1,
+		                    weight: 2
+		                }
+		            ).addTo(map);
+		    } else {
+		        hoverMarker
+		            .setLatLng([
+		                startLat,
+		                startLon
+		            ]);
+		
+		        if (!map.hasLayer(hoverMarker)) {
+		            hoverMarker.addTo(map);
+		        }
+		
+		        hoverMarker.bringToFront();
+		    }
+		
+		} else {
+		    
+		    if (
+		        hoverMarker &&
+		        map.hasLayer(hoverMarker)
+		    ) {
+		        map.removeLayer(hoverMarker);
+		    }
+		
+		    hoverMarker = null;
+		}
 
     if (typeof renderRouteInfo === 'function') {
         renderRouteInfo();
@@ -3568,6 +6647,7 @@ function loadRoute(index, customColor = null, focusPos = null) {
 }
  
 function toggleWptNames() {
+
     showWptNameAlways = !showWptNameAlways;
     
     let currentIndex = (window.currentActiveIndex !== undefined) ? window.currentActiveIndex : 0;
@@ -3575,9 +6655,321 @@ function toggleWptNames() {
     loadRoute(currentIndex);
 		}
 
-		window.toggleCompass = function() {
-				const compass = document.querySelector(".map-compass");
-		    if (compass) { compass.classList.toggle("show"); }
+		window.toggleCompass = function(btn) {
+		
+		    
+		    if (window.compassEnabled) {
+		        window.compassEnabled = false;
+		
+		        if (window.compassHandler) {
+		            window.removeEventListener(
+		                "deviceorientation",
+		                window.compassHandler,
+		                true
+		            );
+		
+		            window.removeEventListener(
+		                "deviceorientationabsolute",
+		                window.compassHandler,
+		                true
+		            );
+		        }
+		
+		        window.compassHandler = null;
+		        window.compassHeading = null;
+		        window.compassHeadingBuffer = [];
+		        window.lastCompassUpdateTime = null;
+		        window.compassHasAbsoluteOrientation = false;
+		        window.compassDisplayRotation = null;
+		
+		        const compass =
+		            document.getElementById("mapCompass") ||
+		            document.querySelector(".map-compass");
+		
+		        if (compass) {
+		            compass.classList.remove("show");
+		        }
+		
+		        if (btn) {
+		            btn.style.background = "white";
+		            btn.style.color = "";
+		        }
+		
+		        return;
+		    }
+		
+		    
+		    window.compassEnabled = true;
+		    window.compassHeading = null;
+		    window.compassHeadingBuffer = [];
+		    window.lastCompassUpdateTime = null;
+		    window.compassHasAbsoluteOrientation = false;
+		
+		    const compass =
+		        document.getElementById("mapCompass") ||
+		        document.querySelector(".map-compass");
+		
+		    if (!compass) {
+		        alert("找不到指北針元素 mapCompass");
+		        window.compassEnabled = false;
+		        return;
+		    }
+		
+		    compass.classList.add("show");
+		
+		    if (btn) {
+		        btn.style.background = "#e8f0fe";
+		        btn.style.color = "#1a73e8";
+		    }
+		
+		    
+		    const compassNeedle =
+		        document.getElementById("mapCompassNeedle") ||
+		        compass.querySelector("img") ||
+		        compass;
+		
+		    compassNeedle.style.transformOrigin =
+		        "center center";
+		
+		    compassNeedle.style.transition =
+		        "transform 0.12s linear";
+		
+		    window.compassHandler = function(e) {
+		
+		        
+		        if (e.type === "deviceorientationabsolute") {
+		            window.compassHasAbsoluteOrientation = true;
+		
+		        } else if (
+		            window.compassHasAbsoluteOrientation === true &&
+		            e.type === "deviceorientation"
+		        ) {
+		            return;
+		        }
+		
+		        let heading = null;
+		
+		        const isIOS =
+		            typeof e.webkitCompassHeading === "number";
+		
+		        const isAndroid =
+		            !isIOS &&
+		            typeof e.alpha === "number";
+		
+		        if (isIOS) {
+		            heading =
+		                e.webkitCompassHeading;
+		
+		        } else if (isAndroid) {
+		            
+		            heading =
+		                360 - e.alpha;
+		        }
+		
+		        if (
+		            heading === null ||
+		            !Number.isFinite(heading)
+		        ) {
+		            return;
+		        }
+		
+		        const screenAngle =
+		            (
+		                screen.orientation &&
+		                typeof screen.orientation.angle === "number"
+		            )
+		                ? screen.orientation.angle
+		                : (
+		                    typeof window.orientation === "number"
+		                        ? window.orientation
+		                        : 0
+		                );
+		
+		        heading =
+		            (heading + screenAngle + 360) % 360;
+		
+		        
+		        const now =
+		            Date.now();
+		
+		        const minUpdateMs =
+		            isAndroid
+		                ? 120
+		                : 60;
+		
+		        if (
+		            window.lastCompassUpdateTime &&
+		            now - window.lastCompassUpdateTime < minUpdateMs
+		        ) {
+		            return;
+		        }
+		
+		        window.lastCompassUpdateTime =
+		            now;
+		
+		        if (!Array.isArray(window.compassHeadingBuffer)) {
+		            window.compassHeadingBuffer = [];
+		        }
+		
+		        window.compassHeadingBuffer.push(heading);
+		
+		        const bufferMax =
+		            isAndroid
+		                ? 3
+		                : 3;
+		
+		        while (window.compassHeadingBuffer.length > bufferMax) {
+		            window.compassHeadingBuffer.shift();
+		        }
+		
+		        let sumX = 0;
+		        let sumY = 0;
+		
+		        window.compassHeadingBuffer.forEach(function(h) {
+		            const rad =
+		                h * Math.PI / 180;
+		
+		            sumX +=
+		                Math.cos(rad);
+		
+		            sumY +=
+		                Math.sin(rad);
+		        });
+		
+		        let avgHeading =
+		            Math.atan2(sumY, sumX) * 180 / Math.PI;
+		
+		        avgHeading =
+		            (avgHeading + 360) % 360;
+		
+		        if (
+		            !Number.isFinite(Number(window.compassHeading))
+		        ) {
+		            window.compassHeading =
+		                avgHeading;
+		        } else {
+		            let diff =
+		                avgHeading - window.compassHeading;
+		
+		            diff =
+		                ((diff + 540) % 360) - 180;
+		
+		            const minDiff =
+		                isAndroid
+		                    ? 4
+		                    : 3;
+		
+		            if (Math.abs(diff) < minDiff) {
+		                return;
+		            }
+		
+		            const smoothFactor =
+		                isAndroid
+		                    ? 0.35
+		                    : 0.35;
+		
+		            window.compassHeading =
+		                (window.compassHeading + diff * smoothFactor + 360) % 360;
+		        }
+		
+		        
+				const compassTargetRotation =
+				    -window.compassHeading;
+				
+				if (
+				    !Number.isFinite(Number(window.compassDisplayRotation))
+				) {
+				    window.compassDisplayRotation =
+				        compassTargetRotation;
+				} else {
+				    let rotateDiff =
+				        compassTargetRotation - window.compassDisplayRotation;
+				
+				    
+				    rotateDiff =
+				        ((rotateDiff + 540) % 360) - 180;
+				
+				    window.compassDisplayRotation =
+				        window.compassDisplayRotation + rotateDiff;
+				}
+				
+				compassNeedle.style.transform =
+				    "rotate(" + window.compassDisplayRotation + "deg)";
+		    };
+		
+		    if (
+						    typeof DeviceOrientationEvent !== "undefined" &&
+						    typeof DeviceOrientationEvent.requestPermission === "function"
+						) {
+						    DeviceOrientationEvent.requestPermission()
+						        .then(function(permissionState) {
+						            if (permissionState === "granted") {
+						
+						                window.addEventListener(
+						                    "deviceorientation",
+						                    window.compassHandler,
+						                    true
+						                );
+						
+						                if (btn) {
+						                    btn.style.background = "#e8f0fe";
+						                    btn.style.color = "#1a73e8";
+						                }
+						
+						                const compass =
+						                    document.getElementById("mapCompass") ||
+						                    document.querySelector(".map-compass");
+						
+						                if (compass) {
+						                    compass.classList.add("show");
+						                }
+						
+						            } else {
+						                alert("未允許方向感測器，無法啟用指北針");
+						
+						                window.compassEnabled = false;
+						
+						                if (btn) {
+						                    btn.style.background = "white";
+						                    btn.style.color = "";
+						                }
+						            }
+						        })
+						        .catch(function(err) {
+						            console.log("compass permission error", err);
+						
+						            alert("無法啟用方向感測器");
+						
+						            window.compassEnabled = false;
+						
+						            if (btn) {
+						                btn.style.background = "white";
+						                btn.style.color = "";
+						            }
+						        });
+		
+		    } else if (typeof DeviceOrientationEvent !== "undefined") {
+		        window.addEventListener(
+		            "deviceorientationabsolute",
+		            window.compassHandler,
+		            true
+		        );
+		
+		        window.addEventListener(
+		            "deviceorientation",
+		            window.compassHandler,
+		            true
+		        );
+		
+		    } else {
+		        alert("此裝置不支援方向感測器");
+		        window.compassEnabled = false;
+		
+		        if (btn) {
+		            btn.style.background = "white";
+		            btn.style.color = "";
+		        }
+		    }
 		};
 
 		const CombinedControl = L.Control.extend({
@@ -3615,7 +7007,7 @@ function toggleWptNames() {
         
         L.DomEvent.on(coordBtn, 'click', (e) => { 
             L.DomEvent.stop(e); 
-            
+
             map.eachLayer((layer) => {
                 if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
                     if (layer.getPopup()) {
@@ -3731,11 +7123,13 @@ function toggleWptNames() {
             window.toggleGPS(locBtn);
         });
 
-        L.DomEvent.on(compassBtn, 'click', (e) => { 
-            L.DomEvent.stop(e); 
-            const compass = document.getElementById("mapCompass");
-            if(compass) compass.classList.toggle("show"); 
-        });
+				L.DomEvent.on(compassBtn, 'click', (e) => { 
+				    L.DomEvent.stop(e);
+				
+				    if (typeof window.toggleCompass === "function") {
+				        window.toggleCompass(compassBtn);
+				    }
+				});
         
         return container;
     }
@@ -3757,18 +7151,15 @@ let gpsInterval = null;
 let gpsButtonElement = null;
 
 window.toggleGPS = function(btn) {
-    gpsButtonElement = btn; 
 
+    gpsButtonElement = btn;
+
+    
     if (gpsInterval || gpsMarker) {
-        if (gpsInterval) {
-            clearInterval(gpsInterval);
-            gpsInterval = null;
+        if (typeof window.resetGPS === "function") {
+            window.resetGPS();
         }
-        if (gpsMarker) {
-            map.removeLayer(gpsMarker);
-            gpsMarker = null;
-        }
-        btn.style.background = "white"; 
+
         return;
     }
 
@@ -3776,42 +7167,519 @@ window.toggleGPS = function(btn) {
         alert("您的瀏覽器不支援 GPS 定位功能");
         return;
     }
+
     
+    btn.style.background = "#e8f0fe";
+    btn.style.color = "#1a73e8";
+
+    window.gpsStartedAt = Date.now();
+
+    
+    if (!document.getElementById("gpsPulseSmallStyle")) {
+        const style =
+            document.createElement("style");
+
+        style.id =
+            "gpsPulseSmallStyle";
+
+        style.innerHTML = `
+            @keyframes gpsBlueDotPulse {
+                0% {
+                    transform: scale(0.90);
+                    box-shadow:
+                        0 0 0 1px rgba(255,255,255,0.9) inset,
+                        0 0 0 0 rgba(26,115,232,0.35);
+                }
+
+                50% {
+                    transform: scale(1.10);
+                    box-shadow:
+                        0 0 0 1px rgba(255,255,255,0.9) inset,
+                        0 0 0 5px rgba(26,115,232,0.12);
+                }
+
+                100% {
+                    transform: scale(0.90);
+                    box-shadow:
+                        0 0 0 1px rgba(255,255,255,0.9) inset,
+                        0 0 0 0 rgba(26,115,232,0.35);
+                }
+            }
+        `;
+
+        document.head.appendChild(style);
+    }
+
+    
+    if (!window.gpsOrientationStarted) {
+        window.gpsOrientationStarted = true;
+
+        window.gpsHeading = null;
+        window.gpsHeadingBuffer = [];
+        window.lastGpsHeadingUpdateTime = null;
+        window.gpsHasAbsoluteOrientation = false;
+
+        window.gpsOrientationHandler = function(e) {
+
+            
+            if (e.type === "deviceorientationabsolute") {
+                window.gpsHasAbsoluteOrientation = true;
+
+            } else if (
+                window.gpsHasAbsoluteOrientation === true &&
+                e.type === "deviceorientation"
+            ) {
+                return;
+            }
+
+            let heading = null;
+
+            const isIOS =
+                typeof e.webkitCompassHeading === "number";
+
+            const isAndroid =
+                !isIOS &&
+                typeof e.alpha === "number";
+
+            
+            if (isIOS) {
+                heading =
+                    e.webkitCompassHeading;
+
+            
+            } else if (isAndroid) {
+                heading =
+                    360 - e.alpha;
+            }
+
+            if (
+                heading === null ||
+                !Number.isFinite(heading)
+            ) {
+                return;
+            }
+
+            
+            if (
+                isAndroid &&
+                window.gpsStartedAt &&
+                Date.now() - window.gpsStartedAt < 1200
+            ) {
+                return;
+            }
+
+            
+            const screenAngle =
+                (
+                    screen.orientation &&
+                    typeof screen.orientation.angle === "number"
+                )
+                    ? screen.orientation.angle
+                    : (
+                        typeof window.orientation === "number"
+                            ? window.orientation
+                            : 0
+                    );
+
+            heading =
+                (heading + screenAngle + 360) % 360;
+
+            
+            const now =
+                Date.now();
+
+            const minUpdateMs =
+                isAndroid
+                    ? 120
+                    : 80;
+
+            if (
+                window.lastGpsHeadingUpdateTime &&
+                now - window.lastGpsHeadingUpdateTime < minUpdateMs
+            ) {
+                return;
+            }
+
+            window.lastGpsHeadingUpdateTime =
+                now;
+
+            
+            if (!Array.isArray(window.gpsHeadingBuffer)) {
+                window.gpsHeadingBuffer = [];
+            }
+
+            window.gpsHeadingBuffer.push(heading);
+
+            const bufferMax =
+                isAndroid
+                    ? 3
+                    : 3;
+
+            while (window.gpsHeadingBuffer.length > bufferMax) {
+                window.gpsHeadingBuffer.shift();
+            }
+
+            let sumX = 0;
+            let sumY = 0;
+
+            window.gpsHeadingBuffer.forEach(function(h) {
+                const rad =
+                    h * Math.PI / 180;
+
+                sumX +=
+                    Math.cos(rad);
+
+                sumY +=
+                    Math.sin(rad);
+            });
+
+            let avgHeading =
+                Math.atan2(sumY, sumX) * 180 / Math.PI;
+
+            avgHeading =
+                (avgHeading + 360) % 360;
+
+            
+            if (
+                !Number.isFinite(Number(window.gpsHeading))
+            ) {
+                window.gpsHeading =
+                    avgHeading;
+            } else {
+                
+                let diff =
+                    avgHeading - window.gpsHeading;
+
+                diff =
+                    ((diff + 540) % 360) - 180;
+
+                
+                const minDiff =
+                    isAndroid
+                        ? 4
+                        : 4;
+
+                if (Math.abs(diff) < minDiff) {
+                    return;
+                }
+
+                
+                const smoothFactor =
+                    isAndroid
+                        ? 0.35
+                        : 0.26;
+
+                window.gpsHeading =
+                    (window.gpsHeading + diff * smoothFactor + 360) % 360;
+            }
+
+            
+            const fanMain =
+                document.querySelector(".gps-guide-fan-main");
+
+            const rotateText =
+                "translate(-50%, -50%) rotate(" +
+                window.gpsHeading +
+                "deg)";
+
+            if (fanMain) {
+                fanMain.style.display =
+                    "block";
+
+                fanMain.style.transform =
+                    rotateText;
+            }
+        };
+
+        if (
+            typeof DeviceOrientationEvent !== "undefined" &&
+            typeof DeviceOrientationEvent.requestPermission === "function"
+        ) {
+            DeviceOrientationEvent.requestPermission()
+                .then(function(permissionState) {
+                    if (permissionState === "granted") {
+                        window.addEventListener(
+                            "deviceorientation",
+                            window.gpsOrientationHandler,
+                            true
+                        );
+                    }
+                })
+                .catch(function() {
+                    
+                });
+
+        } else if (typeof DeviceOrientationEvent !== "undefined") {
+            
+            window.addEventListener(
+                "deviceorientationabsolute",
+                window.gpsOrientationHandler,
+                true
+            );
+
+            window.addEventListener(
+                "deviceorientation",
+                window.gpsOrientationHandler,
+                true
+            );
+        }
+    }
+
     const runLocation = (isFirstTime = false) => {
         navigator.geolocation.getCurrentPosition((pos) => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
+            const lat =
+                pos.coords.latitude;
+
+            const lon =
+                pos.coords.longitude;
+
+            const twd97 =
+                proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
+
+            const twd67 =
+                proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
+
+            if (isFirstTime) {
+                const isMobile =
+                    "ontouchstart" in window ||
+                    navigator.maxTouchPoints > 0;
+
+                const targetZoom =
+                    Math.max(
+                        map.getZoom(),
+                        isMobile ? 17 : 16
+                    );
+
+                map.setView([lat, lon], targetZoom);
+
+            } else {
+                map.panTo([lat, lon]);
+            }
+
+            btn.style.background =
+                "#e8f0fe";
+
+            btn.style.color =
+                "#1a73e8";
+
             
-            const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
-            const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
+            let headingForIcon =
+                Number.isFinite(Number(window.gpsHeading))
+                    ? Number(window.gpsHeading)
+                    : null;
+
+            if (
+                headingForIcon === null &&
+                window.lastGpsLat !== undefined &&
+                window.lastGpsLon !== undefined
+            ) {
+                const movedDistance =
+                    Math.sqrt(
+                        Math.pow(lat - window.lastGpsLat, 2) +
+                        Math.pow(lon - window.lastGpsLon, 2)
+                    ) * 111000;
+
+                
+                if (movedDistance >= 6) {
+                    const toRad = function(deg) {
+                        return deg * Math.PI / 180;
+                    };
+
+                    const toDeg = function(rad) {
+                        return rad * 180 / Math.PI;
+                    };
+
+                    const phi1 =
+                        toRad(window.lastGpsLat);
+
+                    const phi2 =
+                        toRad(lat);
+
+                    const dLon =
+                        toRad(lon - window.lastGpsLon);
+
+                    const y =
+                        Math.sin(dLon) * Math.cos(phi2);
+
+                    const x =
+                        Math.cos(phi1) * Math.sin(phi2) -
+                        Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
+
+                    headingForIcon =
+                        (toDeg(Math.atan2(y, x)) + 360) % 360;
+
+                    window.gpsHeading =
+                        headingForIcon;
+                }
+            }
+
+            window.lastGpsLat =
+                lat;
+
+            window.lastGpsLon =
+                lon;
+
+            const hasHeading =
+                Number.isFinite(Number(window.gpsHeading));
+
+            const finalHeading =
+                hasHeading
+                    ? Number(window.gpsHeading)
+                    : 0;
+
+            const isTouchDevice =
+                "ontouchstart" in window ||
+                navigator.maxTouchPoints > 0;
+
             
-            map.setView([lat, lon], map.getZoom());
-            btn.style.background = "#e8f0fe"; 
+            const iconBoxSize =
+                isTouchDevice
+                    ? 58
+                    : 48;
+
+            const iconAnchor =
+                iconBoxSize / 2;
+
+            const fanSize =
+                isTouchDevice
+                    ? 58
+                    : 46;
+
+            const fanCenter =
+                fanSize / 2;
+
+            const fanLeftX =
+                isTouchDevice
+                    ? 15
+                    : 15;
+
+            const fanRightX =
+                isTouchDevice
+                    ? 45
+                    : 33;
+
+            const fanTopY =
+                isTouchDevice
+                    ? 1
+                    : 2;
+
+            const fanArc =
+                fanCenter;
+
             
-            const arrowIcon = L.divIcon({
-                className: 'custom-gps-arrow',
-                html: `<div style="transform: rotate(315deg); display: flex; justify-content: center;">
-                         <svg width="40" height="40" viewBox="0 0 100 100">
-                           <path d="M50 5 L95 90 L50 70 L5 90 Z" fill="#1a73e8" stroke="white" stroke-width="5"/>
-                         </svg>
-                       </div>`,
-                iconSize: [40, 40],
-                iconAnchor: [20, 20]
-            });
+            const whiteDotSize =
+                isTouchDevice
+                    ? 16
+                    : 15;
+
+            const blueDotSize =
+                isTouchDevice
+                    ? 14
+                    : 13;
+
+            const fanGradientId =
+                "gpsFanGradientMain_" +
+                Math.round(finalHeading) +
+                "_" +
+                Date.now();
+
+            const guideIcon =
+                L.divIcon({
+                    className: "",
+                    html: `
+                        <div style="
+                            width:${iconBoxSize}px;
+                            height:${iconBoxSize}px;
+                            position:relative;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            pointer-events:none;
+                        ">
+                            <!-- 扇形方向：本體 -->
+                            <div class="gps-guide-fan-main" style="
+                                display:${hasHeading ? "block" : "none"};
+                                position:absolute;
+                                left:50%;
+                                top:50%;
+                                width:${fanSize}px;
+                                height:${fanSize}px;
+                                transform:translate(-50%, -50%) rotate(${finalHeading}deg);
+                                transform-origin:center center;
+                                pointer-events:none;
+                                z-index:1;
+                            ">
+                                <svg width="${fanSize}" height="${fanSize}" viewBox="0 0 ${fanSize} ${fanSize}" style="overflow:visible;">
+                                    <defs>
+                                        <linearGradient id="${fanGradientId}"
+                                                        x1="${fanCenter}" y1="${fanCenter}"
+                                                        x2="${fanCenter}" y2="0"
+                                                        gradientUnits="userSpaceOnUse">
+                                            <stop offset="0%" stop-color="rgba(66, 133, 244, 0.55)" />
+                                            <stop offset="45%" stop-color="rgba(66, 133, 244, 0.34)" />
+                                            <stop offset="100%" stop-color="rgba(66, 133, 244, 0.06)" />
+                                        </linearGradient>
+                                    </defs>
+
+                                    <path d="M${fanCenter} ${fanCenter} L${fanLeftX} ${fanTopY} A${fanArc} ${fanArc} 0 0 1 ${fanRightX} ${fanTopY} Z"
+                                          fill="url(#${fanGradientId})"
+                                          stroke="rgba(66, 133, 244, 0.28)"
+                                          stroke-width="1"/>
+                                </svg>
+                            </div>
+
+                            <!-- 白色外圈 -->
+                            <div style="
+                                width:${whiteDotSize}px;
+                                height:${whiteDotSize}px;
+                                border-radius:50%;
+                                background:white;
+                                box-shadow:0 1px 6px rgba(0,0,0,0.38);
+                                display:flex;
+                                align-items:center;
+                                justify-content:center;
+                                z-index:3;
+                            ">
+                                <!-- 小藍點 -->
+                                <div style="
+                                    width:${blueDotSize}px;
+                                    height:${blueDotSize}px;
+                                    border-radius:50%;
+                                    background:#1a73e8;
+                                    transform-origin:center center;
+                                    animation:gpsBlueDotPulse 3s ease-in-out infinite;
+                                    will-change:transform, box-shadow;
+                                    backface-visibility:hidden;
+                                    -webkit-backface-visibility:hidden;
+                                "></div>
+                            </div>
+                        </div>
+                    `,
+                    iconSize: [iconBoxSize, iconBoxSize],
+                    iconAnchor: [iconAnchor, iconAnchor]
+                });
 
             if (gpsMarker) {
                 gpsMarker.setLatLng([lat, lon]);
+                gpsMarker.setIcon(guideIcon);
             } else {
-                gpsMarker = L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
+                gpsMarker =
+                    L.marker([lat, lon], {
+                        icon: guideIcon,
+                        interactive: true,
+                        zIndexOffset: 9999
+                    }).addTo(map);
             }
-            
-            const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+
+            const gUrl =
+                `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+
             const gMapIconBtn = `
                 <a href="${gUrl}" target="_blank" title="於 Google Map 開啟導航" 
                    style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); vertical-align: middle;">
                     <img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px; display:block;" alt="GMap">
                 </a>`;
-            
+
             const tipText = `
                 <div style="font-size:13px; line-height:1.6; min-width:200px;">
                     <div style="display:flex; align-items:center;">
@@ -3830,38 +7698,142 @@ window.toggleGPS = function(btn) {
             
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
                     <div style="color: #d35400; font-size: 10px; background: #fff5eb; padding: 4px; border-radius: 4px;">
-                        ⚠️ 自動追蹤中，每 30 秒更新一次中心位置。
+                        ⚠️ 自動追蹤中，每 10 秒更新一次中心位置。
                     </div>
                 </div>
             `;
 
-            if (isFirstTime || (gpsMarker.getPopup() && gpsMarker.getPopup().isOpen())) {
-                gpsMarker.bindPopup(tipText).openPopup();
+            if (
+                isFirstTime ||
+                (
+                    gpsMarker.getPopup() &&
+                    gpsMarker.getPopup().isOpen()
+                )
+            ) {
+                gpsMarker
+                    .bindPopup(tipText)
+                    .openPopup();
             } else {
-                gpsMarker.bindPopup(tipText);
+                gpsMarker
+                    .bindPopup(tipText);
             }
 
         }, (err) => {
-            if (isFirstTime) alert("無法獲取位置，請確認 GPS 已開啟");
-        }, { enableHighAccuracy: true });
+            if (isFirstTime) {
+                btn.style.background =
+                    "white";
+
+                btn.style.color =
+                    "";
+
+                alert("無法獲取位置，請確認 GPS 已開啟");
+            }
+        }, {
+            enableHighAccuracy: true
+        });
     };
-    
+
     runLocation(true);
-    
-    gpsInterval = setInterval(() => {
-        runLocation(false);
-    }, 30000);
+
+    gpsInterval =
+        setInterval(() => {
+            runLocation(false);
+        }, 10000);
 };
 
 window.resetGPS = function() {
+    
+    if (gpsInterval) {
+        clearInterval(gpsInterval);
+        gpsInterval = null;
+    }
+
+    
     if (gpsMarker) {
         map.removeLayer(gpsMarker);
         gpsMarker = null;
     }
 
-    const locBtn = document.querySelector('a[title="目前位置定位"]');
+    
+    if (window.gpsOrientationHandler) {
+        window.removeEventListener(
+            "deviceorientation",
+            window.gpsOrientationHandler,
+            true
+        );
+
+        window.removeEventListener(
+            "deviceorientationabsolute",
+            window.gpsOrientationHandler,
+            true
+        );
+    }
+
+    
+    window.lastGpsLat = undefined;
+    window.lastGpsLon = undefined;
+    window.gpsHeading = null;
+    window.gpsHeadingBuffer = [];
+    window.lastGpsHeadingUpdateTime = null;
+    window.gpsStartedAt = null;
+    window.gpsHasAbsoluteOrientation = false;
+    window.gpsOrientationStarted = false;
+    window.gpsOrientationHandler = null;
+
+    
+    const locBtn =
+        document.querySelector('a[title="目前位置定位"]');
+
     if (locBtn) {
-        locBtn.style.background = "white";
+        locBtn.style.background =
+            "white";
+
+        locBtn.style.color =
+            "";
+    }
+};
+
+window.resetGPS = function() {
+    if (gpsInterval) {
+        clearInterval(gpsInterval);
+        gpsInterval = null;
+    }
+
+    if (gpsMarker) {
+        map.removeLayer(gpsMarker);
+        gpsMarker = null;
+    }
+
+    
+    if (window.gpsOrientationHandler) {
+        window.removeEventListener(
+            "deviceorientation",
+            window.gpsOrientationHandler,
+            true
+        );
+
+        window.removeEventListener(
+            "deviceorientationabsolute",
+            window.gpsOrientationHandler,
+            true
+        );
+    }
+
+    window.lastGpsLat = undefined;
+    window.lastGpsLon = undefined;
+    window.gpsHeading = null;
+    window.gpsHeadingBuffer = [];
+    window.lastGpsHeadingUpdateTime = null;
+    window.gpsOrientationStarted = false;
+    window.gpsOrientationHandler = null;
+    window.gpsStartedAt = null;
+
+    const locBtn =
+        document.querySelector('a[title="目前位置定位"]');
+
+    if (locBtn) {
+        locBtn.style.background =
+            "white";
     }
 };
 
@@ -4559,9 +8531,20 @@ function renderRouteInfo() {
     return;
   }
 
-  const currentTrackIdx = parseInt(document.getElementById("routeSelect").value || 0);
+  const routeSelect = document.getElementById("routeSelect");
+
+  const currentTrackIdx =
+    routeSelect
+      ? parseInt(routeSelect.value || 0, 10)
+      : (typeof window.currentActiveIndex === "number" ? window.currentActiveIndex : 0);
+
+  const currentFileIdx =
+    typeof window.currentMultiIndex === "number"
+      ? window.currentMultiIndex
+      : 0;
+
   const currentRoute = allTracks[currentTrackIdx];
-  
+
   if (!currentRoute) {
     return;
   }
@@ -4571,19 +8554,33 @@ function renderRouteInfo() {
     return;
   }
 
-  let f = trackPoints[0], l = trackPoints.at(-1);
+  let f = trackPoints[0];
+  let l = trackPoints.at(-1);
+
   let displayDist = l.distance || 0;
-  let displayGain, displayLoss, displayMaxEle, displayMinEle, displayDur;
+  let displayGain;
+  let displayLoss;
+  let displayMaxEle;
+  let displayMinEle;
+  let displayDur;
 
   if (currentRoute.isCombined) {
     const subTracks = allTracks.filter(t => !t.isCombined);
-    const allEles = subTracks.flatMap(t => t.points.map(p => p.ele)).filter(e => e !== undefined);
-    
+
+    const allEles = subTracks
+      .flatMap(t => {
+        return Array.isArray(t.points)
+          ? t.points.map(p => p.ele)
+          : [];
+      })
+      .filter(e => e !== undefined);
+
     displayMaxEle = allEles.length > 0 ? Math.max(...allEles) : 0;
     displayMinEle = allEles.length > 0 ? Math.min(...allEles) : 0;
 
     displayGain = 0;
     displayLoss = 0;
+
     subTracks.forEach(t => {
       if (t.points && t.points.length > 0) {
         const stats = calculateElevationGainFiltered(t.points);
@@ -4597,45 +8594,139 @@ function renderRouteInfo() {
       return sum + (lastP ? (lastP.distance || 0) : 0);
     }, 0);
 
-    displayDur = (l.timeUTC && f.timeUTC) ? (l.timeUTC - f.timeUTC) : 0; 
+    displayDur =
+      (l.timeUTC && f.timeUTC)
+        ? (l.timeUTC - f.timeUTC)
+        : 0;
+
   } else {
     const { gain, loss } = calculateElevationGainFiltered();
+
     displayGain = gain;
     displayLoss = loss;
-    const trackEles = trackPoints.map(p => p.ele).filter(e => e !== undefined);
+
+    const trackEles = trackPoints
+      .map(p => p.ele)
+      .filter(e => e !== undefined);
+
     displayMaxEle = trackEles.length > 0 ? Math.max(...trackEles) : 0;
     displayMinEle = trackEles.length > 0 ? Math.min(...trackEles) : 0;
-    displayDur = (l.timeUTC && f.timeUTC) ? (l.timeUTC - f.timeUTC) : 0;
+
+    displayDur =
+      (l.timeUTC && f.timeUTC)
+        ? (l.timeUTC - f.timeUTC)
+        : 0;
   }
 
-  const displayName = window.currentFileNameForDisplay || (allTracks[0] ? allTracks[0].name : "");
-  const recordDate = f.timeLocal ? f.timeLocal.substring(0, 10) : "無日期資料";
+  
+  const displayName =
+    window.currentFileNameForDisplay ||
+    (
+      multiGpxStack &&
+      multiGpxStack[currentFileIdx] &&
+      (
+        multiGpxStack[currentFileIdx].fileName ||
+        multiGpxStack[currentFileIdx].displayName ||
+        multiGpxStack[currentFileIdx].name
+      )
+    ) ||
+    (
+      allTracks[0]
+        ? (
+          allTracks[0].fileName ||
+          allTracks[0].displayName ||
+          allTracks[0].name
+        )
+        : ""
+    );
 
   
+  const routeDisplayName =
+    currentRoute.routeDisplayName ||
+    currentRoute.displayName ||
+    currentRoute.name ||
+    "自訂路線";
+
+  const recordDate =
+    f.timeLocal
+      ? f.timeLocal.substring(0, 10)
+      : "無日期資料";
+
   let timeString = "";
-  
+
   if (displayDur > 0 && displayDur < 315360000000) {
-      const hours = Math.floor(displayDur / 3600000);
-      const mins = Math.floor((displayDur % 3600000) / 60000);
-      timeString = `${hours} 小時 ${mins} 分鐘`;
+    const hours = Math.floor(displayDur / 3600000);
+    const mins = Math.floor((displayDur % 3600000) / 60000);
+    timeString = `${hours} 小時 ${mins} 分鐘`;
   } else {
-      
-      timeString = "無時間資訊";
+    timeString = "無時間資訊";
   }
 
-  document.getElementById("routeSummary").innerHTML = `
-    檔案名稱：${displayName}<br>
-    記錄日期：${recordDate}<br>
-    路　　線：${currentRoute.name}
-    <span class="material-icons" 
-                    style="font-size:16px; cursor:pointer; color:#1a73e8; vertical-align:middle; margin-left:4px;" 
-                    onclick="renameSubRoute(${currentTrackIdx})">edit</span><br>
-    里　　程：${displayDist.toFixed(2)} km<br>
-    花費時間：${timeString}<br>
-    最高海拔：${displayMaxEle.toFixed(0)} m<br>
-    最低海拔：${displayMinEle.toFixed(0)} m<br>
-    總爬升數：${displayGain.toFixed(0)} m<br>
-    總下降數：${displayLoss.toFixed(0)} m`;
+const routeSummaryEl =
+    document.getElementById("routeSummary");
+
+const isRouteInfoCollapsed =
+    window.routeInfoCollapsed === true ||
+    (
+        routeSummaryEl &&
+        routeSummaryEl.dataset &&
+        routeSummaryEl.dataset.collapsed === "true"
+    );
+
+routeSummaryEl.innerHTML = `
+    <div
+        style="
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            cursor:pointer;
+            padding:6px 0;
+            font-weight:bold;
+            color:#2c3e50;
+            border-bottom:1px solid #eee;
+            margin-bottom:6px;
+        "
+        onclick="
+            window.routeInfoCollapsed = !window.routeInfoCollapsed;
+            this.parentElement.dataset.collapsed = window.routeInfoCollapsed ? 'true' : 'false';
+
+            const body = this.parentElement.querySelector('.route-info-body');
+            const icon = this.querySelector('.route-info-toggle-icon');
+
+            if (body) {
+                body.style.display = window.routeInfoCollapsed ? 'none' : 'block';
+            }
+
+            if (icon) {
+                icon.innerText = window.routeInfoCollapsed ? 'expand_more' : 'expand_less';
+            }
+        "
+    >
+        <span>路線資訊</span>
+        <span
+            class="material-icons route-info-toggle-icon"
+            style="font-size:20px; color:#1a73e8;"
+        >${isRouteInfoCollapsed ? "expand_more" : "expand_less"}</span>
+    </div>
+
+    <div
+        class="route-info-body"
+        style="display:${isRouteInfoCollapsed ? "none" : "block"};"
+    >
+        檔案名稱：${displayName}<br>
+        記錄日期：${recordDate}<br>
+        路　　線：${routeDisplayName}
+        <span class="material-icons"
+              style="font-size:16px; cursor:pointer; color:#1a73e8; vertical-align:middle; margin-left:4px;"
+              onclick="event.stopPropagation(); renameSubRoute(${currentFileIdx}, ${currentTrackIdx}, { skipOpenGpxManager: true })">edit</span><br>
+        里　　程：${displayDist.toFixed(2)} km<br>
+        花費時間：${timeString}<br>
+        最高海拔：${displayMaxEle.toFixed(0)} m<br>
+        最低海拔：${displayMinEle.toFixed(0)} m<br>
+        總爬升數：${displayGain.toFixed(0)} m<br>
+        總下降數：${displayLoss.toFixed(0)} m
+    </div>
+`;
 
   renderWaypointsAndPeaks(currentRoute);
 }
@@ -4661,116 +8752,705 @@ function renderEmptyRouteSummary(currentRoute) {
   renderWaypointsAndPeaks(currentRoute);
 }
 
+window.isWaypointVisibleOnCurrentRoute = function(wpt, routeIdx, route) {
+    if (!wpt) return false;
+
+    const activeIdx =
+        typeof routeIdx === "number"
+            ? routeIdx
+            : (
+                typeof window.currentActiveIndex === "number"
+                    ? window.currentActiveIndex
+                    : 0
+            );
+
+    const nActiveIdx =
+        Number(activeIdx);
+
+    const currentRoute =
+        route ||
+        (
+            window.allTracks &&
+            window.allTracks[activeIdx]
+                ? window.allTracks[activeIdx]
+                : null
+        );
+
+    const currentFile =
+        window.multiGpxStack &&
+        typeof window.currentMultiIndex === "number"
+            ? window.multiGpxStack[window.currentMultiIndex]
+            : null;
+
+    const routes =
+        currentFile && Array.isArray(currentFile.routes)
+            ? currentFile.routes
+            : (
+                Array.isArray(window.allTracks)
+                    ? window.allTracks
+                    : []
+            );
+
+    
+    if (
+        Array.isArray(wpt.hiddenRouteIndexes) &&
+        wpt.hiddenRouteIndexes
+            .map(Number)
+            .includes(nActiveIdx)
+    ) {
+        return false;
+    }
+
+    
+    const realRoutes =
+        routes.filter(function(r) {
+            return r && r.isCombined !== true;
+        });
+
+    const isSingleRouteFile =
+        (
+            routes.length <= 1 ||
+            realRoutes.length <= 1
+        ) &&
+        !(
+            currentRoute &&
+            currentRoute.isMergedRoute === true
+        );
+
+    if (isSingleRouteFile) {
+        return true;
+    }
+
+    
+    if (
+        currentRoute &&
+        currentRoute.isCombined === true
+    ) {
+        return true;
+    }
+
+    
+    if (
+        currentRoute &&
+        currentRoute.isMergedRoute === true &&
+        currentRoute.useOwnWaypointsOnly === true
+    ) {
+        return true;
+    }
+
+    
+    if (
+        Array.isArray(wpt.visibleRouteIndexes) &&
+        wpt.visibleRouteIndexes
+            .map(Number)
+            .includes(nActiveIdx)
+    ) {
+        return true;
+    }
+
+    
+    if (
+        currentRoute &&
+        currentRoute.isMergedRoute === true &&
+        Array.isArray(currentRoute.sourceRouteIndexes)
+    ) {
+        const sourceIdxList =
+            currentRoute.sourceRouteIndexes
+                .map(Number)
+                .filter(function(idx) {
+                    return Number.isFinite(idx);
+                });
+
+        if (wpt.belongsToRoute !== undefined) {
+            return sourceIdxList.includes(
+                Number(wpt.belongsToRoute)
+            );
+        }
+
+        const wTimeVal =
+            wpt.time
+                ? new Date(wpt.time).getTime()
+                : null;
+
+        if (Number.isFinite(wTimeVal)) {
+            for (let i = 0; i < sourceIdxList.length; i++) {
+                const sourceIdx =
+                    sourceIdxList[i];
+
+                const sourceRoute =
+                    routes[sourceIdx];
+
+                if (
+                    !sourceRoute ||
+                    !Array.isArray(sourceRoute.points) ||
+                    sourceRoute.points.length === 0
+                ) {
+                    continue;
+                }
+
+                const times =
+                    sourceRoute.points
+                        .map(function(p) {
+                            return p.time
+                                ? new Date(p.time).getTime()
+                                : null;
+                        })
+                        .filter(function(t) {
+                            return Number.isFinite(t);
+                        });
+
+                if (times.length === 0) {
+                    continue;
+                }
+
+                const startTime =
+                    Math.min(...times) - (60 * 60 * 1000);
+
+                const endTime =
+                    Math.max(...times) + (60 * 60 * 1000);
+
+                if (
+                    wTimeVal >= startTime &&
+                    wTimeVal <= endTime
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    
+    if (wpt.belongsToRoute !== undefined) {
+        return Number(wpt.belongsToRoute) === nActiveIdx;
+    }
+
+    
+    const currentTrackPts =
+        currentRoute &&
+        Array.isArray(currentRoute.points)
+            ? currentRoute.points
+            : (
+                typeof trackPoints !== "undefined" &&
+                Array.isArray(trackPoints)
+                    ? trackPoints
+                    : []
+            );
+
+    let startTime = null;
+    let endTime = null;
+
+    if (
+        currentTrackPts &&
+        currentTrackPts.length > 0
+    ) {
+        const times =
+            currentTrackPts
+                .map(function(p) {
+                    return p.time
+                        ? new Date(p.time).getTime()
+                        : null;
+                })
+                .filter(function(t) {
+                    return Number.isFinite(t);
+                });
+
+        if (times.length > 0) {
+            startTime =
+                Math.min(...times) - (60 * 60 * 1000);
+
+            endTime =
+                Math.max(...times) + (60 * 60 * 1000);
+        }
+    }
+
+    const wTimeVal =
+        wpt.time
+            ? new Date(wpt.time).getTime()
+            : null;
+
+    if (
+        Number.isFinite(wTimeVal) &&
+        Number.isFinite(startTime) &&
+        Number.isFinite(endTime)
+    ) {
+        return (
+            wTimeVal >= startTime &&
+            wTimeVal <= endTime
+        );
+    }
+
+    
+    return true;
+};
+
+
+window.toggleWaypointDisplayForCurrentRoute = function(originalIdx, checked) {
+    const fileIdx =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const routeIdx =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    const currentFile =
+        window.multiGpxStack &&
+        window.multiGpxStack[fileIdx];
+
+    if (
+        !currentFile ||
+        !Array.isArray(currentFile.waypoints) ||
+        !currentFile.waypoints[originalIdx]
+    ) {
+        return;
+    }
+
+    const currentRoute =
+        window.allTracks &&
+        window.allTracks[routeIdx]
+            ? window.allTracks[routeIdx]
+            : (
+                currentFile.routes &&
+                currentFile.routes[routeIdx]
+                    ? currentFile.routes[routeIdx]
+                    : currentFile
+            );
+
+    
+    if (currentRoute && currentRoute.isCombined === true) {
+        if (typeof renderWaypointsAndPeaks === "function") {
+            renderWaypointsAndPeaks(currentRoute);
+        }
+        return;
+    }
+
+    const wpt =
+        currentFile.waypoints[originalIdx];
+
+    if (!Array.isArray(wpt.visibleRouteIndexes)) {
+        wpt.visibleRouteIndexes = [];
+    }
+
+    if (!Array.isArray(wpt.hiddenRouteIndexes)) {
+        wpt.hiddenRouteIndexes = [];
+    }
+
+    wpt.visibleRouteIndexes =
+        wpt.visibleRouteIndexes
+            .map(Number)
+            .filter(function(idx) {
+                return Number.isFinite(idx);
+            });
+
+    wpt.hiddenRouteIndexes =
+        wpt.hiddenRouteIndexes
+            .map(Number)
+            .filter(function(idx) {
+                return Number.isFinite(idx);
+            });
+
+    const nRouteIdx =
+        Number(routeIdx);
+
+    if (checked) {
+        
+        if (!wpt.visibleRouteIndexes.includes(nRouteIdx)) {
+            wpt.visibleRouteIndexes.push(nRouteIdx);
+        }
+
+        wpt.hiddenRouteIndexes =
+            wpt.hiddenRouteIndexes.filter(function(idx) {
+                return idx !== nRouteIdx;
+            });
+
+    } else {
+        
+        if (!wpt.hiddenRouteIndexes.includes(nRouteIdx)) {
+            wpt.hiddenRouteIndexes.push(nRouteIdx);
+        }
+
+        wpt.visibleRouteIndexes =
+            wpt.visibleRouteIndexes.filter(function(idx) {
+                return idx !== nRouteIdx;
+            });
+    }
+
+    if (Array.isArray(currentFile.routes)) {
+        currentFile.routes.forEach(function(route) {
+            if (route) {
+                route.waypoints = currentFile.waypoints;
+            }
+        });
+    }
+
+    if (Array.isArray(window.allTracks)) {
+        window.allTracks.forEach(function(route) {
+            if (route) {
+                route.waypoints = currentFile.waypoints;
+            }
+        });
+    }
+
+    if (typeof syncWaypointsToFile === "function") {
+        syncWaypointsToFile(currentFile);
+    }
+
+    if (typeof rebuildXmlFromWaypoints === "function") {
+        rebuildXmlFromWaypoints(currentFile);
+    }
+
+
+		if (typeof loadRoute === "function") {
+		    loadRoute(routeIdx, null);
+		
+		} else if (typeof window.refreshWaypointMarkersOnly === "function") {
+		    window.refreshWaypointMarkersOnly(routeIdx, null);
+		}
+		
+		if (typeof updateWptIconStatus === "function") {
+		    updateWptIconStatus();
+		}
+};
+
+
+
+window.toggleAllWaypointsDisplayForCurrentRoute = function(checkbox) {
+    const fileIdx =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const routeIdx =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    const currentFile =
+        window.multiGpxStack &&
+        window.multiGpxStack[fileIdx];
+
+    if (
+        !currentFile ||
+        !Array.isArray(currentFile.waypoints)
+    ) {
+        return;
+    }
+
+    const currentRoute =
+        window.allTracks &&
+        window.allTracks[routeIdx]
+            ? window.allTracks[routeIdx]
+            : (
+                currentFile.routes &&
+                currentFile.routes[routeIdx]
+                    ? currentFile.routes[routeIdx]
+                    : currentFile
+            );
+
+    
+    if (currentRoute && currentRoute.isCombined === true) {
+        if (checkbox) {
+            checkbox.checked = true;
+        }
+
+        if (typeof renderWaypointsAndPeaks === "function") {
+            renderWaypointsAndPeaks(currentRoute);
+        }
+
+        return;
+    }
+
+    const checked =
+        !!(checkbox && checkbox.checked);
+
+    currentFile.waypoints.forEach(function(wpt) {
+        if (!wpt) return;
+
+        if (!Array.isArray(wpt.visibleRouteIndexes)) {
+            wpt.visibleRouteIndexes = [];
+        }
+
+        if (!Array.isArray(wpt.hiddenRouteIndexes)) {
+            wpt.hiddenRouteIndexes = [];
+        }
+
+        wpt.visibleRouteIndexes =
+            wpt.visibleRouteIndexes
+                .map(Number)
+                .filter(function(idx) {
+                    return Number.isFinite(idx);
+                });
+
+        wpt.hiddenRouteIndexes =
+            wpt.hiddenRouteIndexes
+                .map(Number)
+                .filter(function(idx) {
+                    return Number.isFinite(idx);
+                });
+
+        const nRouteIdx =
+            Number(routeIdx);
+
+        if (checked) {
+            
+            if (!wpt.visibleRouteIndexes.includes(nRouteIdx)) {
+                wpt.visibleRouteIndexes.push(nRouteIdx);
+            }
+
+            wpt.hiddenRouteIndexes =
+                wpt.hiddenRouteIndexes.filter(function(idx) {
+                    return idx !== nRouteIdx;
+                });
+
+        } else {
+            
+            if (!wpt.hiddenRouteIndexes.includes(nRouteIdx)) {
+                wpt.hiddenRouteIndexes.push(nRouteIdx);
+            }
+
+            wpt.visibleRouteIndexes =
+                wpt.visibleRouteIndexes.filter(function(idx) {
+                    return idx !== nRouteIdx;
+                });
+        }
+    });
+
+    if (Array.isArray(currentFile.routes)) {
+        currentFile.routes.forEach(function(route) {
+            if (route) {
+                route.waypoints = currentFile.waypoints;
+            }
+        });
+    }
+
+    if (Array.isArray(window.allTracks)) {
+        window.allTracks.forEach(function(route) {
+            if (route) {
+                route.waypoints = currentFile.waypoints;
+            }
+        });
+    }
+
+    if (typeof syncWaypointsToFile === "function") {
+        syncWaypointsToFile(currentFile);
+    }
+
+    if (typeof rebuildXmlFromWaypoints === "function") {
+        rebuildXmlFromWaypoints(currentFile);
+    }
+
+		if (typeof loadRoute === "function") {
+		    loadRoute(routeIdx, null);
+		
+		} else if (typeof window.refreshWaypointMarkersOnly === "function") {
+		    window.refreshWaypointMarkersOnly(routeIdx, null);
+		}
+		
+		if (typeof updateWptIconStatus === "function") {
+		    updateWptIconStatus();
+		}
+};
+
 window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
     
     const wptListContainer = document.getElementById("wptList");
     const navShortcuts = document.getElementById("navShortcuts");
+
     if (!wptListContainer) {
         return;
     }
 
-    const activeIdx = window.currentActiveIndex || 0;
+    const activeIdx =
+        window.currentActiveIndex || 0;
     
-    window._cachedRoutes = window._cachedRoutes || {};
+    window._cachedRoutes =
+        window._cachedRoutes || {};
+
     if (currentRoute && (currentRoute.points || currentRoute.waypoints)) {
-        
-        window._cachedRoutes[activeIdx] = currentRoute;
+        window._cachedRoutes[activeIdx] =
+            currentRoute;
     }
     
-    const route = currentRoute || window._cachedRoutes[activeIdx] || (window.allTracks ? window.allTracks[activeIdx] : null);
+    const route =
+        currentRoute ||
+        window._cachedRoutes[activeIdx] ||
+        (window.allTracks ? window.allTracks[activeIdx] : null);
     
     if (!route) {
-          wptListContainer.innerHTML = "";
+        wptListContainer.innerHTML = "";
         return;
     }
 
-    const currentTrackPts = route.points || [];
-    const rawWaypoints = route.waypoints || [];
+    const currentTrackPts =
+        route.points || [];
 
-    let startTime = null; let endTime = null;
+    const rawWaypoints =
+        route.waypoints || [];
+
+    let startTime = null;
+    let endTime = null;
+
     if (currentTrackPts.length > 0) {
-        const times = currentTrackPts.map(p => p.time ? new Date(p.time).getTime() : null).filter(t => t !== null);
+        const times =
+            currentTrackPts
+                .map(p => p.time ? new Date(p.time).getTime() : null)
+                .filter(t => t !== null);
+
         if (times.length > 0) {
-            startTime = Math.min(...times) - (60 * 60 * 1000);
-            endTime = Math.max(...times) + (60 * 60 * 1000);
+            startTime =
+                Math.min(...times) - (60 * 60 * 1000);
+
+            endTime =
+                Math.max(...times) + (60 * 60 * 1000);
         }
     }
+
     
-    const filteredWpts = rawWaypoints.map((w, i) => ({ ...w, originalIdx: i }))
-    .filter(w => {
-        if (activeIdx === 0) return true;
-        if (w.belongsToRoute !== undefined) return w.belongsToRoute === activeIdx;     
-        
-        const wTimeVal = w.time ? new Date(w.time).getTime() : null;
-        const isNative = route.waypoints && route.waypoints.some(rawW => 
-            Math.abs(rawW.lat - w.lat) < 0.0001 && Math.abs(rawW.lon - w.lon) < 0.0001 && String(rawW.name) === String(w.name)
-        );
-        
-        const isTrekDayPoint = wTimeVal && startTime && Math.abs(wTimeVal - startTime) < (48 * 60 * 60 * 1000);
-        let isInTimeRange = (startTime && endTime && wTimeVal) ? (wTimeVal >= startTime && wTimeVal <= endTime) : false;
-        
-        const onTrack = currentTrackPts.some(tp => (Math.pow(w.lat - tp.lat, 2) + Math.pow(w.lon - tp.lon, 2)) < 0.00000324);
-        
-        if (isNative) {     
-            if (isTrekDayPoint && !isInTimeRange) {
-                
-                return false;
+    const filteredWpts =
+        rawWaypoints.map((w, i) => ({
+            ...w,
+            originalIdx: i
+        }));
+
+    const uniqueWpts =
+        filteredWpts.filter((v, i, a) => {
+            const matchIdx =
+                a.findIndex(t => 
+                    t.name === v.name && 
+                    t.time === v.time && 
+                    Math.abs(t.lat - v.lat) < 0.000001 && 
+                    Math.abs(t.lon - v.lon) < 0.000001
+                );
+            
+            if (matchIdx !== i) {
             }
-            return true;
-        }
 
-        const keep = onTrack;
-        if (!keep) {
-            
-        }
-        return keep;
-    });
-
-    const uniqueWpts = filteredWpts.filter((v, i, a) => {
-        const matchIdx = a.findIndex(t => 
-            t.name === v.name && 
-            t.time === v.time && 
-            Math.abs(t.lat - v.lat) < 0.000001 && 
-            Math.abs(t.lon - v.lon) < 0.000001
-        );
-        
-        if (matchIdx !== i) {
-            
-        }
-        return matchIdx === i;
-    });
+            return matchIdx === i;
+        });
     
     let listHtml = "";
     let shortcutsHtml = "";
-    const isFS = (forceFS !== null) ? forceFS : !!(document.fullscreenElement || document.webkitFullscreenElement || document.body.classList.contains('iphone-fullscreen'));
 
-    if (navShortcuts) navShortcuts.style.display = "flex";
+    const isFS =
+        (forceFS !== null)
+            ? forceFS
+            : !!(
+                document.fullscreenElement ||
+                document.webkitFullscreenElement ||
+                document.body.classList.contains('iphone-fullscreen')
+            );
 
-    const icon = (typeof showWptNameAlways !== 'undefined' && showWptNameAlways) ? "visibility_off" : "visibility";
+    if (navShortcuts) {
+        navShortcuts.style.display = "flex";
+    }
+
+    const icon =
+        (typeof showWptNameAlways !== 'undefined' && showWptNameAlways)
+            ? "visibility_off"
+            : "visibility";
 
     if (!isFS) {
         if (uniqueWpts.length > 0) {
             shortcutsHtml += `<button type="button" class="shortcut-btn" onmousedown="L.DomEvent.stopPropagation(event)" onclick="window.restoreAndJump('anchorWpt'); L.DomEvent.stopPropagation(event);">📍 航點列表</button>`;
         }
+
         shortcutsHtml += `<button type="button" class="shortcut-btn" onmousedown="L.DomEvent.stopPropagation(event)" onclick="window.restoreAndJump('anchorPeak'); L.DomEvent.stopPropagation(event);">⛰️ 沿途山岳</button>`;
     }
 
-    const u = historyManager.getBtnState('undo');
-    const r = historyManager.getBtnState('redo');
+    const u =
+        historyManager.getBtnState('undo');
+
+    const r =
+        historyManager.getBtnState('redo');
 
     if (uniqueWpts.length > 0) {
-        listHtml += `<h4 id="anchorWpt" style="margin: 20px 0 10px 0;">📍 航航點點列表 (${uniqueWpts.length})</h4>
+        listHtml += `<h4 id="anchorWpt" style="margin: 20px 0 10px 0;">📍 航點列表 (${uniqueWpts.length})</h4>
             <div class="wpt-table-toolbar" style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
-                <button type="button" onclick="deleteSelectedWaypoints()" class="btn-delete-multi" style="background: #d32f2f; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; font-size: 13px;"><span class="material-icons" style="font-size: 18px; margin-right: 5px;">delete_sweep</span> 刪除勾選項目</button>
+                <button type="button" onclick="deleteSelectedWaypoints()" class="btn-delete-multi" style="background: #d32f2f; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; font-size: 13px;">
+                    <span class="material-icons" style="font-size: 18px; margin-right: 5px;">delete_sweep</span>
+                    刪除勾選項目
+                </button>
                 <span id="selectedCount" style="font-size: 12px; color: #666;">已選取 0 項</span>
             </div>
             <table class="wpt-table">
-                <thead><tr><th style="width:2%"></th><th style="width:2%"><input type="checkbox" id="selectAllWpts" onclick="toggleSelectAll(this)"></th><th style="width:5%">#</th><th style="width:30%">時間</th><th style="width:40%">名稱</th><th style="width:20%">操作</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th style="width:2%"></th>
+                        <th style="width:2%">
+                            <input type="checkbox" id="selectAllWpts" onclick="toggleSelectAll(this)"><br><br>
+                        </th>
+                        <th style="width:3%">#<br><br></th>
+                        <th style="width:10%">時間<br><br></th>
+                        <th style="width:25%">名稱<br><br></th>
+                        <th style="width:2%; text-align:center;">
+                            顯示<br>
+                            <input type="checkbox" id="toggleAllWptDisplay" onclick="toggleAllWaypointsDisplayForCurrentRoute(this)">
+                        </th>
+                        <th style="width:5%;">編輯/刪除<br><br></th>
+                    </tr>
+                </thead>
                 <tbody id="wptTableBody">`; 
+
         uniqueWpts.forEach((w, displayIdx) => {
-            const displayTime = w.localTime || (w.time ? new Date(w.time).toLocaleString() : "無時間資訊");
-            listHtml += `<tr data-idx="${w.originalIdx}"><td class="drag-handle" style="cursor: grab; color: #ccc;"><span class="material-icons">drag_indicator</span></td><td><input type="checkbox" class="wpt-checkbox" data-idx="${w.originalIdx}" onchange="updateSelectedCount()"></td><td><span class="wpt-link" onclick="focusWaypointWithLog(${w.originalIdx}, '${w.name}')">${displayIdx + 1}</span></td><td>${displayTime}</td><td>${w.name}</td><td><span class="material-icons wpt-action-icon" onclick="handleWptEditByIndex(${w.originalIdx})">edit</span><span class="material-icons wpt-action-icon wpt-delete-icon" onclick="deleteWaypoint(${w.originalIdx})">delete</span></td></tr>`;
+            const displayTime =
+                w.localTime ||
+                (w.time ? new Date(w.time).toLocaleString() : "無時間資訊");
+
+            const isVisibleForRoute =
+                typeof window.isWaypointVisibleOnCurrentRoute === "function"
+                    ? window.isWaypointVisibleOnCurrentRoute(w, activeIdx, route)
+                    : true;
+
+            const displayDisabled =
+                route && route.isCombined === true
+                    ? "disabled"
+                    : "";
+
+            const displayChecked =
+                isVisibleForRoute
+                    ? "checked"
+                    : "";
+
+            listHtml += `<tr data-idx="${w.originalIdx}">
+                <td class="drag-handle" style="cursor: grab; color: #ccc;">
+                    <span class="material-icons">drag_indicator</span>
+                </td>
+                <td>
+                    <input 
+                        type="checkbox" 
+                        class="wpt-checkbox" 
+                        data-idx="${w.originalIdx}" 
+                        onchange="updateSelectedCount()"
+                    >
+                </td>
+                <td>
+                    <span class="wpt-link" onclick="focusWaypointWithLog(${w.originalIdx}, '${w.name}')">
+                        ${displayIdx + 1}
+                    </span>
+                </td>
+                <td>${displayTime}</td>
+                <td>${w.name}</td>
+                <td style="text-align:center;">
+                    <input
+                        type="checkbox"
+                        class="wpt-display-checkbox"
+                        data-idx="${w.originalIdx}"
+                        ${displayChecked}
+                        ${displayDisabled}
+                        onchange="toggleWaypointDisplayForCurrentRoute(${w.originalIdx}, this.checked)"
+                    >
+                </td>
+                <td>
+                    <span class="material-icons wpt-action-icon" onclick="handleWptEditByIndex(${w.originalIdx})">edit</span>
+                    <span class="material-icons wpt-action-icon wpt-delete-icon" onclick="deleteWaypoint(${w.originalIdx})">delete</span>
+                </td>
+            </tr>`;
         });
+
         listHtml += `</tbody></table>`;
     }
 
@@ -4782,9 +9462,38 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
         </div>
     </div>`;
 
-    if (navShortcuts) navShortcuts.innerHTML = shortcutsHtml;
-    wptListContainer.innerHTML = listHtml;
-    wptListContainer.style.display = isFS ? "none" : "block";
+    if (navShortcuts) {
+        navShortcuts.innerHTML =
+            shortcutsHtml;
+    }
+
+    wptListContainer.innerHTML =
+        listHtml;
+
+    wptListContainer.style.display =
+        isFS ? "none" : "block";
+
+    const toggleAllWptDisplay =
+        document.getElementById("toggleAllWptDisplay");
+
+    if (toggleAllWptDisplay) {
+        if (route && route.isCombined === true) {
+            toggleAllWptDisplay.checked = true;
+            toggleAllWptDisplay.disabled = true;
+        } else {
+            const displayBoxes =
+                Array.from(
+                    document.querySelectorAll(".wpt-display-checkbox")
+                );
+
+            toggleAllWptDisplay.disabled = false;
+            toggleAllWptDisplay.checked =
+                displayBoxes.length > 0 &&
+                displayBoxes.every(function(box) {
+                    return box.checked;
+                });
+        }
+    }
 
     if (!isFS) {
         setTimeout(() => {
@@ -4794,16 +9503,16 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
     }
     
     if (
-    uniqueWpts &&
-    uniqueWpts.length > 0 &&
-    typeof updateWptIconStatus === 'function'
-) {
-    updateWptIconStatus();
-}
-    
+        uniqueWpts &&
+        uniqueWpts.length > 0 &&
+        typeof updateWptIconStatus === 'function'
+    ) {
+        updateWptIconStatus();
+    }
 };
 
 document.addEventListener('fullscreenchange', () => {
+
     setTimeout(() => {
         const activeIdx = window.currentActiveIndex || 0;
         const currentRoute = window.allTracks ? window.allTracks[activeIdx] : null;
@@ -4839,12 +9548,12 @@ async function detectPeaksAlongRoute(isManual = false) {
             <div style="padding:20px; text-align:center; background:#f9f9f9; border:1px dashed #ccc; border-radius:8px; margin:10px 0;">
                 <p style="margin-bottom:10px; color:#666; font-size:14px;">📍 路線已載入：準備好偵測此範圍內之山岳</p>
 				<button onclick="detectPeaksAlongRoute(true)" 
-        style="padding: 10px 25px; /* 橢圓形通常兩側留白更多，外觀更協調 */
+        style="padding: 10px 25px; 
                background: #1a73e8; 
                color: white; 
                border: none; 
                
-               /* 關鍵修改：將 border-radius 設定為 50px，強制橢圓形 */
+               
                border-radius: 50px; 
                
                cursor: pointer; 
@@ -4852,7 +9561,7 @@ async function detectPeaksAlongRoute(isManual = false) {
                font-size: 14px; 
                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                
-               /* 確保按鈕內容垂直置中 */
+               
                display: inline-flex;
                align-items: center;
                justify-content: center;
@@ -5155,11 +9864,19 @@ window.executeJump = function(type) {
 
 function showMapToast(message) {
     let toast = document.getElementById('map-toast');
+
+    
+    if (window.mapToastTimer) {
+        clearTimeout(window.mapToastTimer);
+        window.mapToastTimer = null;
+    }
+
     if (!toast) {
         toast = document.createElement('div');
         toast.id = 'map-toast';
+
         toast.style.cssText = `
-            position: fixed;
+            position: absolute;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
@@ -5167,20 +9884,38 @@ function showMapToast(message) {
             color: white;
             padding: 10px 20px;
             border-radius: 20px;
-            z-index: 10000;
+            z-index: 2147483646;
             font-size: 14px;
             pointer-events: none;
             transition: opacity 0.5s;
         `;
-        document.body.appendChild(toast);
     }
+
+    
+    const fsParent =
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        (
+            document.body.classList.contains("iphone-fullscreen")
+                ? document.getElementById("map")
+                : null
+        ) ||
+        document.body;
+
+    if (toast.parentElement !== fsParent) {
+        fsParent.appendChild(toast);
+    }
+
     toast.innerText = message;
     toast.style.opacity = '1';
-    
-    
-    setTimeout(() => {
+
+    window.currentMapToast = toast;
+
+    window.mapToastTimer = setTimeout(() => {
         toast.style.opacity = '0';
-    }, 3000);
+
+        window.mapToastTimer = null;
+    }, 10000);
 }
 
 let multiGpxStack = []; 
@@ -5227,6 +9962,9 @@ async function handleGpxFiles(files) {
     }
 
     clearEverything(); 
+    window.gpxMergeSelections = {};
+		window.gpxMergeOrder = {};
+		window.gpxManagerExpanded = {};
 		historyManager.clear();
  
     if (typeof window.resetGPS === 'function') window.resetGPS();
@@ -5380,17 +10118,46 @@ document.getElementById("multiGpxInput").addEventListener("change", async (e) =>
         await handleGpxFiles(fileArray); 
     }, "匯入新檔案確認");
 
+    if (typeof window.fixPageAndMapOffset === "function") {
+    window.fixPageAndMapOffset();
+		}
     
-    
-    
+    const oldToast =
+        document.getElementById("map-toast");
+
+    if (oldToast) {
+        oldToast.style.opacity = "0";
+    }
+
+    if (window.mapToastTimer) {
+        clearTimeout(window.mapToastTimer);
+        window.mapToastTimer = null;
+    }
+
+    window.currentMapToast = null;
     e.target.value = ""; 
 });
 
 function switchMultiGpx(index) {
+
 		if (typeof isDrawingMode !== "undefined" && isDrawingMode) {
 
     isDrawingMode = false;
     isScribbling = false;
+    
+    const oldToast =
+        document.getElementById("map-toast");
+
+    if (oldToast) {
+        oldToast.style.opacity = "0";
+    }
+
+    if (window.mapToastTimer) {
+        clearTimeout(window.mapToastTimer);
+        window.mapToastTimer = null;
+    }
+
+    window.currentMapToast = null;
 
     if (typeof tempDrawPoints !== "undefined") {
         tempDrawPoints = [];
@@ -5447,10 +10214,7 @@ function switchMultiGpx(index) {
     window.currentFileNameForDisplay =
         data.name;
 
-    /*
-        GPXBar 永遠只切換「檔案」。
-        子路線只存在 data.routes / allTracks / routeSelect。
-    */
+    
     multiGpxStack.forEach((item, i) => {
 
         const btn =
@@ -5521,20 +10285,39 @@ function switchMultiGpx(index) {
                 allTracks.forEach((t, i) => {
 
                     if (routeSelect.options[i]) {
-                        routeSelect.options[i].text =
-                            t.name;
+                        const baseName =
+												    t.routeDisplayName ||
+												    t.displayName ||
+												    t.name ||
+												    `路線 ${i + 1}`;
+												
+												const isCombinedRoute =
+												    t.isCombined === true ||
+												    t.type === "combined" ||
+												    t.routeType === "combined" ||
+												    (
+												        i === 0 &&
+												        typeof baseName === "string" &&
+												        baseName.indexOf("結合") !== -1
+												    );
+												
+												t.isCombined =
+												    isCombinedRoute === true;
+												
+												routeSelect.options[i].value =
+												    String(i);
+												
+												routeSelect.options[i].text =
+												    isCombinedRoute
+												        ? `【 ${baseName} 】`
+												        : baseName;
                     }
                 });
             }
         }
     };
 
-    /*
-        關鍵：
-        如果這個 GPX 已經有 data.routes，代表它已經被 parse 過，
-        或已經被繪製修改過。
-        不要再用 data.content 重新 parse，否則手繪點會被舊 GPX 內容洗掉。
-    */
+    
     if (
         Array.isArray(data.routes) &&
         data.routes.length > 0
@@ -5581,10 +10364,7 @@ function switchMultiGpx(index) {
 
         applyCustomNames();
 
-        /*
-            parseGPX 會把 routes 寫回目前 currentFile。
-            這裡再確保航點使用檔案層級 waypoints。
-        */
+        
         if (allTracks && allTracks.length > 0) {
             allTracks.forEach(track => {
                 track.waypoints =
@@ -5665,20 +10445,25 @@ function switchMultiGpx(index) {
             "block";
     }
 
-    if (typeof detectPeaksAlongRoute === 'function') {
-
-        if (
-            typeof peakAbortController !== 'undefined' &&
-            peakAbortController
-        ) {
-            peakAbortController.abort();
-        }
-
-        detectPeaksAlongRoute(false);
-    }
+		if (typeof detectPeaksAlongRoute === 'function') {
+		
+		    if (
+		        typeof peakAbortController !== 'undefined' &&
+		        peakAbortController
+		    ) {
+		        peakAbortController.abort();
+		    }
+		
+		    detectPeaksAlongRoute(false);
+		}
+		
+		if (typeof window.refreshGpxManagerIfOpen === "function") {
+		    window.refreshGpxManagerIfOpen();
+		}
 }
 
 function renderMultiGpxButtons() {
+
     const bar = document.getElementById('multiGpxBtnBar');
     if (!bar || !gpxManagerControlContainer) return;
     
@@ -5957,6 +10742,7 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 window.changeMapSize = function(size) {
+
     const mapDiv = document.getElementById('map');
     window.currentMapSize = size; 
 
@@ -5988,6 +10774,7 @@ window.changeMapSize = function(size) {
 };
 
 window.toggleFullScreen = function() {
+	  ;
     const mapDiv = document.getElementById('map');
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
@@ -6156,12 +10943,78 @@ mapSizeCtrl.onAdd = function(map) {
     
     refreshBarBtnStyle();
 
-    L.DomEvent.on(barToggleBtn, 'click', function(e) {
-        L.DomEvent.stop(e);
-        window.manualShowBar = !window.manualShowBar;
-        refreshBarBtnStyle();
-        if (window.updateVisibility) window.updateVisibility();
-    });
+		L.DomEvent.on(barToggleBtn, 'click', function(e) {
+		    L.DomEvent.stop(e);
+		
+		    const hasTracks =
+		        typeof trackPoints !== "undefined" &&
+		        Array.isArray(trackPoints) &&
+		        trackPoints.length > 0;
+		
+		    
+		    if (!hasTracks) {
+		        window.manualShowBar = false;
+		
+		        const barContainer =
+		            document.getElementById("map-control-bar");
+		
+		        if (barContainer) {
+		            barContainer.style.setProperty(
+		                "display",
+		                "none",
+		                "important"
+		            );
+		        }
+		
+		        const progressBar =
+		            document.getElementById("gpxProgressBar");
+		
+		        if (progressBar) {
+		            progressBar.value = 0;
+		            progressBar.max = 0;
+		        }
+		
+		        const infoEl =
+		            document.getElementById("progressBarInfo");
+		
+		        if (infoEl) {
+		            infoEl.textContent = "0.00 km";
+		        }
+		
+		        refreshBarBtnStyle();
+		
+		        if (window.updateVisibility) {
+		            window.updateVisibility();
+		        }
+		
+		        if (typeof showMapToast === "function") {
+		            showMapToast("目前沒有路線，請先匯入 GPX 或繪製路線");
+		        } else {
+		            alert("目前沒有路線，請先匯入 GPX 或繪製路線");
+		        }
+		
+		        return;
+		    }
+		
+		    window.manualShowBar =
+		        !window.manualShowBar;
+		
+		    if (window.manualShowBar) {
+		        if (typeof setupProgressBar === "function") {
+		            setupProgressBar();
+		        }
+		
+		        if (typeof initProgressBar === "function") {
+		            initProgressBar();
+		        }
+		    }
+		
+		    refreshBarBtnStyle();
+		
+		    if (window.updateVisibility) {
+		        window.updateVisibility();
+		    }
+		});
 
     const syncHandler = () => setTimeout(renderButtons, 200);
     document.addEventListener('fullscreenchange', syncHandler);
@@ -6200,100 +11053,1481 @@ function initGpxManagerControl() {
 initGpxManagerControl();
 
 function showGpxManagementModal() {
+		
+
+    if (typeof isDrawingMode !== 'undefined' && isDrawingMode) {
+        isDrawingMode = false;
+
+        const drawBtn = document.getElementById('drawModeBtn');
+        const methodBtn = document.getElementById('drawMethodBtn');
+
+        if (drawBtn) {
+            drawBtn.style.setProperty('background', "white", 'important');
+            drawBtn.style.setProperty('color', "#5f6368", 'important');
+        }
+
+        if (methodBtn) {
+            methodBtn.style.display = "none";
+        }
+
+        document.getElementById('map').style.cursor = '';
+
+        if (typeof map !== 'undefined') {
+            map.dragging.enable();
+            map.boxZoom.enable();
+        }
+    }
+    
+    const oldToast =
+        document.getElementById("map-toast");
+
+    if (oldToast) {
+        oldToast.style.opacity = "0";
+    }
+
+    if (window.mapToastTimer) {
+        clearTimeout(window.mapToastTimer);
+        window.mapToastTimer = null;
+    }
+
+    window.currentMapToast = null;
+
     let modal = document.getElementById('gpxManageModal');
+
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'gpxManageModal';
-        modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; backdrop-filter: blur(2px); display:none;";
+		modal.style.cssText =
+		    "position:fixed; top:0; left:0; width:100%; height:100%; " +
+		    "background:transparent; display:none; " +
+		    "pointer-events:none; " +
+		    "z-index:2147483646;";
         document.body.appendChild(modal);
     }
 
-    const isNowFS = !!(document.fullscreenElement || document.webkitFullscreenElement || document.body.classList.contains('iphone-fullscreen'));
+		window.gpxManagerExpanded = window.gpxManagerExpanded || {};
+		window.gpxMergeSelections = window.gpxMergeSelections || {};
+		window.gpxMergeOrder = window.gpxMergeOrder || {};
+
+    const isNowFS = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.body.classList.contains('iphone-fullscreen')
+    );
+
     const mapContainer = document.getElementById('map');
-    
-    if (isNowFS && modal.parentElement !== mapContainer) {
+
+    if (isNowFS && mapContainer && modal.parentElement !== mapContainer) {
         mapContainer.appendChild(modal);
+    } else if (!isNowFS && modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
     }
 
-    if (modal.style.display === 'none') {
-        modal.style.display = 'flex';
+		modal.style.display = 'block';
+		modal.style.zIndex = '2147483646';
+		modal.style.pointerEvents = 'none';
+
+    if (typeof L !== "undefined" && L.DomEvent) {
+        L.DomEvent.disableClickPropagation(modal);
+        L.DomEvent.disableScrollPropagation(modal);
     }
 
-    L.DomEvent.disableClickPropagation(modal);
-    L.DomEvent.disableScrollPropagation(modal);
+    const defaultColors = [
+        '#0000FF', '#FF3300', '#FF00FF', '#FFD600',
+        '#9C27B0', '#33FF00', '#00FFFF', '#E91E63',
+        '#1A73E8', '#00E676', '#FF8C00', '#BF00FF',
+        '#A5F2F3', '#FFF000', '#87CEFA', '#FF1493'
+    ];
 
-    const defaultColors = ['#0000FF', '#FF3300', '#FF00FF', '#FFD600', '#9C27B0', '#33FF00', '#00FFFF', '#E91E63', '#1A73E8', '#00E676', '#FF8C00', '#BF00FF', '#A5F2F3', '#FFF000', '#87CEFA', '#FF1493'];
+    const esc = function(v) {
+        return String(v ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    };
+//"
+    const getRouteNameForManager = function(route, routeIdx) {
+        let baseName =
+            route &&
+            (
+                route.routeDisplayName ||
+                route.displayName ||
+                route.name
+            );
 
-    let listHtml = `
-        <div style="background:white; padding:20px; border-radius:12px; width:320px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-height: 80vh; display: flex; flex-direction: column; position: relative;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
-                <h3 style="margin:0; font-size:19px;">管理軌跡</h3>
-            </div>
-            <div style="flex: 1; overflow-y:auto; padding-right:5px;">`;
-    
-    multiGpxStack.forEach((gpx, i) => {
-        const isVisible = (gpx.visible !== false);
-        const isChecked = isVisible ? 'checked' : '';
-        const isFocused = (window.currentMultiIndex === i);
-        
-        
-        const disabledAttr = isFocused ? 'disabled' : '';
-        const cursorStyle = isFocused ? 'cursor: not-allowed; opacity: 0.6;' : 'cursor: pointer;';
+        if (
+            baseName === undefined ||
+            baseName === null ||
+            baseName === "" ||
+            baseName === "NaN" ||
+            String(baseName).trim() === "" ||
+            String(baseName).trim() === "NaN"
+        ) {
+            if (route && route.isCombined === true) {
+                baseName = "結合路線";
+            } else if (
+                route &&
+                (
+                    route.isHandDrawRoute === true ||
+                    route.isDrawTrack === true
+                )
+            ) {
+                baseName = "自訂路線";
+            } else if (route && route.isWaypointOnly === true) {
+                baseName = "航點資料";
+            } else {
+                baseName = "子路線 " + routeIdx;
+            }
+        }
 
-        listHtml += `
-        <div style="margin-bottom: 10px; border: 1px solid ${isFocused ? '#1a73e8' : '#eee'}; border-radius: 8px; padding: 10px; background: ${isFocused ? '#f0f7ff' : '#fafafa'};">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <input type="checkbox" id="gpx-chk-${i}" ${isChecked} ${disabledAttr} onchange="toggleGpxVisibility(${i})" 
-                    style="width:18px; height:18px; ${cursorStyle} flex-shrink: 0;">
-                
-                <div onclick="toggleColorPicker(${i})" style="
-                    width: 22px; height: 22px; background: ${gpx.color || '#ff0000'}; 
-                    border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 0 1px #ddd;
-                    flex-shrink: 0;
-                "></div>
+        baseName = String(baseName);
 
-                <label for="${isFocused ? '' : 'gpx-chk-' + i}" style="display:flex; align-items:center; cursor:${isFocused ? 'default' : 'pointer'}; flex:1; min-width:0;">
-                    <span title="${gpx.name}" style="font-size:14px; font-weight:500; color:${isFocused ? '#1a73e8' : '#333'}; 
-                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;">
-                        ${gpx.name}
-                    </span>
-                    
-                    ${isFocused ? `
-                        <span class="is-using-label" style="font-size:14px; margin-left:10px; background:#1a73e8; color:white; 
-                                    padding:1px 6px; border-radius:10px; flex-shrink:0; white-space:nowrap;">
-                            使用中
-                        </span>` : ''}
-                </label>
-            </div>
-            <div id="picker-${i}" style="display: none; margin-top: 14px; padding: 8px; background: white; border-radius: 6px; border: 1px solid #ddd; gap: 6px; flex-wrap: wrap; justify-content: center;">
-                ${defaultColors.map(color => {
-                    const isSelected = gpx.color && gpx.color.toUpperCase() === color.toUpperCase();
-                    return `<div onclick="changeGpxColor(${i}, '${color}')" style="width: 24px; height: 24px; background: ${color}; border-radius: 4px; cursor: pointer; position: relative; border: ${isSelected ? '2px solid #333' : '1px solid rgba(0,0,0,0.1)'};"></div>`;
-                }).join('')}
-            </div>
-        </div>`;
-    });
+        if (route && route.isCombined === true) {
+            return "【 " + baseName + " 】";
+        }
 
-    listHtml += `</div>
-            <button onclick="document.getElementById('gpxManageModal').style.display='none'" 
-                style="width:100%; margin-top:15px; padding:12px; background:#1a73e8; color:white; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:bold;">
-                完成
-            </button>
-        </div>`;
-    modal.innerHTML = listHtml;
-    
-    if (isNowFS) {
+        if (route && route.isHandDrawRoute === true) {
+            return baseName;
+        }
+
+        if (route && route.isWaypointOnly === true) {
+            return baseName;
+        }
+
+        return baseName;
+    };
+
+    let listHtml = "";
+
+		listHtml += '<div id="gpxManagePanel" style="';
+		listHtml += 'position:absolute; ';
+		listHtml += 'top:50%; ';
+		listHtml += 'left:50%; ';
+		listHtml += 'transform:translate(-50%, -50%); ';
+		listHtml += 'background:white; ';
+		listHtml += 'padding:20px; ';
+		listHtml += 'border-radius:12px; ';
+		listHtml += 'width:360px; ';
+		listHtml += 'pointer-events:auto; ';
+    listHtml += 'max-width:92vw; ';
+    listHtml += 'box-shadow:0 10px 30px rgba(0,0,0,0.3); ';
+    listHtml += 'max-height:80vh; ';
+    listHtml += 'display:flex; ';
+    listHtml += 'flex-direction:column; ';
+    listHtml += 'position:relative; ';
+    listHtml += 'box-sizing:border-box; ';
+    listHtml += 'user-select:none; ';
+    listHtml += '-webkit-user-select:none; ';
+    listHtml += '-webkit-touch-callout:none;';
+    listHtml += '">';
+
+		listHtml += '<div id="gpxManageDragHandle" style="';
+    listHtml += 'display:flex; ';
+    listHtml += 'justify-content:space-between; ';
+    listHtml += 'align-items:center; ';
+    listHtml += 'cursor:move; ';
+    listHtml += 'height:36px; ';
+    listHtml += 'min-height:36px; ';
+    listHtml += 'max-height:36px; ';
+    listHtml += 'margin-bottom:15px; ';
+    listHtml += 'border-bottom:1px solid #eee; ';
+    listHtml += 'padding-bottom:10px; ';
+    listHtml += 'box-sizing:border-box;';
+    listHtml += '">';
+
+    listHtml += '<div style="';
+    listHtml += 'margin:0; ';
+    listHtml += 'font-size:22px; ';
+    listHtml += 'line-height:23px; ';
+    listHtml += 'font-weight:700; ';
+    listHtml += 'text-align:center; ';
+    listHtml += 'height:24px; ';
+    listHtml += 'min-height:24px; ';
+    listHtml += 'max-height:24px; ';
+    listHtml += 'flex:1;';
+    listHtml += '">管理軌跡</div>';
+
+    listHtml += '</div>';
+
+		listHtml += '<div id="gpxManageScrollBody" style="';
+		listHtml += 'flex:1; ';
+		listHtml += 'overflow-y:auto; ';
+		listHtml += 'padding-right:5px; ';
+		listHtml += 'box-sizing:border-box;';
+		listHtml += '">';
+
+    if (!Array.isArray(multiGpxStack) || multiGpxStack.length === 0) {
+
+        listHtml += '<div style="padding:20px; text-align:center; color:#777; font-size:14px; line-height:20px;">';
+        listHtml += '目前沒有匯入 GPX。';
+        listHtml += '</div>';
+
+    } else {
+
+        multiGpxStack.forEach(function(gpx, i) {
+            if (!gpx) return;
+
+            if (!Array.isArray(gpx.routes)) {
+                gpx.routes = [];
+            }
+
+            if (
+                gpx.routes.length === 0 &&
+                gpx.isWaypointOnly !== true &&
+                gpx._routesDeletedByUser !== true &&
+                gpx.content &&
+                typeof processGpxXml === "function"
+            ) {
+                const parsedRoutes = processGpxXml(gpx.content) || [];
+
+                gpx.routes = parsedRoutes.map(function(route, idx) {
+                    const routeName =
+                        route.displayName ||
+                        route.name ||
+                        "路線 " + (idx + 1);
+
+                    const points =
+                        Array.isArray(route.points)
+                            ? route.points
+                            : [];
+
+                    const segments =
+                        Array.isArray(route.segments) &&
+                        route.segments.length > 0
+                            ? route.segments
+                            : (
+                                points.length > 0
+                                    ? [points.map(function(p) {
+                                        return [p.lat, p.lon];
+                                    })]
+                                    : []
+                            );
+
+                    return {
+                        ...route,
+                        name: routeName,
+                        displayName: routeName,
+                        fileName: gpx.fileName || gpx.name || "GPX",
+                        color: route.color || gpx.color || "#0000FF",
+                        points: points,
+                        segments: segments,
+                        waypoints: gpx.waypoints || route.waypoints || [],
+                        visible: route.visible !== false,
+                        isCombined: route.isCombined === true,
+                        isDrawTrack: route.isDrawTrack === true,
+                        isHandDrawRoute: route.isHandDrawRoute === true
+                    };
+                });
+            }
+
+            if (
+                gpx.routes.length === 0 &&
+                gpx.isWaypointOnly !== true &&
+                gpx._routesDeletedByUser !== true &&
+                (
+                    (Array.isArray(gpx.points) && gpx.points.length > 0) ||
+                    (Array.isArray(gpx.segments) && gpx.segments.length > 0)
+                )
+            ) {
+                const routeName =
+                    gpx.displayName ||
+                    gpx.fileName ||
+                    gpx.name ||
+                    "路線 1";
+
+                gpx.routes.push({
+                    id: "route_" + Date.now(),
+                    name: routeName,
+                    displayName: routeName,
+                    fileName: gpx.fileName || gpx.name || "GPX",
+                    color: gpx.color || "#0000FF",
+                    points: Array.isArray(gpx.points) ? gpx.points : [],
+                    segments: Array.isArray(gpx.segments) ? gpx.segments : [],
+                    waypoints: gpx.waypoints || [],
+                    visible: true,
+                    isCombined: false
+                });
+            }
+
+            const trackRoutes = gpx.routes.filter(function(route) {
+                if (!route || route.isCombined) return false;
+
+                return (
+                    (Array.isArray(route.points) && route.points.length > 0) ||
+                    (Array.isArray(route.segments) && route.segments.length > 0)
+                );
+            });
+
+            if (
+                trackRoutes.length > 1 &&
+                !(
+                    gpx.routes[0] &&
+                    gpx.routes[0].isCombined === true
+                )
+            ) {
+                let combinedPoints = [];
+                let combinedSegments = [];
+
+                trackRoutes.forEach(function(route) {
+                    const pts =
+                        Array.isArray(route.points)
+                            ? route.points
+                            : [];
+
+                    if (pts.length > 0) {
+                        combinedPoints = combinedPoints.concat(pts);
+                    }
+
+                    if (
+                        Array.isArray(route.segments) &&
+                        route.segments.length > 0
+                    ) {
+                        route.segments.forEach(function(seg) {
+                            if (Array.isArray(seg) && seg.length > 0) {
+                                combinedSegments.push(seg);
+                            }
+                        });
+                    } else if (pts.length > 0) {
+                        combinedSegments.push(
+                            pts.map(function(p) {
+                                return [p.lat, p.lon];
+                            })
+                        );
+                    }
+                });
+
+                let totalDist = 0;
+
+                const recalculatedPoints =
+                    combinedPoints.map(function(p, idx, arr) {
+                        if (idx > 0) {
+                            const prev = arr[idx - 1];
+
+                            if (typeof calculateDistance === "function") {
+                                totalDist += calculateDistance(
+                                    prev.lat,
+                                    prev.lon,
+                                    p.lat,
+                                    p.lon
+                                );
+                            }
+                        }
+
+                        return {
+                            ...p,
+                            distance: totalDist
+                        };
+                    });
+
+                const combinedName =
+                    gpx.displayName ||
+                    gpx.fileName ||
+                    gpx.name ||
+                    "結合路線";
+
+                gpx.routes.unshift({
+                    id: "combined_" + Date.now(),
+                    name: combinedName,
+                    displayName: combinedName,
+                    fileName: gpx.fileName || gpx.name || "GPX",
+                    color: gpx.color || "#0000FF",
+                    points: recalculatedPoints,
+                    segments: combinedSegments,
+                    waypoints: gpx.waypoints || [],
+                    visible: true,
+                    isCombined: true
+                });
+
+                gpx.points = recalculatedPoints;
+                gpx.segments = combinedSegments;
+            }
+
+            if (gpx.customRouteNames) {
+                Object.keys(gpx.customRouteNames).forEach(function(key) {
+                    const routeIdx = parseInt(key, 10);
+                    const customName = gpx.customRouteNames[key];
+
+                    if (
+                        Number.isFinite(routeIdx) &&
+                        gpx.routes[routeIdx] &&
+                        customName
+                    ) {
+                        gpx.routes[routeIdx].name = customName;
+                        gpx.routes[routeIdx].displayName = customName;
+                    }
+                });
+            }
+
+            gpx.routes.forEach(function(route, routeIdx) {
+                if (!route) return;
+
+                let routeName =
+                    route.routeDisplayName ||
+                    route.displayName ||
+                    route.name;
+
+                if (
+                    routeName === undefined ||
+                    routeName === null ||
+                    routeName === "" ||
+                    routeName === "NaN" ||
+                    String(routeName).trim() === "" ||
+                    String(routeName).trim() === "NaN"
+                ) {
+                    if (route.isCombined === true) {
+                        routeName = "結合路線";
+                    } else if (
+                        route.isHandDrawRoute === true ||
+                        route.isDrawTrack === true
+                    ) {
+                        routeName = "自訂路線";
+                    } else if (route.isWaypointOnly === true) {
+                        routeName = "航點資料";
+                    } else {
+                        routeName = "子路線 " + routeIdx;
+                    }
+                }
+
+                routeName = String(routeName);
+
+                route.name = routeName;
+                route.displayName = routeName;
+
+                if (route.routeDisplayName !== undefined) {
+                    route.routeDisplayName = routeName;
+                }
+
+                route.color = route.color || gpx.color || "#0000FF";
+                route.waypoints = gpx.waypoints || route.waypoints || [];
+            });
+
+            const isVisible = gpx.visible !== false;
+						const isChecked = isVisible ? "checked" : "";
+						const isFocused = window.currentMultiIndex === i;
+						const routes = Array.isArray(gpx.routes) ? gpx.routes : [];
+						const hasChildren = routes.length > 0;
+						
+						
+						if (
+						    isFocused &&
+						    hasChildren
+						) {
+						    window.gpxManagerExpanded[i] = true;
+						}
+						
+						const isExpanded = !!window.gpxManagerExpanded?.[i];
+						
+						const activeRouteIdx = isFocused ? (window.currentActiveIndex || 0) : -1;
+						const disabledAttr = isFocused ? "disabled" : "";
+						const cursorStyle =
+						    isFocused
+						        ? "cursor:not-allowed; opacity:0.6;"
+						        : "cursor:pointer;";
+
+            listHtml += '<div style="';
+            listHtml += 'margin-bottom:10px; ';
+            listHtml += 'border:1px solid ' + (isFocused ? '#1a73e8' : '#eee') + '; ';
+            listHtml += 'border-radius:8px; ';
+            listHtml += 'padding:10px; ';
+            listHtml += 'background:' + (isFocused ? '#f0f7ff' : '#fafafa') + '; ';
+            listHtml += 'box-sizing:border-box; ';
+            listHtml += 'user-select:none; ';
+            listHtml += '-webkit-user-select:none;';
+            listHtml += '">';
+
+            listHtml += '<div style="';
+            listHtml += 'display:flex; ';
+            listHtml += 'align-items:center; ';
+            listHtml += 'gap:10px; ';
+            listHtml += 'height:28px; ';
+            listHtml += 'min-height:28px; ';
+            listHtml += 'max-height:28px;';
+            listHtml += '">';
+
+            listHtml += '<div ';
+            listHtml += 'role="button" ';
+            listHtml += 'aria-label="' + (hasChildren ? '展開/收合子路線' : '沒有子路線') + '" ';
+            listHtml += 'onclick="event.stopPropagation(); ' + (hasChildren ? 'toggleGpxRouteChildren(' + i + ');' : '') + '" ';
+            listHtml += 'title="' + (hasChildren ? '展開/收合子路線' : '沒有子路線') + '" ';
+            listHtml += 'style="';
+            listHtml += 'width:26px; ';
+            listHtml += 'height:26px; ';
+            listHtml += 'min-width:26px; ';
+            listHtml += 'max-width:26px; ';
+            listHtml += 'min-height:26px; ';
+            listHtml += 'max-height:26px; ';
+            listHtml += 'display:flex; ';
+            listHtml += 'align-items:center; ';
+            listHtml += 'justify-content:center; ';
+            listHtml += 'box-sizing:border-box; ';
+            listHtml += 'background:' + (hasChildren ? '#eef3fe' : '#f1f1f1') + '; ';
+            listHtml += 'color:' + (hasChildren ? '#1a73e8' : '#aaa') + '; ';
+            listHtml += 'border-radius:6px; ';
+            listHtml += 'cursor:' + (hasChildren ? 'pointer' : 'default') + '; ';
+            listHtml += 'font-size:26px; ';
+            listHtml += 'font-weight:600; ';
+            listHtml += 'line-height:26px; ';
+            listHtml += 'padding:0; ';
+            listHtml += 'flex-shrink:0; ';
+            listHtml += 'user-select:none; ';
+            listHtml += '-webkit-user-select:none;';
+            listHtml += '">';
+            listHtml += hasChildren ? (isExpanded ? '▾' : '▸') : '•';
+            listHtml += '</div>';
+
+            listHtml += '<input type="checkbox" ';
+            listHtml += 'id="gpx-chk-' + i + '" ';
+            listHtml += isChecked + ' ';
+            listHtml += disabledAttr + ' ';
+            listHtml += 'onchange="toggleGpxVisibility(' + i + ')" ';
+            listHtml += 'style="width:18px; height:18px; min-width:18px; max-width:18px; ' + cursorStyle + ' flex-shrink:0; margin:0;">';
+
+            listHtml += '<div onclick="toggleColorPicker(' + i + ')" style="';
+            listHtml += 'width:22px; height:22px; min-width:22px; max-width:22px; ';
+            listHtml += 'background:' + (gpx.color || '#ff0000') + '; ';
+            listHtml += 'border-radius:50%; ';
+            listHtml += 'cursor:pointer; ';
+            listHtml += 'border:2px solid white; ';
+            listHtml += 'box-shadow:0 0 0 1px #ddd; ';
+            listHtml += 'box-sizing:border-box; ';
+            listHtml += 'flex-shrink:0;';
+            listHtml += '"></div>';
+
+						listHtml += '<div ';
+						
+						listHtml += 'onclick="event.stopPropagation(); switchMultiGpx(' + i + ');" ';
+						
+						listHtml += 'title="切換到此 GPX" ';
+						
+						listHtml += 'style="';
+						listHtml += 'display:flex; ';
+						listHtml += 'align-items:center; ';
+						listHtml += 'cursor:pointer; ';
+						listHtml += 'flex:1; ';
+            listHtml += 'min-width:0; ';
+            listHtml += 'gap:6px; ';
+            listHtml += 'height:28px; ';
+            listHtml += 'min-height:28px; ';
+            listHtml += 'max-height:28px;';
+            listHtml += '">';
+
+            listHtml += '<div title="' + esc(gpx.name || gpx.fileName || '') + '" style="';
+            listHtml += 'font-size:16px; ';
+            listHtml += 'font-weight:600; ';
+            listHtml += 'line-height:20px; ';
+            listHtml += 'height:20px; ';
+            listHtml += 'min-height:20px; ';
+            listHtml += 'max-height:20px; ';
+            listHtml += 'color:' + (isFocused ? '#1a73e8' : '#333') + '; ';
+            listHtml += 'white-space:nowrap; ';
+            listHtml += 'overflow:hidden; ';
+            listHtml += 'text-overflow:ellipsis; ';
+            listHtml += 'flex:1; ';
+            listHtml += 'min-width:0;';
+            listHtml += '">';
+            listHtml += esc(gpx.name || gpx.fileName || ('GPX ' + (i + 1)));
+            listHtml += '</div>';
+
+            listHtml += '<div class="is-using-label" style="';
+            listHtml += 'width:42px; ';
+            listHtml += 'height:18px; ';
+            listHtml += 'min-width:42px; ';
+            listHtml += 'max-width:42px; ';
+            listHtml += 'font-size:10px; ';
+            listHtml += 'line-height:18px; ';
+            listHtml += 'text-align:center; ';
+            listHtml += 'background:#1a73e8; ';
+            listHtml += 'color:white; ';
+            listHtml += 'border-radius:10px; ';
+            listHtml += 'flex-shrink:0; ';
+            listHtml += 'visibility:' + (isFocused ? 'visible' : 'hidden') + ';';
+            listHtml += '">使用中</div>';
+
+            listHtml += '</div>';
+            listHtml += '</div>';
+
+            listHtml += '<div id="picker-' + i + '" style="';
+            listHtml += 'display:none; ';
+            listHtml += 'margin-top:14px; ';
+            listHtml += 'padding:8px; ';
+            listHtml += 'background:white; ';
+            listHtml += 'border-radius:6px; ';
+            listHtml += 'border:1px solid #ddd; ';
+            listHtml += 'gap:6px; ';
+            listHtml += 'flex-wrap:wrap; ';
+            listHtml += 'justify-content:center;';
+            listHtml += '">';
+
+            defaultColors.forEach(function(color) {
+                const isSelected =
+                    gpx.color &&
+                    gpx.color.toUpperCase() === color.toUpperCase();
+
+                listHtml += '<div ';
+                listHtml += 'onclick="changeGpxColor(' + i + ', \'' + color + '\')" ';
+                listHtml += 'style="';
+                listHtml += 'width:24px; height:24px; ';
+                listHtml += 'background:' + color + '; ';
+                listHtml += 'border-radius:4px; ';
+                listHtml += 'cursor:pointer; ';
+                listHtml += 'position:relative; ';
+                listHtml += 'border:' + (isSelected ? '2px solid #333' : '1px solid rgba(0,0,0,0.1)') + ';';
+                listHtml += '"></div>';
+            });
+
+            listHtml += '</div>';
+
+            if (hasChildren && isExpanded) {
+                listHtml += '<div style="';
+                listHtml += 'margin-top:10px; ';
+                listHtml += 'padding-left:10px; ';
+                listHtml += 'display:flex; ';
+                listHtml += 'flex-direction:column; ';
+                listHtml += 'gap:6px;';
+                listHtml += '">';
+
+						const mergeOrderForFile =
+						    Array.isArray(window.gpxMergeOrder && window.gpxMergeOrder[i])
+						        ? window.gpxMergeOrder[i]
+						        : [];
+						
+						const selectedMergeCount =
+						    mergeOrderForFile.filter(function(idx) {
+						        const route = routes[idx];
+						
+						        if (!Number.isFinite(Number(idx))) return false;
+						        if (!route) return false;
+						        if (route.isCombined === true) return false;
+						
+						        return (
+						            (Array.isArray(route.points) && route.points.length > 0) ||
+						            (Array.isArray(route.segments) && route.segments.length > 0)
+						        );
+						    }).length;
+
+                listHtml += '<div style="';
+                listHtml += 'display:flex; ';
+                listHtml += 'align-items:center; ';
+                listHtml += 'gap:6px;';
+                listHtml += '">';
+
+                listHtml += '<div ';
+                listHtml += 'role="button" ';
+
+                if (selectedMergeCount >= 2) {
+                    listHtml += 'onclick="event.stopPropagation(); mergeSelectedSubRoutes(' + i + ');" ';
+                    listHtml += 'title="將已勾選的子路線合併成一條新路線" ';
+                } else {
+                    listHtml += 'title="請至少勾選兩條有軌跡的子路線" ';
+                }
+
+                listHtml += 'style="';
+                listHtml += 'height:30px; ';
+                listHtml += 'min-height:30px; ';
+                listHtml += 'max-height:30px; ';
+                listHtml += 'display:flex; ';
+                listHtml += 'align-items:center; ';
+                listHtml += 'justify-content:center; ';
+                listHtml += 'border-radius:8px; ';
+                listHtml += 'font-size:13px; ';
+                listHtml += 'font-weight:600; ';
+                listHtml += 'box-sizing:border-box; ';
+                listHtml += 'user-select:none; ';
+                listHtml += '-webkit-user-select:none; ';
+                listHtml += 'flex:1; ';
+                listHtml += 'background:' + (selectedMergeCount >= 2 ? '#eef3fe' : '#f1f1f1') + '; ';
+                listHtml += 'color:' + (selectedMergeCount >= 2 ? '#1a73e8' : '#aaa') + '; ';
+                listHtml += 'border:1px solid ' + (selectedMergeCount >= 2 ? '#c9dafc' : '#e0e0e0') + '; ';
+                listHtml += 'cursor:' + (selectedMergeCount >= 2 ? 'pointer' : 'not-allowed') + ';';
+                listHtml += '">';
+                listHtml += '合併已選子路線';
+                listHtml += selectedMergeCount > 0 ? '（' + selectedMergeCount + '）' : '';
+                listHtml += '</div>';
+
+                listHtml += '<div ';
+                listHtml += 'role="button" ';
+                listHtml += 'onclick="event.stopPropagation(); clearMergeRouteSelection(' + i + ');" ';
+                listHtml += 'title="清除勾選" ';
+                listHtml += 'style="';
+                listHtml += 'height:30px; ';
+                listHtml += 'width:54px; ';
+                listHtml += 'min-width:54px; ';
+                listHtml += 'max-width:54px; ';
+                listHtml += 'display:flex; ';
+                listHtml += 'align-items:center; ';
+                listHtml += 'justify-content:center; ';
+                listHtml += 'border-radius:8px; ';
+                listHtml += 'font-size:12px; ';
+                listHtml += 'font-weight:600; ';
+                listHtml += 'background:#fff; ';
+                listHtml += 'color:#666; ';
+                listHtml += 'border:1px solid #ddd; ';
+                listHtml += 'cursor:pointer; ';
+                listHtml += 'box-sizing:border-box;';
+                listHtml += '">';
+                listHtml += '清除';
+                listHtml += '</div>';
+
+                listHtml += '</div>';
+
+                routes.forEach(function(route, routeIdx) {
+                    if (!route) return;
+
+                    const isActiveRoute =
+                        isFocused &&
+                        activeRouteIdx === routeIdx;
+
+                    const routeColor =
+                        route.color ||
+                        gpx.color ||
+                        '#0000FF';
+
+                    const routeName =
+                        getRouteNameForManager(route, routeIdx);
+
+                    const canMergeThisRoute =
+                        route &&
+                        route.isCombined !== true &&
+                        (
+                            (Array.isArray(route.points) && route.points.length > 0) ||
+                            (Array.isArray(route.segments) && route.segments.length > 0)
+                        );
+
+                    const isMergeSelected =
+                        !!(
+                            window.gpxMergeSelections &&
+                            window.gpxMergeSelections[i] &&
+                            window.gpxMergeSelections[i][routeIdx] === true
+                        );
+                   	const mergeOrderForThisFile =
+												    Array.isArray(window.gpxMergeOrder && window.gpxMergeOrder[i])
+												        ? window.gpxMergeOrder[i].map(Number)
+												        : [];
+												
+										const mergeOrderNumber =
+												mergeOrderForThisFile.indexOf(Number(routeIdx)) + 1;
+
+                    const canDeleteThisRoute =
+                        route &&
+                        route.isCombined !== true;
+
+                    const canReverseThisRoute =
+                        route &&
+                        route.isCombined !== true &&
+                        (
+                            (Array.isArray(route.points) && route.points.length > 1) ||
+                            (Array.isArray(route.segments) && route.segments.length > 0)
+                        );
+
+										listHtml += '<div style="';
+										listHtml += 'display:flex; ';
+										listHtml += 'align-items:center; ';
+										listHtml += 'gap:2px; ';
+										listHtml += 'width:100%; ';
+										listHtml += 'height:34px; ';
+										listHtml += 'min-height:34px; ';
+										listHtml += 'max-height:34px; ';
+										listHtml += 'text-align:left; ';
+										listHtml += 'border:1px solid ' + (isActiveRoute ? '#c9dafc' : '#e0e0e0') + '; ';
+										listHtml += 'background:' + (isActiveRoute ? '#e8f0fe' : '#fff') + '; ';
+										listHtml += 'border-radius:8px; ';
+										listHtml += 'padding:6px 8px; ';
+										listHtml += 'cursor:pointer; ';
+										listHtml += 'box-sizing:border-box;';
+										listHtml += '">';
+
+                    listHtml += '<input type="checkbox" ';
+                    listHtml += 'onclick="event.stopPropagation();" ';
+                    listHtml += 'onchange="event.stopPropagation(); toggleMergeRouteSelection(' + i + ', ' + routeIdx + ');" ';
+                    listHtml += isMergeSelected ? 'checked ' : '';
+                    listHtml += canMergeThisRoute ? '' : 'disabled ';
+                    listHtml += 'title="' + (canMergeThisRoute ? '勾選以合併此子路線' : '此子路線不能合併') + '" ';
+                    listHtml += 'style="';
+                    listHtml += 'width:16px; ';
+                    listHtml += 'height:16px; ';
+                    listHtml += 'min-width:16px; ';
+                    listHtml += 'max-width:16px; ';
+                    listHtml += 'margin:0 4px 0 0; ';
+                    listHtml += 'cursor:' + (canMergeThisRoute ? 'pointer' : 'not-allowed') + '; ';
+                    listHtml += 'opacity:' + (canMergeThisRoute ? '1' : '0.35') + '; ';
+                    listHtml += 'flex-shrink:0;';
+                    listHtml += '">';
+                    listHtml += '<div style="';
+										listHtml += 'width:16px; ';
+										listHtml += 'height:16px; ';
+										listHtml += 'min-width:16px; ';
+										listHtml += 'max-width:16px; ';
+										listHtml += 'border-radius:50%; ';
+										listHtml += 'font-size:10px; ';
+										listHtml += 'line-height:16px; ';
+										listHtml += 'text-align:center; ';
+										listHtml += 'background:' + (mergeOrderNumber > 0 ? '#1a73e8' : 'transparent') + '; ';
+										listHtml += 'color:' + (mergeOrderNumber > 0 ? 'white' : 'transparent') + '; ';
+										listHtml += 'flex-shrink:0; ';
+										listHtml += 'margin-right:2px;';
+										listHtml += '">';
+										listHtml += mergeOrderNumber > 0 ? String(mergeOrderNumber) : '';
+										listHtml += '</div>';
+
+                    listHtml += '<div onclick="event.stopPropagation(); selectManagedRoute(' + i + ', ' + routeIdx + ');" ';
+                    listHtml += 'style="';
+                    listHtml += 'display:flex; ';
+                    listHtml += 'align-items:center; ';
+                    listHtml += 'gap:8px; ';
+                    listHtml += 'flex:1; ';
+                    listHtml += 'min-width:0; ';
+                    listHtml += 'height:22px; ';
+                    listHtml += 'min-height:22px; ';
+                    listHtml += 'max-height:22px;';
+                    listHtml += '">';
+
+                    listHtml += '<div style="';
+                    listHtml += 'width:10px; ';
+                    listHtml += 'height:10px; ';
+                    listHtml += 'min-width:10px; ';
+                    listHtml += 'max-width:10px; ';
+                    listHtml += 'border-radius:50%; ';
+                    listHtml += 'background:' + routeColor + '; ';
+                    listHtml += 'flex-shrink:0;';
+                    listHtml += '"></div>';
+
+										listHtml += '<div ';
+										listHtml += 'title="' + esc(routeName) + '" ';
+										listHtml += 'style="';
+										listHtml += 'margin:0; ';
+										listHtml += 'font-size:15px; ';
+										listHtml += 'color:' + (isActiveRoute ? '#1a73e8' : '#333') + '; ';
+										listHtml += 'white-space:nowrap; ';
+										listHtml += 'overflow:hidden; ';
+										listHtml += 'text-overflow:ellipsis; ';
+										listHtml += 'flex:1; ';
+										listHtml += 'min-width:0; ';
+										listHtml += 'height:18px; ';
+										listHtml += 'min-height:18px; ';
+										listHtml += 'max-height:18px; ';
+										listHtml += 'line-height:18px;';
+										listHtml += '">';
+										listHtml += esc(routeName);
+										listHtml += '</div>';
+
+
+
+                    listHtml += '</div>';
+
+                    if (!route.isCombined) {
+                        
+                        listHtml += '<div ';
+                        listHtml += 'role="button" ';
+                        listHtml += 'onclick="event.stopPropagation(); renameSubRoute(' + i + ', ' + routeIdx + ');" ';
+                        listHtml += 'title="修改" ';
+                        listHtml += 'style="';
+                        listHtml += 'display:flex; ';
+                        listHtml += 'align-items:center; ';
+                        listHtml += 'justify-content:center; ';
+                        listHtml += 'width:22px; ';
+                        listHtml += 'height:22px; ';
+                        listHtml += 'min-width:22px; ';
+                        listHtml += 'max-width:22px; ';
+                        listHtml += 'min-height:22px; ';
+                        listHtml += 'max-height:22px; ';
+                        listHtml += 'border-radius:50%; ';
+                        listHtml += 'color:#1a73e8; ';
+                        listHtml += 'cursor:pointer; ';
+                        listHtml += 'font-size:13px; ';
+                        listHtml += 'line-height:22px; ';
+                        listHtml += 'box-sizing:border-box; ';
+                        listHtml += 'flex-shrink:0; ';
+                        listHtml += 'user-select:none; ';
+                        listHtml += '-webkit-user-select:none;';
+                        listHtml += '">';
+                        listHtml += '✎';
+                        listHtml += '</div>';
+
+                        
+                        listHtml += '<div ';
+                        listHtml += 'role="button" ';
+
+                        if (canReverseThisRoute) {
+                            listHtml += 'onclick="event.stopPropagation(); reverseSubRoute(' + i + ', ' + routeIdx + ');" ';
+                            listHtml += 'title="反轉路線方向" ';
+                        } else {
+                            listHtml += 'title="此路線沒有足夠軌跡點可反轉" ';
+                        }
+
+                        listHtml += 'style="';
+                        listHtml += 'display:flex; ';
+                        listHtml += 'align-items:center; ';
+                        listHtml += 'justify-content:center; ';
+                        listHtml += 'width:22px; ';
+                        listHtml += 'height:22px; ';
+                        listHtml += 'min-width:22px; ';
+                        listHtml += 'max-width:22px; ';
+                        listHtml += 'min-height:22px; ';
+                        listHtml += 'max-height:22px; ';
+                        listHtml += 'border-radius:50%; ';
+                        listHtml += 'color:' + (canReverseThisRoute ? '#1a73e8' : '#bbb') + '; ';
+                        listHtml += 'cursor:' + (canReverseThisRoute ? 'pointer' : 'not-allowed') + '; ';
+                        listHtml += 'font-size:14px; ';
+                        listHtml += 'line-height:22px; ';
+                        listHtml += 'box-sizing:border-box; ';
+                        listHtml += 'flex-shrink:0; ';
+                        listHtml += 'user-select:none; ';
+                        listHtml += '-webkit-user-select:none;';
+                        listHtml += '">';
+                        listHtml += '↔';
+                        listHtml += '</div>';
+
+                        
+                        listHtml += '<div ';
+                        listHtml += 'role="button" ';
+
+                        if (canDeleteThisRoute) {
+                            listHtml += 'onclick="event.stopPropagation(); deleteSubRoute(' + i + ', ' + routeIdx + ');" ';
+                            listHtml += 'title="刪除子路線" ';
+                        } else {
+                            listHtml += 'title="結合路線不能刪除" ';
+                        }
+
+                        listHtml += 'style="';
+                        listHtml += 'display:flex; ';
+                        listHtml += 'align-items:center; ';
+                        listHtml += 'justify-content:center; ';
+                        listHtml += 'width:22px; ';
+                        listHtml += 'height:22px; ';
+                        listHtml += 'min-width:22px; ';
+                        listHtml += 'max-width:22px; ';
+                        listHtml += 'min-height:22px; ';
+                        listHtml += 'max-height:22px; ';
+                        listHtml += 'border-radius:50%; ';
+                        listHtml += 'color:' + (canDeleteThisRoute ? '#d93025' : '#bbb') + '; ';
+                        listHtml += 'cursor:' + (canDeleteThisRoute ? 'pointer' : 'not-allowed') + '; ';
+                        listHtml += 'font-size:13px; ';
+                        listHtml += 'line-height:22px; ';
+                        listHtml += 'box-sizing:border-box; ';
+                        listHtml += 'flex-shrink:0; ';
+                        listHtml += 'user-select:none; ';
+                        listHtml += '-webkit-user-select:none;';
+                        listHtml += '">';
+                        listHtml += '×';
+                        listHtml += '</div>';
+
+                    } else {
+                        
+                        listHtml += '<div style="';
+                        listHtml += 'display:flex; ';
+                        listHtml += 'width:22px; height:22px; ';
+                        listHtml += 'min-width:22px; max-width:22px; ';
+                        listHtml += 'min-height:22px; max-height:22px; ';
+                        listHtml += 'visibility:hidden; ';
+                        listHtml += 'flex-shrink:0;';
+                        listHtml += '">✎</div>';
+
+                        listHtml += '<div style="';
+                        listHtml += 'display:flex; ';
+                        listHtml += 'width:22px; height:22px; ';
+                        listHtml += 'min-width:22px; max-width:22px; ';
+                        listHtml += 'min-height:22px; max-height:22px; ';
+                        listHtml += 'visibility:hidden; ';
+                        listHtml += 'flex-shrink:0;';
+                        listHtml += '">↔</div>';
+
+                        listHtml += '<div style="';
+                        listHtml += 'display:flex; ';
+                        listHtml += 'width:22px; height:22px; ';
+                        listHtml += 'min-width:22px; max-width:22px; ';
+                        listHtml += 'min-height:22px; max-height:22px; ';
+                        listHtml += 'visibility:hidden; ';
+                        listHtml += 'flex-shrink:0;';
+                        listHtml += '">×</div>';
+                    }
+
+                    listHtml += '</div>';
+                });
+
+                listHtml += '</div>';
+            }
+
+            listHtml += '</div>';
+        });
+    }
+
+    listHtml += '</div>';
+
+    listHtml += '<div ';
+    listHtml += 'role="button" ';
+    listHtml += 'onclick="document.getElementById(\'gpxManageModal\').style.display=\'none\'" ';
+    listHtml += 'style="';
+    listHtml += 'width:100%; ';
+    listHtml += 'height:42px; ';
+    listHtml += 'min-height:42px; ';
+    listHtml += 'max-height:42px; ';
+    listHtml += 'margin-top:15px; ';
+    listHtml += 'padding:0 12px; ';
+    listHtml += 'background:#1a73e8; ';
+    listHtml += 'color:white; ';
+    listHtml += 'border:none; ';
+    listHtml += 'border-radius:8px; ';
+    listHtml += 'cursor:pointer; ';
+    listHtml += 'font-size:16px; ';
+    listHtml += 'line-height:42px; ';
+    listHtml += 'font-weight:bold; ';
+    listHtml += 'text-align:center; ';
+    listHtml += 'box-sizing:border-box; ';
+    listHtml += 'user-select:none; ';
+    listHtml += '-webkit-user-select:none;';
+    listHtml += '">';
+    listHtml += '完成';
+    listHtml += '</div>';
+
+    listHtml += '</div>';
+
+    const oldScrollBody =
+    document.getElementById("gpxManageScrollBody");
+
+		const oldScrollTop =
+		    oldScrollBody
+		        ? oldScrollBody.scrollTop
+		        : 0;
+		
+		const shouldKeepScroll =
+		    oldScrollBody &&
+		    oldScrollBody.offsetParent !== null;
+		
+		modal.innerHTML = listHtml;
+		
+		
+		if (shouldKeepScroll) {
+		    const restoreScroll = function() {
+		        const newScrollBody =
+		            document.getElementById("gpxManageScrollBody");
+		
+		        if (newScrollBody) {
+		            newScrollBody.scrollTop =
+		                oldScrollTop;
+		        }
+		    };
+		
+		    restoreScroll();
+		    requestAnimationFrame(restoreScroll);
+		    setTimeout(restoreScroll, 0);
+		    setTimeout(restoreScroll, 50);
+		    setTimeout(restoreScroll, 150);
+		    setTimeout(restoreScroll, 300);
+		}
+      
+    const gpxManagePanel =
+    document.getElementById("gpxManagePanel");
+
+		const gpxManageDragHandle =
+		    document.getElementById("gpxManageDragHandle");
+		
+		if (
+				    gpxManagePanel &&
+				    window.gpxManagePanelPosition
+				) {
+				    const savedPos =
+				        window.gpxManagePanelPosition;
+				
+				    const margin =
+				        8;
+				
+				    const panelRect =
+				        gpxManagePanel.getBoundingClientRect();
+				
+				    const maxLeft =
+				        window.innerWidth - panelRect.width - margin;
+				
+				    const maxTop =
+				        window.innerHeight - panelRect.height - margin;
+				
+				    const safeLeft =
+				        Math.max(
+				            margin,
+				            Math.min(savedPos.left, maxLeft)
+				        );
+				
+				    const safeTop =
+				        Math.max(
+				            margin,
+				            Math.min(savedPos.top, maxTop)
+				        );
+				
+				    gpxManagePanel.style.transform =
+				        "none";
+				
+				    gpxManagePanel.style.left =
+				        safeLeft + "px";
+				
+				    gpxManagePanel.style.top =
+				        safeTop + "px";
+				
+				    gpxManagePanel.style.right =
+				        "auto";
+				
+				    gpxManagePanel.style.bottom =
+				        "auto";
+				}
+		
+		
+		if (
+		    gpxManagePanel &&
+		    gpxManageDragHandle
+		) {
+		    let isDraggingGpxPanel = false;
+		    let dragStartX = 0;
+		    let dragStartY = 0;
+		    let panelStartLeft = 0;
+		    let panelStartTop = 0;
+		
+		    const startDrag = function(e) {
+		        
+		        const target =
+		            e.target;
+		
+		        if (
+		            target &&
+		            (
+		                target.closest("button") ||
+		                target.closest("input") ||
+		                target.closest("select") ||
+		                target.closest("[role='button']")
+		            )
+		        ) {
+		            return;
+		        }
+		
+		        const point =
+		            e.touches && e.touches.length > 0
+		                ? e.touches[0]
+		                : e;
+		
+		        isDraggingGpxPanel = true;
+		
+		        const rect =
+		            gpxManagePanel.getBoundingClientRect();
+		
+		        dragStartX =
+		            point.clientX;
+		
+		        dragStartY =
+		            point.clientY;
+		
+		        panelStartLeft =
+		            rect.left;
+		
+		        panelStartTop =
+		            rect.top;
+		
+		        
+		        gpxManagePanel.style.transform =
+		            "none";
+		
+		        gpxManagePanel.style.left =
+		            panelStartLeft + "px";
+		
+		        gpxManagePanel.style.top =
+		            panelStartTop + "px";
+		
+		        gpxManagePanel.style.right =
+		            "auto";
+		
+		        gpxManagePanel.style.bottom =
+		            "auto";
+		
+		        document.body.style.userSelect =
+		            "none";
+		
+		        document.body.style.webkitUserSelect =
+		            "none";
+		
+		        e.preventDefault();
+		        e.stopPropagation();
+		    };
+		
+		    const moveDrag = function(e) {
+		        if (!isDraggingGpxPanel) return;
+		
+		        const point =
+		            e.touches && e.touches.length > 0
+		                ? e.touches[0]
+		                : e;
+		
+		        let nextLeft =
+		            panelStartLeft + (point.clientX - dragStartX);
+		
+		        let nextTop =
+		            panelStartTop + (point.clientY - dragStartY);
+		
+		        const panelRect =
+		            gpxManagePanel.getBoundingClientRect();
+		
+		        const margin =
+		            8;
+		
+		        const maxLeft =
+		            window.innerWidth - panelRect.width - margin;
+		
+		        const maxTop =
+		            window.innerHeight - panelRect.height - margin;
+		
+		        nextLeft =
+		            Math.max(
+		                margin,
+		                Math.min(nextLeft, maxLeft)
+		            );
+		
+		        nextTop =
+		            Math.max(
+		                margin,
+		                Math.min(nextTop, maxTop)
+		            );
+		
+		        gpxManagePanel.style.left =
+		            nextLeft + "px";
+		
+		        gpxManagePanel.style.top =
+		            nextTop + "px";
+		
+		        e.preventDefault();
+		        e.stopPropagation();
+		    };
+		
+				const endDrag = function() {
+				    if (!isDraggingGpxPanel) return;
+				
+				    isDraggingGpxPanel = false;
+				
+				    const rect =
+				        gpxManagePanel.getBoundingClientRect();
+				
+				    window.gpxManagePanelPosition = {
+				        left: rect.left,
+				        top: rect.top
+				    };
+				
+				    document.body.style.userSelect =
+				        "";
+				
+				    document.body.style.webkitUserSelect =
+				        "";
+				};
+		
+		    gpxManageDragHandle.addEventListener(
+		        "mousedown",
+		        startDrag
+		    );
+		
+		    document.addEventListener(
+		        "mousemove",
+		        moveDrag
+		    );
+		
+		    document.addEventListener(
+		        "mouseup",
+		        endDrag
+		    );
+		
+		    gpxManageDragHandle.addEventListener(
+		        "touchstart",
+		        startDrag,
+		        {
+		            passive: false
+		        }
+		    );
+		
+		    document.addEventListener(
+		        "touchmove",
+		        moveDrag,
+		        {
+		            passive: false
+		        }
+		    );
+		
+		    document.addEventListener(
+		        "touchend",
+		        endDrag
+		    );
+		}
+
+    if (isNowFS && typeof syncFSFontSettings === 'function') {
         syncFSFontSettings(modal);
     }
 
-    
-    modal.querySelectorAll('[onclick], button').forEach(el => {
+    if (window.gpxManageEscHandler) {
+        window.removeEventListener('keydown', window.gpxManageEscHandler);
+    }
+
+    window.gpxManageEscHandler = function(e) {
+        if (e.key === "Escape") {
+            const gpxModal = document.getElementById('gpxManageModal');
+
+            if (
+                gpxModal &&
+                gpxModal.style.display !== 'none'
+            ) {
+                e.preventDefault();
+                gpxModal.style.display = 'none';
+            }
+        }
+    };
+
+    window.addEventListener('keydown', window.gpxManageEscHandler);
+
+    modal.querySelectorAll('[onclick], [role="button"]').forEach(function(el) {
         L.DomEvent.on(el, 'click', L.DomEvent.stopPropagation);
     });
-    modal.querySelectorAll('input[type="checkbox"]').forEach(el => {
-        L.DomEvent.on(el, 'click', (e) => e.stopPropagation());
+
+    modal.querySelectorAll('input[type="checkbox"]').forEach(function(el) {
+        L.DomEvent.on(el, 'click', function(e) {
+            e.stopPropagation();
+        });
     });
 }
+
+window.toggleGpxRouteChildren = function(index) {
+    if (window.event) window.event.stopPropagation();
+
+    const item =
+        window.multiGpxStack &&
+        window.multiGpxStack[index];
+
+    if (!item || !Array.isArray(item.routes) || item.routes.length === 0) {
+        return;
+    }
+
+    window.gpxManagerExpanded = window.gpxManagerExpanded || {};
+    window.gpxManagerExpanded[index] = !window.gpxManagerExpanded[index];
+
+    showGpxManagementModal();
+};
+
+window.toggleGpxRouteChildren = function(index) {
+    if (window.event) window.event.stopPropagation();
+
+    const item =
+        window.multiGpxStack &&
+        window.multiGpxStack[index];
+
+    if (!item || !Array.isArray(item.routes) || item.routes.length === 0) {
+        return;
+    }
+
+    window.gpxManagerExpanded = window.gpxManagerExpanded || {};
+    window.gpxManagerExpanded[index] = !window.gpxManagerExpanded[index];
+
+    showGpxManagementModal();
+};
+
+window.selectManagedRoute = function(fileIdx, routeIdx) {
+    if (window.event) {
+        window.event.stopPropagation();
+        window.event.preventDefault();
+    }
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (
+        !currentFile ||
+        !Array.isArray(currentFile.routes) ||
+        !currentFile.routes[routeIdx]
+    ) {
+        console.warn("selectManagedRoute: 找不到指定子路線", fileIdx, routeIdx);
+        return;
+    }
+
+    
+    window.currentMultiIndex =
+        fileIdx;
+
+    window.currentActiveIndex =
+        routeIdx;
+
+    if (typeof syncDrawingGlobals === "function") {
+        syncDrawingGlobals(
+            currentFile,
+            routeIdx
+        );
+    } else {
+        allTracks =
+            currentFile.routes;
+
+        window.allTracks =
+            currentFile.routes;
+
+        trackPoints =
+            currentFile.routes[routeIdx].points || [];
+
+        window.trackPoints =
+            trackPoints;
+    }
+
+    if (typeof updateRouteSelectDropdown === "function") {
+        updateRouteSelectDropdown();
+    }
+
+    const routeSelect =
+        document.getElementById("routeSelect");
+
+    if (
+        routeSelect &&
+        routeSelect.options &&
+        routeSelect.options.length > routeIdx
+    ) {
+        routeSelect.value =
+            String(routeIdx);
+    }
+
+    if (typeof loadRoute === "function") {
+        loadRoute(routeIdx);
+    }
+
+    
+    window.currentMultiIndex =
+        fileIdx;
+
+    window.currentActiveIndex =
+        routeIdx;
+
+    const routeSelectAfter =
+        document.getElementById("routeSelect");
+
+    if (
+        routeSelectAfter &&
+        routeSelectAfter.options &&
+        routeSelectAfter.options.length > routeIdx
+    ) {
+        routeSelectAfter.value =
+            String(routeIdx);
+    }
+
+    if (typeof renderRouteInfo === "function") {
+        renderRouteInfo();
+    }
+
+    if (typeof renderMultiGpxButtons === "function") {
+        renderMultiGpxButtons();
+    }
+
+    
+    if (typeof window.refreshGpxManagerIfOpen === "function") {
+        window.refreshGpxManagerIfOpen();
+    }
+
+    console.log("[SELECT MANAGED ROUTE DONE]", {
+        fileIdx,
+        routeIdx,
+        currentMultiIndex: window.currentMultiIndex,
+        currentActiveIndex: window.currentActiveIndex
+    });
+};
 
 window.toggleGpx = function(index) {
 		const e = window.event;
@@ -6350,29 +12584,68 @@ function toggleGpxVisibility(idx) {
 window.changeGpxColor = function(index, newColor) {
     const item = multiGpxStack[index];
     if (!item) return;
-    
-    item.color = newColor; 
-    
-    
-    loadRoute(0, newColor); 
-    
-    if (typeof renderMultiGpxButtons === 'function') renderMultiGpxButtons();
 
-    if (item.layer) {
-        
-        item.layer.setStyle({
-            color: newColor,
-            opacity: 1.0,
-            weight: 6,
-            dashArray: null 
+    item.color = newColor;
+
+    if (Array.isArray(item.routes)) {
+        item.routes.forEach(route => {
+            if (route) route.color = newColor;
         });
     }
 
-    if (window.currentMultiIndex === index) {
-        if (polyline) polyline.setStyle({ color: newColor, opacity: 1.0 });
+    const isCurrentFile =
+        window.currentMultiIndex === index;
+
+    const activeIdx =
+        isCurrentFile
+            ? (window.currentActiveIndex || 0)
+            : 0;
+
+    if (item.layer) {
+        item.layer.setStyle({
+            color: newColor,
+            opacity: isCurrentFile ? 1.0 : 0.4,
+            weight: isCurrentFile ? 6 : 4,
+            dashArray: null
+        });
     }
-    renderMultiGpxButtons();
-    showGpxManagementModal(); 
+
+    if (isCurrentFile) {
+        if (typeof syncDrawingGlobals === 'function') {
+            syncDrawingGlobals(item, activeIdx);
+        }
+
+        if (typeof updateRouteSelectDropdown === 'function') {
+            updateRouteSelectDropdown();
+        }
+
+        const routeSelect = document.getElementById("routeSelect");
+        if (
+            routeSelect &&
+            routeSelect.options &&
+            routeSelect.options.length > activeIdx
+        ) {
+            routeSelect.value = String(activeIdx);
+        }
+
+        if (typeof loadRoute === 'function') {
+            loadRoute(activeIdx, newColor);
+        }
+
+        if (polyline) {
+            polyline.setStyle({
+                color: newColor,
+                opacity: 1.0,
+                dashArray: null
+            });
+        }
+    }
+
+    if (typeof renderMultiGpxButtons === 'function') {
+        renderMultiGpxButtons();
+    }
+
+    showGpxManagementModal();
 };
 
 window.toggleColorPicker = function(i) {
@@ -6511,7 +12784,6 @@ function processSave(finalName, finalEle) {
         multiGpxStack[fileIdxAtSave];
 
     if (!targetFile) {
-        
         return;
     }
 
@@ -6626,11 +12898,18 @@ function processSave(finalName, finalEle) {
         }
 
         if (typeof loadRoute === 'function') {
-            loadRoute(
-                routeIdxAtSave,
-                null,
-                focusPos
-            );
+					loadRoute(
+					    routeIdxAtSave,
+					    null,
+					    focusPos
+					        ? {
+					            ...focusPos,
+					            skipAutoFitBounds: true
+					        }
+					        : {
+					            skipAutoFitBounds: true
+					        }
+					);
         }
 
         const routeForWpt =
@@ -6672,7 +12951,6 @@ function processSave(finalName, finalEle) {
 
             if (isEditing) {
                 if (!targetFile.waypoints[existingIdx]) {
-                    
                     return;
                 }
 
@@ -6681,6 +12959,23 @@ function processSave(finalName, finalEle) {
 
                 targetFile.waypoints[existingIdx].ele =
                     parseFloat(finalEle) || 0;
+
+                
+                if (
+                    targetFile.waypoints[existingIdx].isCustom === true &&
+                    targetFile.waypoints[existingIdx].belongsToRoute === undefined
+                ) {
+                    targetFile.waypoints[existingIdx].belongsToRoute =
+                        routeIdxAtSave;
+                }
+
+                if (
+                    targetFile.waypoints[existingIdx].isCustom === true &&
+                    targetFile.waypoints[existingIdx].belongsToFile === undefined
+                ) {
+                    targetFile.waypoints[existingIdx].belongsToFile =
+                        fileIdxAtSave;
+                }
 
             } else {
                 if (!addedWptRef) {
@@ -6697,7 +12992,11 @@ function processSave(finalName, finalEle) {
                                     new Date().getTime() + 8 * 3600000
                                 )
                             ),
-                        isCustom: true
+
+                        
+                        isCustom: true,
+                        belongsToFile: fileIdxAtSave,
+                        belongsToRoute: routeIdxAtSave
                     };
                 }
 
@@ -6740,6 +13039,28 @@ function processSave(finalName, finalEle) {
                     targetWpt.ele =
                         oldWptSnapshot.ele;
 
+                    
+                    if (oldWptSnapshot.belongsToRoute !== undefined) {
+                        targetWpt.belongsToRoute =
+                            oldWptSnapshot.belongsToRoute;
+                    } else {
+                        delete targetWpt.belongsToRoute;
+                    }
+
+                    if (oldWptSnapshot.belongsToFile !== undefined) {
+                        targetWpt.belongsToFile =
+                            oldWptSnapshot.belongsToFile;
+                    } else {
+                        delete targetWpt.belongsToFile;
+                    }
+
+                    if (oldWptSnapshot.isCustom !== undefined) {
+                        targetWpt.isCustom =
+                            oldWptSnapshot.isCustom;
+                    } else {
+                        delete targetWpt.isCustom;
+                    }
+
                     restorePos = {
                         lat: targetWpt.lat,
                         lng: targetWpt.lon
@@ -6747,12 +13068,7 @@ function processSave(finalName, finalEle) {
                 }
 
             } else {
-                /*
-                    新增航點的 undo：
-                    優先用同一個物件 reference 找。
-                    如果中間經過刪除/undo，物件可能被重新放回，
-                    再用名稱、座標、時間 fallback 找。
-                */
+                
                 let idx =
                     targetFile.waypoints.indexOf(addedWptRef);
 
@@ -6794,17 +13110,29 @@ function processSave(finalName, finalEle) {
         },
 
         redo: () => {
-            /*
-                如果你的 historyManager 支援 redo 欄位，
-                這裡直接重做 do 的行為。
-                如果不支援，也不會影響。
-            */
+            
             syncRouteSelectToSavedRoute();
 
             if (isEditing) {
                 if (targetFile.waypoints[existingIdx]) {
                     targetFile.waypoints[existingIdx].name = finalName;
                     targetFile.waypoints[existingIdx].ele = parseFloat(finalEle) || 0;
+
+                    if (
+                        targetFile.waypoints[existingIdx].isCustom === true &&
+                        targetFile.waypoints[existingIdx].belongsToRoute === undefined
+                    ) {
+                        targetFile.waypoints[existingIdx].belongsToRoute =
+                            routeIdxAtSave;
+                    }
+
+                    if (
+                        targetFile.waypoints[existingIdx].isCustom === true &&
+                        targetFile.waypoints[existingIdx].belongsToFile === undefined
+                    ) {
+                        targetFile.waypoints[existingIdx].belongsToFile =
+                            fileIdxAtSave;
+                    }
                 }
             } else {
                 if (addedWptRef && !targetFile.waypoints.includes(addedWptRef)) {
@@ -6845,11 +13173,7 @@ window.deleteWaypointByIndex = function(idx) {
             ? window.currentActiveIndex
             : 0;
 
-    /*
-        關鍵：
-        記住刪除當下的 GPX 檔案與 route index。
-        undo / redo 時要切回這裡。
-    */
+    
     const fileIdxAtDelete =
         stackIdx;
 
@@ -6931,11 +13255,7 @@ window.deleteWaypointByIndex = function(idx) {
         return;
     }
 
-    /*
-        重要：
-        保留航點物件 reference。
-        不要 JSON clone。
-    */
+    
     const oldWpts =
         sourceWpts.slice();
 
@@ -7149,10 +13469,7 @@ window.deleteWaypointByIndex = function(idx) {
 };
 
 
-/*
-    讓不同舊版呼叫名稱都可以接到同一個 function。
-    如果你的垃圾桶 icon 原本呼叫 deleteWaypoint(idx)，會直接生效。
-*/
+
 window.deleteWaypoint = window.deleteWaypointByIndex;
 window.deleteWpt = window.deleteWaypointByIndex;
 window.handleDeleteWaypoint = window.deleteWaypointByIndex;
@@ -7222,12 +13539,39 @@ function executeDelete(idx) {
 window.downloadCounters = window.downloadCounters || {};
 
 window.exportGpx = function(index) {
-    const idx = (index !== undefined) ? index : (window.currentMultiIndex || 0);
-    const item = (typeof multiGpxStack !== 'undefined') ? multiGpxStack[idx] : null;
-    const routeSelect = document.getElementById("routeSelect");
-    let activeIdx = parseInt(routeSelect?.value) || 0;
+	  const oldToast =
+        document.getElementById("map-toast");
+
+    if (oldToast) {
+        oldToast.style.opacity = "0";
+    }
+
+    if (window.mapToastTimer) {
+        clearTimeout(window.mapToastTimer);
+        window.mapToastTimer = null;
+    }
+
+    window.currentMapToast = null;
+    const idx =
+        (index !== undefined)
+            ? index
+            : (window.currentMultiIndex || 0);
+
+    const item =
+        (typeof multiGpxStack !== 'undefined')
+            ? multiGpxStack[idx]
+            : null;
+
+    const routeSelect =
+        document.getElementById("routeSelect");
+
+    let activeIdx =
+        parseInt(routeSelect?.value, 10) || 0;
     
-    let currentRoute = (typeof allTracks !== 'undefined' && allTracks[activeIdx]) ? allTracks[activeIdx] : item;
+    let currentRoute =
+        (typeof allTracks !== 'undefined' && allTracks[activeIdx])
+            ? allTracks[activeIdx]
+            : item;
 
     if (!currentRoute && typeof allWpts !== 'undefined' && allWpts.length > 0) {
         currentRoute = {
@@ -7238,10 +13582,13 @@ window.exportGpx = function(index) {
         };
     }
 
-    if (!currentRoute) return alert("找不到可匯出的資料");
+    if (!currentRoute) {
+        return alert("找不到可匯出的資料");
+    }
 
     const escapeXml = (unsafe) => {
         if (!unsafe) return "";
+
         return unsafe.toString()
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -7252,26 +13599,48 @@ window.exportGpx = function(index) {
 
     const formatIsoTime = (timeStr) => {
         if (!timeStr) return null;
-        let formatted = timeStr.trim().replace(/\s+/g, 'T');
+
+        let formatted =
+            String(timeStr).trim().replace(/\s+/g, 'T');
+
         if (!formatted.includes('Z') && !formatted.includes('+')) {
             formatted += 'Z';
         }
+
         return formatted;
     };
 
     const toTwDate = (timeStr) => {
         if (!timeStr) return null;
-        const d = new Date(timeStr);
+
+        const d =
+            new Date(timeStr);
+
         if (isNaN(d.getTime())) return null; 
-        const twTime = new Date(d.getTime() + (8 * 60 * 60 * 1000));
+
+        const twTime =
+            new Date(d.getTime() + (8 * 60 * 60 * 1000));
+
         return twTime.toISOString().split('T')[0];
     };
 
-    const hasPoints = currentRoute.points && currentRoute.points.length > 0;
-    const targetDate = hasPoints ? toTwDate(currentRoute.points[0].time) : null;
-    const trackName = escapeXml(currentRoute.name || "Exported_Route");
+    const hasPoints =
+        currentRoute.points &&
+        currentRoute.points.length > 0;
 
-    
+    const targetDate =
+        hasPoints
+            ? toTwDate(currentRoute.points[0].time)
+            : null;
+
+    const trackName =
+        escapeXml(
+            currentRoute.routeDisplayName ||
+            currentRoute.displayName ||
+            currentRoute.name ||
+            "Exported_Route"
+        );
+
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.0" creator="YCHiking" 
   xmlns="http://www.topografix.com/GPX/1/0"
@@ -7280,29 +13649,129 @@ window.exportGpx = function(index) {
   <metadata><name>${trackName}</name></metadata>`;
 
     let finalWpts = [];
-
     const seenWpts = new Set();
 
-    const isMultiRoute = routeSelect && routeSelect.options.length > 1;
+    const isMultiRoute =
+        routeSelect &&
+        routeSelect.options &&
+        routeSelect.options.length > 1;
+
+    const getRawWaypoints = () => {
+        if (
+            currentRoute &&
+            Array.isArray(currentRoute.waypoints) &&
+            currentRoute.waypoints.length > 0
+        ) {
+            return currentRoute.waypoints;
+        }
+
+        if (
+            item &&
+            Array.isArray(item.waypoints) &&
+            item.waypoints.length > 0
+        ) {
+            return item.waypoints;
+        }
+
+        if (
+            typeof allWpts !== 'undefined' &&
+            Array.isArray(allWpts)
+        ) {
+            return allWpts;
+        }
+
+        return [];
+    };
+
+    const shouldExportWaypointForMergedRoute = (w) => {
+        if (
+            !currentRoute ||
+            currentRoute.isMergedRoute !== true ||
+            !Array.isArray(currentRoute.sourceRouteIndexes)
+        ) {
+            return false;
+        }
+
+        
+        return currentRoute.sourceRouteIndexes.some(function(sourceIdx) {
+            if (typeof window.isWaypointVisibleOnCurrentRoute === "function") {
+                const sourceRoute =
+                    typeof allTracks !== "undefined" && allTracks[sourceIdx]
+                        ? allTracks[sourceIdx]
+                        : (
+                            item &&
+                            item.routes &&
+                            item.routes[sourceIdx]
+                                ? item.routes[sourceIdx]
+                                : null
+                        );
+
+                return window.isWaypointVisibleOnCurrentRoute(
+                    w,
+                    Number(sourceIdx),
+                    sourceRoute
+                );
+            }
+
+            
+            return (
+                w.belongsToRoute !== undefined &&
+                Number(w.belongsToRoute) === Number(sourceIdx)
+            );
+        });
+    };
 
     if (isMultiRoute) {
-        const rawWpts = (currentRoute.waypoints && currentRoute.waypoints.length > 0) 
-                        ? currentRoute.waypoints 
-                        : (typeof allWpts !== 'undefined' ? allWpts : []);
+        const rawWpts =
+            getRawWaypoints();
 
         rawWpts.forEach(w => {
+            if (!w) return;
 
-            const wptKey = `${w.lat}_${w.lon}_${w.name || ''}_${w.time || ''}`;
+            const wptKey =
+                `${w.lat}_${w.lon}_${w.name || ''}_${w.time || ''}`;
+
             if (seenWpts.has(wptKey)) return; 
 
             let shouldInclude = false;
-            if (!hasPoints || currentRoute.isCombined || currentRoute.isCustomExport) {
+
+            if (
+                !hasPoints ||
+                currentRoute.isCombined ||
+                currentRoute.isCustomExport
+            ) {
+                
                 shouldInclude = true;
+
+            } else if (
+                currentRoute.isMergedRoute === true
+            ) {
+                
+                shouldInclude =
+                    shouldExportWaypointForMergedRoute(w);
+
+            } else if (
+                typeof window.isWaypointVisibleOnCurrentRoute === "function"
+            ) {
+                
+                shouldInclude =
+                    window.isWaypointVisibleOnCurrentRoute(
+                        w,
+                        activeIdx,
+                        currentRoute
+                    );
+
             } else {
+                
                 if (w.isCustom || w.belongsToRoute !== undefined) {
-                    if (w.belongsToRoute === activeIdx) shouldInclude = true;
+                    if (Number(w.belongsToRoute) === Number(activeIdx)) {
+                        shouldInclude = true;
+                    }
+
                 } else {
-                    const wptTwDate = toTwDate(w.time);
+                    const wptTwDate =
+                        toTwDate(w.time);
+
                     if (targetDate && wptTwDate === targetDate) {
                         shouldInclude = true;
                     } else if (!w.time) {
@@ -7318,11 +13787,17 @@ window.exportGpx = function(index) {
                 seenWpts.add(wptKey); 
             }
         });
+
     } else {
-         const rawSource = (typeof allWpts !== 'undefined' && allWpts.length > 0) ? allWpts : (currentRoute.waypoints || []);
+        const rawSource =
+            getRawWaypoints();
         
         rawSource.forEach(w => {
-            const wptKey = `${w.lat}_${w.lon}_${w.name || ''}_${w.time || ''}`;
+            if (!w) return;
+
+            const wptKey =
+                `${w.lat}_${w.lon}_${w.name || ''}_${w.time || ''}`;
+
             if (!seenWpts.has(wptKey)) {
                 finalWpts.push(w);
                 seenWpts.add(wptKey);
@@ -7330,110 +13805,653 @@ window.exportGpx = function(index) {
         });
     }
 
-    finalWpts.forEach(w => {
-        const name = escapeXml(w.name || "WayPoint");
-        const safeTime = formatIsoTime(w.time); 
-        const lat = isMultiRoute ? Number(w.lat).toFixed(6) : w.lat;
-        const lon = isMultiRoute ? Number(w.lon).toFixed(6) : w.lon;
-        
-        gpx += `\n  <wpt lat="${lat}" lon="${lon}">`;
-        if (w.ele !== undefined) gpx += `\n    <ele>${Number(w.ele).toFixed(2)}</ele>`;
-        gpx += `\n    <name>${name}</name>`;
-        if (safeTime) gpx += `\n    <time>${safeTime}</time>`;
-        gpx += `\n  </wpt>`;
-    });
+		finalWpts.forEach(w => {
+		    const name =
+		        escapeXml(w.name || "WayPoint");
+		
+		    const safeTime =
+		        formatIsoTime(w.time);
+		
+		    const lat =
+		        isMultiRoute
+		            ? Number(w.lat).toFixed(6)
+		            : w.lat;
+		
+		    const lon =
+		        isMultiRoute
+		            ? Number(w.lon).toFixed(6)
+		            : w.lon;
+		
+		    gpx += `\n  <wpt lat="${lat}" lon="${lon}">`;
+		
+		    if (w.ele !== undefined) {
+		        gpx += `\n    <ele>${Number(w.ele).toFixed(2)}</ele>`;
+		    }
+		
+		    gpx += `\n    <name>${name}</name>`;
+		
+		    if (safeTime) {
+		        gpx += `\n    <time>${safeTime}</time>`;
+		    }
+		
+		    
+		    const visibleRouteIndexes =
+		        Array.isArray(w.visibleRouteIndexes)
+		            ? w.visibleRouteIndexes
+		                .map(Number)
+		                .filter(function(idx) {
+		                    return Number.isFinite(idx);
+		                })
+		            : [];
+		
+		    const hiddenRouteIndexes =
+		        Array.isArray(w.hiddenRouteIndexes)
+		            ? w.hiddenRouteIndexes
+		                .map(Number)
+		                .filter(function(idx) {
+		                    return Number.isFinite(idx);
+		                })
+		            : [];
+		
+		    const hasDisplayState =
+		        visibleRouteIndexes.length > 0 ||
+		        hiddenRouteIndexes.length > 0 ||
+		        w.belongsToRoute !== undefined;
+		
+		    if (hasDisplayState) {
+		        gpx += `\n    <extensions>`;
+		        gpx += `\n      <myapp:waypointDisplay`;
+		
+		        if (w.belongsToRoute !== undefined) {
+		            gpx += ` belongsToRoute="${Number(w.belongsToRoute)}"`;
+		        }
+		
+		        if (visibleRouteIndexes.length > 0) {
+		            gpx += ` visibleRouteIndexes="${visibleRouteIndexes.join(",")}"`;
+		        }
+		
+		        if (hiddenRouteIndexes.length > 0) {
+		            gpx += ` hiddenRouteIndexes="${hiddenRouteIndexes.join(",")}"`;
+		        }
+		
+		        gpx += ` />`;
+		        gpx += `\n    </extensions>`;
+		    }
+		
+		    gpx += `\n  </wpt>`;
+		});
 
-    let tracksToExport = currentRoute.isCombined ? allTracks.filter(t => !t.isCombined) : [currentRoute];
+    let tracksToExport =
+        currentRoute.isCombined
+            ? allTracks.filter(t => !t.isCombined)
+            : [currentRoute];
+
     tracksToExport.forEach(route => {
         if (route.points?.length > 0) {
-            const trkName = escapeXml(route.name || "Track");
-            gpx += `\n  <trk>\n    <name>${trkName}</name>\n    <trkseg>`;
-            route.points.forEach(p => {
-                const safePTime = formatIsoTime(p.time); 
-                const pLat = isMultiRoute ? Number(p.lat).toFixed(6) : p.lat;
-                const pLon = isMultiRoute ? Number(p.lon).toFixed(6) : p.lon;
-                
-                gpx += `\n      <trkpt lat="${pLat}" lon="${pLon}">`;
-                if (p.ele !== undefined) gpx += `<ele>${Number(p.ele).toFixed(2)}</ele>`;
-                if (safePTime) gpx += `<time>${safePTime}</time>`;
-                gpx += `</trkpt>`;
-            });
-            gpx += `\n    </trkseg>\n  </trk>`;
+            const trkName =
+                escapeXml(
+                    route.routeDisplayName ||
+                    route.displayName ||
+                    route.name ||
+                    "Track"
+                );
+
+            gpx += `\n  <trk>\n    <name>${trkName}</name>`;
+
+            
+            if (
+                Array.isArray(route.segments) &&
+                route.segments.length > 0
+            ) {
+                route.segments.forEach(seg => {
+                    if (!Array.isArray(seg) || seg.length === 0) return;
+
+                    gpx += `\n    <trkseg>`;
+
+                    seg.forEach(latlng => {
+                        let lat;
+                        let lon;
+                        let matchedPoint = null;
+
+                        if (Array.isArray(latlng)) {
+                            lat = latlng[0];
+                            lon = latlng[1];
+                        } else if (latlng && typeof latlng === "object") {
+                            lat = latlng.lat;
+                            lon = latlng.lon !== undefined ? latlng.lon : latlng.lng;
+                        }
+
+                        if (
+                            typeof lat !== "number" ||
+                            typeof lon !== "number" ||
+                            !Number.isFinite(lat) ||
+                            !Number.isFinite(lon)
+                        ) {
+                            return;
+                        }
+
+                        if (Array.isArray(route.points)) {
+                            matchedPoint =
+                                route.points.find(p =>
+                                    p &&
+                                    Math.abs(Number(p.lat) - Number(lat)) < 0.0000001 &&
+                                    Math.abs(Number(p.lon) - Number(lon)) < 0.0000001
+                                );
+                        }
+
+                        const p =
+                            matchedPoint ||
+                            {
+                                lat: lat,
+                                lon: lon
+                            };
+
+                        const safePTime =
+                            formatIsoTime(p.time); 
+
+                        const pLat =
+                            isMultiRoute
+                                ? Number(lat).toFixed(6)
+                                : lat;
+
+                        const pLon =
+                            isMultiRoute
+                                ? Number(lon).toFixed(6)
+                                : lon;
+                        
+                        gpx += `\n      <trkpt lat="${pLat}" lon="${pLon}">`;
+
+                        if (p.ele !== undefined) {
+                            gpx += `<ele>${Number(p.ele).toFixed(2)}</ele>`;
+                        }
+
+                        if (safePTime) {
+                            gpx += `<time>${safePTime}</time>`;
+                        }
+
+                        gpx += `</trkpt>`;
+                    });
+
+                    gpx += `\n    </trkseg>`;
+                });
+
+            } else {
+                gpx += `\n    <trkseg>`;
+
+                route.points.forEach(p => {
+                    const safePTime =
+                        formatIsoTime(p.time); 
+
+                    const pLat =
+                        isMultiRoute
+                            ? Number(p.lat).toFixed(6)
+                            : p.lat;
+
+                    const pLon =
+                        isMultiRoute
+                            ? Number(p.lon).toFixed(6)
+                            : p.lon;
+                    
+                    gpx += `\n      <trkpt lat="${pLat}" lon="${pLon}">`;
+
+                    if (p.ele !== undefined) {
+                        gpx += `<ele>${Number(p.ele).toFixed(2)}</ele>`;
+                    }
+
+                    if (safePTime) {
+                        gpx += `<time>${safePTime}</time>`;
+                    }
+
+                    gpx += `</trkpt>`;
+                });
+
+                gpx += `\n    </trkseg>`;
+            }
+
+            gpx += `\n  </trk>`;
         }
     });
 
     gpx += `\n</gpx>`;
 
-    const blob = new Blob([gpx], { type: 'application/gpx+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${trackName.replace(/ /g, '_')}.gpx`;
+    const blob =
+        new Blob(
+            [gpx],
+            { type: 'application/gpx+xml;charset=utf-8' }
+        );
+
+    const url =
+        URL.createObjectURL(blob);
+
+    const a =
+        document.createElement('a');
+
+    a.href =
+        url;
+
+    a.download =
+        `${trackName.replace(/ /g, '_')}.gpx`;
+
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 200);
 };
 
-window.renameSubRoute = function(idx) {
-    const targetRoute = allTracks[idx];
-    if (!targetRoute) return;
+window.renameSubRoute = function(fileIdxOrRouteIdx, maybeRouteIdx, options = {}) {
+    let fileIdx;
+    let routeIdx;
+    
+    const renameOptions =
+    options && typeof options === "object"
+        ? options
+        : {};
+
+		const skipOpenGpxManager =
+    renameOptions.skipOpenGpxManager === true;
+
+    
+    if (typeof maybeRouteIdx === "number") {
+        fileIdx = parseInt(fileIdxOrRouteIdx, 10);
+        routeIdx = parseInt(maybeRouteIdx, 10);
+    } else {
+        fileIdx =
+            typeof window.currentMultiIndex === "number"
+                ? window.currentMultiIndex
+                : 0;
+
+        routeIdx =
+            typeof fileIdxOrRouteIdx === "number"
+                ? parseInt(fileIdxOrRouteIdx, 10)
+                : (
+                    typeof window.currentActiveIndex === "number"
+                        ? window.currentActiveIndex
+                        : 0
+                );
+    }
+
+    if (!Number.isFinite(fileIdx)) fileIdx = 0;
+    if (!Number.isFinite(routeIdx)) routeIdx = 0;
+
+    const activeFileIdxAtOpen =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const activeRouteIdxAtOpen =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    
+    const originalFileName =
+        currentFile ? currentFile.name : undefined;
+
+    const originalFileDisplayName =
+        currentFile ? currentFile.displayName : undefined;
+
+    const originalFileFileName =
+        currentFile ? currentFile.fileName : undefined;
+
+    let targetRoute = null;
+
+    
+    if (
+        currentFile &&
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes[routeIdx]
+    ) {
+        targetRoute =
+            currentFile.routes[routeIdx];
+    }
+
+    
+    if (
+        !targetRoute &&
+        typeof allTracks !== "undefined" &&
+        Array.isArray(allTracks) &&
+        allTracks[routeIdx]
+    ) {
+        targetRoute =
+            allTracks[routeIdx];
+    }
+
+    
+    if (
+        !targetRoute &&
+        currentFile &&
+        (
+            currentFile.isDrawTrack === true ||
+            currentFile.isHandDrawRoute === true ||
+            (
+                Array.isArray(currentFile.points) &&
+                currentFile.points.length > 0
+            ) ||
+            (
+                Array.isArray(currentFile.segments) &&
+                currentFile.segments.length > 0
+            )
+        )
+    ) {
+        targetRoute =
+            currentFile;
+    }
+
+    if (!targetRoute) {
+        alert("找不到要改名的子路線");
+        return;
+    }
+
+    if (targetRoute.isCombined === true) {
+        alert("結合路線不能改名");
+        return;
+    }
 
     const modal = document.getElementById('renameModal');
     const input = document.getElementById('modalRouteName');
     const confirmBtn = document.getElementById('modalRouteConfirm');
+    const cancelBtn = document.getElementById('modalRouteCancel');
+
     if (!modal || !input || !confirmBtn) return;
 
-    const oldName = targetRoute.name;
+    const oldName =
+        targetRoute.routeDisplayName ||
+        targetRoute.displayName ||
+        targetRoute.name ||
+        "子路線 " + routeIdx;
+
     input.value = oldName;
-    modal.style.display = 'flex';
 
-    setTimeout(() => { input.focus(); input.select(); }, 100);
+    const isNowFS = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.body.classList.contains('iphone-fullscreen')
+    );
 
-    const closeModal = () => {
+    const mapContainer = document.getElementById('map');
+
+    if (isNowFS && mapContainer && modal.parentElement !== mapContainer) {
+        mapContainer.appendChild(modal);
+    } else if (!isNowFS && modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
+
+    modal.style.setProperty('display', 'flex', 'important');
+    modal.style.setProperty('position', 'fixed', 'important');
+    modal.style.setProperty('top', '0', 'important');
+    modal.style.setProperty('left', '0', 'important');
+    modal.style.setProperty('width', '100%', 'important');
+    modal.style.setProperty('height', '100%', 'important');
+    modal.style.setProperty('align-items', 'center', 'important');
+    modal.style.setProperty('justify-content', 'center', 'important');
+    modal.style.setProperty('z-index', '2147483647', 'important');
+
+    const gpxManageModal = document.getElementById('gpxManageModal');
+    if (gpxManageModal && gpxManageModal !== modal) {
+        gpxManageModal.style.setProperty('z-index', '2147483645', 'important');
+    }
+
+    if (typeof L !== "undefined" && L.DomEvent) {
+        L.DomEvent.disableClickPropagation(modal);
+        L.DomEvent.disableScrollPropagation(modal);
+    }
+
+    setTimeout(function() {
+        input.focus();
+        input.select();
+    }, 100);
+
+    const closeModal = function() {
         modal.style.display = 'none';
         window.removeEventListener('keydown', handleEscKey);
         input.removeEventListener('keydown', handleEnterKey);
     };
 
-    const handleConfirm = () => {
-        const newName = input.value.trim();
-        if (newName !== "" && newName !== oldName) {
-            const fileName = window.currentFileNameForDisplay || "default";
-            const fileKey = fileName + "_" + idx;
-
-            if (!window.customNameCache) window.customNameCache = {};
-            window.customNameCache[fileKey] = newName; 
-
-            targetRoute.name = newName;
-
-            const routeSelect = document.getElementById("routeSelect");
-            if (routeSelect && routeSelect.options[idx]) {
-                routeSelect.options[idx].text = newName;
-            }
-
-            renderRouteInfo();
+    const restoreFileName = function() {
+        
+        if (currentFile) {
+            currentFile.name = originalFileName;
+            currentFile.displayName = originalFileDisplayName;
+            currentFile.fileName = originalFileFileName;
         }
+    };
+
+		const applyRename = function(nameToApply) {
+		
+		    
+		    const activeFileIdxNow =
+		        typeof window.currentMultiIndex === "number"
+		            ? window.currentMultiIndex
+		            : 0;
+		
+		    const activeRouteIdxNow =
+		        typeof window.currentActiveIndex === "number"
+		            ? window.currentActiveIndex
+		            : 0;
+		
+		    
+		    if (currentFile && targetRoute === currentFile) {
+		        targetRoute.routeDisplayName = nameToApply;
+		    } else {
+		        targetRoute.name = nameToApply;
+		        targetRoute.displayName = nameToApply;
+		        targetRoute.routeDisplayName = nameToApply;
+		    }
+		
+		    if (
+		        currentFile &&
+		        Array.isArray(currentFile.routes) &&
+		        currentFile.routes[routeIdx]
+		    ) {
+		        if (currentFile.routes[routeIdx] === currentFile) {
+		            currentFile.routes[routeIdx].routeDisplayName = nameToApply;
+		        } else {
+		            currentFile.routes[routeIdx].name = nameToApply;
+		            currentFile.routes[routeIdx].displayName = nameToApply;
+		            currentFile.routes[routeIdx].routeDisplayName = nameToApply;
+		        }
+		
+		        if (!currentFile.customRouteNames) {
+		            currentFile.customRouteNames = {};
+		        }
+		
+		        currentFile.customRouteNames[routeIdx] = nameToApply;
+		    }
+		
+		    
+		    if (
+		        currentFile &&
+		        (
+		            !Array.isArray(currentFile.routes) ||
+		            !currentFile.routes[routeIdx]
+		        )
+		    ) {
+		        if (!currentFile.customRouteNames) {
+		            currentFile.customRouteNames = {};
+		        }
+		
+		        currentFile.customRouteNames[routeIdx] = nameToApply;
+		    }
+		
+		    
+		    if (fileIdx === activeFileIdxNow) {
+		
+		        if (
+		            Array.isArray(window.allTracks) &&
+		            window.allTracks[routeIdx]
+		        ) {
+		            if (currentFile && window.allTracks[routeIdx] === currentFile) {
+		                window.allTracks[routeIdx].routeDisplayName = nameToApply;
+		            } else {
+		                window.allTracks[routeIdx].name = nameToApply;
+		                window.allTracks[routeIdx].displayName = nameToApply;
+		                window.allTracks[routeIdx].routeDisplayName = nameToApply;
+		            }
+		        }
+		
+		        if (
+		            typeof allTracks !== "undefined" &&
+		            Array.isArray(allTracks) &&
+		            allTracks[routeIdx]
+		        ) {
+		            if (currentFile && allTracks[routeIdx] === currentFile) {
+		                allTracks[routeIdx].routeDisplayName = nameToApply;
+		            } else {
+		                allTracks[routeIdx].name = nameToApply;
+		                allTracks[routeIdx].displayName = nameToApply;
+		                allTracks[routeIdx].routeDisplayName = nameToApply;
+		            }
+		        }
+		
+		        
+		        window.currentMultiIndex = activeFileIdxNow;
+		        window.currentActiveIndex = activeRouteIdxNow;
+		
+		        if (typeof updateRouteSelectDropdown === "function") {
+		            updateRouteSelectDropdown();
+		        }
+		
+		        const routeSelectAfter =
+		            document.getElementById("routeSelect");
+		
+		        if (
+		            routeSelectAfter &&
+		            routeSelectAfter.options &&
+		            routeSelectAfter.options.length > activeRouteIdxNow
+		        ) {
+		            routeSelectAfter.value =
+		                String(activeRouteIdxNow);
+		        }
+		
+		        if (typeof renderRouteInfo === "function") {
+		            renderRouteInfo();
+		        }
+		
+		    } else {
+		
+		        
+		        window.currentMultiIndex = activeFileIdxNow;
+		        window.currentActiveIndex = activeRouteIdxNow;
+		    }
+		
+		    
+		    restoreFileName();
+		
+		    if (typeof renderMultiGpxButtons === "function") {
+		        renderMultiGpxButtons();
+		    }
+		
+				if (!window.gpxManagerExpanded) {
+				    window.gpxManagerExpanded = {};
+				}
+				
+				window.gpxManagerExpanded[fileIdx] = true;
+				
+				
+				const gpxManageModal =
+				    document.getElementById("gpxManageModal");
+				
+				const isGpxManagerOpen =
+				    gpxManageModal &&
+				    gpxManageModal.style.display !== "none";
+				
+				if (
+				    !skipOpenGpxManager &&
+				    isGpxManagerOpen &&
+				    typeof window.refreshGpxManagerIfOpen === "function"
+				) {
+				    window.refreshGpxManagerIfOpen();
+				
+				} else if (
+				    !skipOpenGpxManager &&
+				    isGpxManagerOpen &&
+				    typeof showGpxManagementModal === "function"
+				) {
+				    showGpxManagementModal();
+				}
+		
+		    if (
+		        typeof historyManager !== "undefined" &&
+		        historyManager &&
+		        typeof historyManager.updateUI === "function"
+		    ) {
+		        historyManager.updateUI();
+		    }
+		};
+
+    const handleConfirm = function() {
+        const newName = input.value.trim();
+
+        if (newName !== "" && newName !== oldName) {
+
+            const command = {
+                
+                managedFileIndex: fileIdx,
+                routeIndex: routeIdx,
+                skipAutoLoadRouteAfterUndo: true,
+
+                do: function() {
+                    applyRename(newName);
+                },
+
+                undo: function() {
+                    applyRename(oldName);
+                }
+            };
+
+            if (
+                typeof historyManager !== "undefined" &&
+                historyManager &&
+                typeof historyManager.execute === "function"
+            ) {
+                historyManager.execute(command);
+            } else {
+                command.do();
+            }
+        }
+
         closeModal();
     };
 
-    const handleEnterKey = (e) => {
+    const handleEnterKey = function(e) {
         if (e.key === "Enter") {
-            e.preventDefault(); 
+            e.preventDefault();
             handleConfirm();
         }
     };
 
-    const handleEscKey = (e) => { if (e.key === "Escape") closeModal(); };
+    const handleEscKey = function(e) {
+        if (e.key === "Escape") {
+            closeModal();
+        }
+    };
 
     window.addEventListener('keydown', handleEscKey);
     input.addEventListener('keydown', handleEnterKey);
 
     confirmBtn.onclick = handleConfirm;
+
+    if (cancelBtn) {
+        cancelBtn.onclick = closeModal;
+    }
 };
 
 const searchControl = L.control({ position: 'topright' });
 
+
 searchControl.onAdd = function() {
+	
     const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
     container.innerHTML = `
         <a href="#" title="搜尋地點" style="background-color: white; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; text-decoration: none; color: #333;">
@@ -7467,6 +14485,7 @@ searchControl.onAdd = function() {
 searchControl.addTo(map);
 
 function closeSearchModal() {
+
     const modal = document.getElementById('searchModal');
     const suggestionBox = document.getElementById('searchSuggestions');
     modal.style.display = 'none';
@@ -7631,63 +14650,165 @@ function refreshTopMenu() {
 
 function updateRouteSelectDropdown() {
 
-    const routeSelect = document.getElementById("routeSelect");
-    const container = document.getElementById("routeSelectContainer");
+    const routeSelect =
+        document.getElementById("routeSelect");
+
+    const container =
+        document.getElementById("routeSelectContainer");
 
     if (!routeSelect || !container) return;
 
-    const stackIdx = window.currentMultiIndex || 0;
-    const currentFile = multiGpxStack && multiGpxStack[stackIdx];
+    const stackIdx =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack && stack[stackIdx];
 
     routeSelect.innerHTML = "";
 
-    const shouldHide =
-        !currentFile ||
-        currentFile.isDrawTrack ||
-        !Array.isArray(currentFile.routes) ||
-        currentFile.routes.length <= 1;
+    
+    const hasRoutes =
+        currentFile &&
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes.length > 1;
 
-    if (shouldHide) {
+    if (!hasRoutes) {
         container.style.setProperty("display", "none", "important");
         container.style.visibility = "hidden";
         container.style.pointerEvents = "none";
         container.style.opacity = "0";
-        window.currentActiveIndex = 0;
+
+        window.currentActiveIndex =
+            0;
 
         if (currentFile) {
-            allTracks = [currentFile];
-            window.allTracks = allTracks;
+            if (
+                Array.isArray(currentFile.routes) &&
+                currentFile.routes.length === 1
+            ) {
+                allTracks =
+                    currentFile.routes;
+
+                window.allTracks =
+                    currentFile.routes;
+
+            } else {
+                allTracks =
+                    [currentFile];
+
+                window.allTracks =
+                    allTracks;
+            }
         }
+
+        routeSelect.value =
+            "0";
+
+        routeSelect.selectedIndex =
+            0;
 
         return;
     }
 
+    
+    allTracks =
+        currentFile.routes;
+
+    window.allTracks =
+        currentFile.routes;
+
     currentFile.routes.forEach((route, i) => {
-        const opt = document.createElement("option");
-        opt.value = String(i);
-        opt.textContent =
-            route.displayName ||
-            route.name ||
-            `路線 ${i + 1}`;
+        if (!route) return;
+
+        
+        route.routeIndex =
+            i;
+
+        route.index =
+            i;
+
+        route.originalIndex =
+            i;
+
+        const opt =
+            document.createElement("option");
+
+        opt.value =
+            String(i);
+
+        const baseName =
+				    route.routeDisplayName ||
+				    route.displayName ||
+				    route.name ||
+				    `路線 ${i + 1}`;
+				
+				const isCombinedRoute =
+				    route.isCombined === true ||
+				    route.type === "combined" ||
+				    route.routeType === "combined" ||
+				    (
+				        i === 0 &&
+				        typeof baseName === "string" &&
+				        baseName.indexOf("結合") !== -1
+				    );
+				
+				route.isCombined =
+				    isCombinedRoute === true;
+				
+				if (isCombinedRoute) {
+				    opt.textContent =
+				        `【 ${baseName} 】`;
+				} else {
+				    opt.textContent =
+				        baseName;
+				}
+
         routeSelect.appendChild(opt);
     });
 
-    let activeIdx = window.currentActiveIndex || 0;
+    let activeIdx =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
 
-    if (activeIdx < 0 || activeIdx >= currentFile.routes.length) {
-        activeIdx = 0;
-        window.currentActiveIndex = 0;
+    if (
+        activeIdx < 0 ||
+        activeIdx >= currentFile.routes.length
+    ) {
+        activeIdx =
+            0;
+
+        window.currentActiveIndex =
+            0;
     }
 
-    routeSelect.value = String(activeIdx);
+    routeSelect.value =
+        String(activeIdx);
+
+    routeSelect.selectedIndex =
+        activeIdx;
 
     container.style.setProperty("display", "block", "important");
-    container.style.visibility = "visible";
-    container.style.pointerEvents = "auto";
-    container.style.opacity = "1";
+    container.style.visibility =
+        "visible";
 
-    allTracks = currentFile.routes;
-    window.allTracks = currentFile.routes;
+    container.style.pointerEvents =
+        "auto";
+
+    container.style.opacity =
+        "1";
+
+    
+    routeSelect.blur();
+
+    void routeSelect.offsetWidth;
 }
 
 
@@ -7809,11 +14930,7 @@ window.deleteSelectedWaypoints = function() {
                 ? window.currentActiveIndex
                 : 0;
 
-        /*
-            關鍵：
-            記住刪除當下的 GPX 檔案與 route index。
-            undo / redo 時不要用當下畫面所在的 route。
-        */
+        
         const fileIdxAtDelete =
             stackIdx;
 
@@ -7858,13 +14975,7 @@ window.deleteSelectedWaypoints = function() {
             sourceWpts = [];
         }
 
-        /*
-            重要：
-            不要 deep clone。
-            要保留航點物件 reference，避免：
-            新增航點 → 刪除 → undo → 再 undo 新增
-            時 addedWptRef 找不到原航點。
-        */
+        
         const oldWpts =
             sourceWpts.slice();
 
@@ -8232,6 +15343,7 @@ let isWptDragging = false;
 let wptDragTargetState = true;
 let wptDragStartPos = -1;
 let wptInitialStates = [];
+let wptDragMode = null;
 
 window.initWptDragSelect = function() {
     const tableBody = document.getElementById("wptTableBody");
@@ -8241,81 +15353,379 @@ window.initWptDragSelect = function() {
     tableBody.onmouseover = null;
     tableBody.ontouchstart = null;
 
-    const handleStart = (e) => {
-        const target = e.target;
-        const row = target.closest('tr');
+    const getBoxesByMode = function(mode) {
+        if (mode === "display") {
+            return tableBody.querySelectorAll(".wpt-display-checkbox");
+        }
+
+        return tableBody.querySelectorAll(".wpt-checkbox");
+    };
+
+		 const applyDisplayCheckboxStates = function() {
+		    const fileIdx =
+		        typeof window.currentMultiIndex === "number"
+		            ? window.currentMultiIndex
+		            : 0;
+		
+		    const routeIdx =
+		        typeof window.currentActiveIndex === "number"
+		            ? window.currentActiveIndex
+		            : 0;
+		
+		    const currentFile =
+		        window.multiGpxStack &&
+		        window.multiGpxStack[fileIdx];
+		
+		    if (
+		        !currentFile ||
+		        !Array.isArray(currentFile.waypoints)
+		    ) {
+		        return;
+		    }
+		
+		    const currentRoute =
+		        window.allTracks &&
+		        window.allTracks[routeIdx]
+		            ? window.allTracks[routeIdx]
+		            : (
+		                currentFile.routes &&
+		                currentFile.routes[routeIdx]
+		                    ? currentFile.routes[routeIdx]
+		                    : currentFile
+		            );
+		
+		    
+		    if (
+		        currentRoute &&
+		        currentRoute.isCombined === true
+		    ) {
+		        const displayBoxes =
+		            tableBody.querySelectorAll(".wpt-display-checkbox");
+		
+		        displayBoxes.forEach(function(cb) {
+		            if (cb) {
+		                cb.checked = true;
+		            }
+		        });
+		
+		        if (typeof loadRoute === "function") {
+		            loadRoute(routeIdx, null);
+		        }
+		
+		        return;
+		    }
+		
+		    const displayBoxes =
+		        tableBody.querySelectorAll(".wpt-display-checkbox");
+		
+		    const nRouteIdx =
+		        Number(routeIdx);
+		
+		    displayBoxes.forEach(function(cb) {
+		        if (!cb || cb.disabled) return;
+		
+		        const originalIdx =
+		            parseInt(cb.dataset.idx, 10);
+		
+		        if (
+		            !Number.isFinite(originalIdx) ||
+		            !currentFile.waypoints[originalIdx]
+		        ) {
+		            return;
+		        }
+		
+		        const wpt =
+		            currentFile.waypoints[originalIdx];
+		
+		        if (!Array.isArray(wpt.visibleRouteIndexes)) {
+		            wpt.visibleRouteIndexes = [];
+		        }
+		
+		        if (!Array.isArray(wpt.hiddenRouteIndexes)) {
+		            wpt.hiddenRouteIndexes = [];
+		        }
+		
+		        wpt.visibleRouteIndexes =
+		            wpt.visibleRouteIndexes
+		                .map(Number)
+		                .filter(function(idx) {
+		                    return Number.isFinite(idx);
+		                });
+		
+		        wpt.hiddenRouteIndexes =
+		            wpt.hiddenRouteIndexes
+		                .map(Number)
+		                .filter(function(idx) {
+		                    return Number.isFinite(idx);
+		                });
+		
+		        if (cb.checked) {
+		            if (!wpt.visibleRouteIndexes.includes(nRouteIdx)) {
+		                wpt.visibleRouteIndexes.push(nRouteIdx);
+		            }
+		
+		            wpt.hiddenRouteIndexes =
+		                wpt.hiddenRouteIndexes.filter(function(idx) {
+		                    return idx !== nRouteIdx;
+		                });
+		
+		        } else {
+		            if (!wpt.hiddenRouteIndexes.includes(nRouteIdx)) {
+		                wpt.hiddenRouteIndexes.push(nRouteIdx);
+		            }
+		
+		            wpt.visibleRouteIndexes =
+		                wpt.visibleRouteIndexes.filter(function(idx) {
+		                    return idx !== nRouteIdx;
+		                });
+		        }
+		    });
+		
+		    
+		    if (Array.isArray(currentFile.routes)) {
+		        currentFile.routes.forEach(function(route) {
+		            if (route) {
+		                route.waypoints =
+		                    currentFile.waypoints;
+		            }
+		        });
+		    }
+		
+		    if (Array.isArray(window.allTracks)) {
+		        window.allTracks.forEach(function(route) {
+		            if (route) {
+		                route.waypoints =
+		                    currentFile.waypoints;
+		            }
+		        });
+		    }
+		
+		    if (typeof syncWaypointsToFile === "function") {
+		        syncWaypointsToFile(currentFile);
+		    }
+		
+		    if (typeof rebuildXmlFromWaypoints === "function") {
+		        rebuildXmlFromWaypoints(currentFile);
+		    }
+		
+		    
+		    if (typeof loadRoute === "function") {
+		        loadRoute(routeIdx, null);
+		
+		    } else if (typeof window.refreshWaypointMarkersOnly === "function") {
+		        window.refreshWaypointMarkersOnly(routeIdx, null);
+		    }
+		
+		    if (typeof updateWptIconStatus === "function") {
+		        updateWptIconStatus();
+		    }
+		};
+
+    const suppressOneNativeClick = function(box) {
+        const suppressNextClick = function(ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            ev.stopImmediatePropagation();
+        };
+
+        box.addEventListener(
+            "click",
+            suppressNextClick,
+            {
+                once: true,
+                capture: true
+            }
+        );
+    };
+
+    const handleStart = function(e) {
+        const target =
+            e.target;
+
+        const row =
+            target.closest("tr");
+
         if (!row) return;
 
-        const checkbox = row.querySelector('.wpt-checkbox');
-        const td = target.closest('td');
+        const deleteCheckbox =
+            target.closest(".wpt-checkbox");
 
-        if (checkbox && td && td.contains(checkbox)) {
-            isWptDragging = true;
-            wptDragStartPos = row.sectionRowIndex;
-            const allBoxes = tableBody.querySelectorAll('.wpt-checkbox');
-            wptInitialStates = Array.from(allBoxes).map(cb => cb.checked);
+        const displayCheckbox =
+            target.closest(".wpt-display-checkbox");
 
-            if (e.type === 'mousedown') {
-                window.addEventListener('mousemove', handleMove);
-                window.addEventListener('mouseup', handleEnd, { once: true });
-            } else if (e.type === 'touchstart') {
-                window.addEventListener('touchmove', handleMove, { passive: false });
-                window.addEventListener('touchend', handleEnd, { once: true });
+        if (
+            displayCheckbox &&
+            displayCheckbox.disabled
+        ) {
+            return;
+        }
+
+        if (displayCheckbox) {
+            wptDragMode = "display";
+        } else if (deleteCheckbox) {
+            wptDragMode = "delete";
+        } else {
+            return;
+        }
+
+        const allBoxes =
+            getBoxesByMode(wptDragMode);
+
+        if (!allBoxes || allBoxes.length === 0) return;
+
+        isWptDragging = true;
+        wptDragStartPos = row.sectionRowIndex;
+
+        wptInitialStates =
+            Array.from(allBoxes).map(function(cb) {
+                return cb.checked;
+            });
+
+        const startBox =
+            allBoxes[wptDragStartPos];
+
+        if (!startBox) return;
+
+        
+        wptDragTargetState =
+            !startBox.checked;
+
+        startBox.checked =
+            wptDragTargetState;
+
+        
+        suppressOneNativeClick(startBox);
+
+        if (wptDragMode === "delete") {
+            if (typeof updateSelectedCount === "function") {
+                updateSelectedCount();
             }
+        }
+
+        if (e.type === "mousedown") {
+            window.addEventListener("mousemove", handleMove);
+            window.addEventListener("mouseup", handleEnd, { once: true });
+        } else if (e.type === "touchstart") {
+            window.addEventListener("touchmove", handleMove, { passive: false });
+            window.addEventListener("touchend", handleEnd, { once: true });
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (typeof e.stopImmediatePropagation === "function") {
+            e.stopImmediatePropagation();
         }
     };
 
-    const handleMove = (e) => {
+    const handleMove = function(e) {
         if (!isWptDragging) return;
 
         let targetRow;
-        if (e.type === 'touchmove') {
-            const touch = e.touches[0];
-            const element = document.elementFromPoint(touch.clientX, touch.clientY);
-            targetRow = element ? element.closest('tr') : null;
+
+        if (e.type === "touchmove") {
+            const touch =
+                e.touches[0];
+
+            const element =
+                document.elementFromPoint(
+                    touch.clientX,
+                    touch.clientY
+                );
+
+            targetRow =
+                element
+                    ? element.closest("tr")
+                    : null;
+
         } else {
-            targetRow = e.target.closest('tr');
+            targetRow =
+                e.target.closest("tr");
         }
 
-        if (targetRow) {
-            const currentPos = targetRow.sectionRowIndex;
-            const allBoxes = tableBody.querySelectorAll('.wpt-checkbox');
+        if (!targetRow) return;
 
-            if (wptDragStartPos !== -1) {
-                wptDragTargetState = allBoxes[wptDragStartPos].checked;
+        const currentPos =
+            targetRow.sectionRowIndex;
+
+        const allBoxes =
+            getBoxesByMode(wptDragMode);
+
+        if (
+            !allBoxes ||
+            wptDragStartPos === -1 ||
+            !allBoxes[wptDragStartPos]
+        ) {
+            return;
+        }
+
+        const start =
+            Math.min(wptDragStartPos, currentPos);
+
+        const end =
+            Math.max(wptDragStartPos, currentPos);
+
+        allBoxes.forEach(function(cb, i) {
+            if (!cb) return;
+
+            if (
+                wptDragMode === "display" &&
+                cb.disabled
+            ) {
+                return;
             }
 
-            const start = Math.min(wptDragStartPos, currentPos);
-            const end = Math.max(wptDragStartPos, currentPos);
+            if (i >= start && i <= end) {
+                cb.checked =
+                    wptDragTargetState;
+            } else {
+                cb.checked =
+                    wptInitialStates[i];
+            }
+        });
 
-            allBoxes.forEach((cb, i) => {
-                if (i >= start && i <= end) {
-                    cb.checked = wptDragTargetState;
-                } else {
-                    cb.checked = wptInitialStates[i];
-                }
-            });
+        if (wptDragMode === "delete") {
+            if (typeof updateSelectedCount === "function") {
+                updateSelectedCount();
+            }
+        }
 
-            if (typeof updateSelectedCount === 'function') updateSelectedCount();
-            if (e.type === 'touchmove') e.preventDefault();
+        if (e.type === "touchmove") {
+            e.preventDefault();
         }
     };
 
-    const handleEnd = () => {
+    const handleEnd = function() {
+        if (!isWptDragging) return;
+
+        const endedMode =
+            wptDragMode;
+
         isWptDragging = false;
         wptDragStartPos = -1;
-        window.removeEventListener('mousemove', handleMove);
-        window.removeEventListener('touchmove', handleMove);
-        
-        setTimeout(() => {
-            if (typeof updateSelectedCount === 'function') updateSelectedCount();
-        }, 50);
+        wptDragMode = null;
+
+        window.removeEventListener("mousemove", handleMove);
+        window.removeEventListener("touchmove", handleMove);
+
+        if (endedMode === "display") {
+            applyDisplayCheckboxStates();
+        }
+
+        if (endedMode === "delete") {
+            setTimeout(function() {
+                if (typeof updateSelectedCount === "function") {
+                    updateSelectedCount();
+                }
+            }, 50);
+        }
     };
 
-    tableBody.removeEventListener('mousedown', handleStart);
-    tableBody.addEventListener('mousedown', handleStart);
-    tableBody.removeEventListener('touchstart', handleStart);
-    tableBody.addEventListener('touchstart', handleStart, { passive: true });
+    tableBody.removeEventListener("mousedown", handleStart);
+    tableBody.addEventListener("mousedown", handleStart);
+
+    tableBody.removeEventListener("touchstart", handleStart);
+    tableBody.addEventListener("touchstart", handleStart, { passive: false });
 };
 
 class HistoryManager {
@@ -8500,27 +15910,153 @@ window.showAppConfirm = function(title, message, onConfirm, onCancel, btnText = 
     const modal = document.getElementById('deleteConfirmModal');
     if (!modal) return;
 
+    
+    const resetPageAndMapOffset = function() {
+        document.documentElement.scrollLeft = 0;
+        document.body.scrollLeft = 0;
+
+        document.documentElement.style.marginLeft = "0px";
+        document.documentElement.style.transform = "";
+
+        document.body.style.marginLeft = "0px";
+        document.body.style.transform = "";
+        document.body.style.left = "0px";
+        document.body.style.right = "0px";
+
+        const mapEl =
+            document.getElementById("map");
+
+        if (mapEl) {
+            mapEl.style.left = "0px";
+            mapEl.style.right = "0px";
+            mapEl.style.marginLeft = "0px";
+            mapEl.style.marginRight = "0px";
+            mapEl.style.transform = "";
+        }
+    };
+
+    
+    const closeConfirmAndRestore = function(callback) {
+        modal.style.display = "none";
+
+        
+        document.documentElement.style.overflow = "";
+        document.body.style.overflow = "";
+
+        
+        resetPageAndMapOffset();
+
+        if (
+            typeof map !== "undefined" &&
+            map
+        ) {
+            setTimeout(function() {
+                if (typeof map.invalidateSize === "function") {
+                    map.invalidateSize();
+                }
+
+                if (typeof map.panBy === "function") {
+                    map.panBy([0, 0], {
+                        animate: false
+                    });
+                }
+            }, 50);
+        }
+
+        if (callback) {
+            callback();
+        }
+    };
+
     const h3Tag = modal.querySelector('h3');
-    if (h3Tag) h3Tag.innerText = title;
+    if (h3Tag) {
+        h3Tag.innerText = title;
+        h3Tag.style.textAlign = "center";
+        h3Tag.style.fontSize = "20px";
+        h3Tag.style.fontWeight = "700";
+        h3Tag.style.margin = "0 0 14px 0";
+        h3Tag.style.color = "#2c3e50";
+    }
 
     const pTag = modal.querySelector('p');
-    if (pTag) pTag.innerHTML = message;
+    if (pTag) {
+        pTag.innerHTML = message;
+        pTag.style.textAlign = "center";
+        pTag.style.fontSize = "15px";
+        pTag.style.lineHeight = "1.7";
+        pTag.style.color = "#444";
+        pTag.style.margin = "0 0 18px 0";
+    }
 
     const confirmBtn = document.getElementById('modalDeleteConfirm');
-    if (confirmBtn) confirmBtn.innerText = btnText; 
+    const cancelBtn = document.getElementById('modalDeleteCancel');
+
+    if (confirmBtn) {
+        confirmBtn.innerText = btnText;
+        confirmBtn.style.fontSize = "15px";
+        confirmBtn.style.fontWeight = "600";
+        confirmBtn.style.padding = "9px 18px";
+        confirmBtn.style.borderRadius = "8px";
+    }
+
+    if (cancelBtn) {
+        cancelBtn.innerText = "取消";
+        cancelBtn.style.fontSize = "15px";
+        cancelBtn.style.fontWeight = "600";
+        cancelBtn.style.padding = "9px 18px";
+        cancelBtn.style.borderRadius = "8px";
+    }
+
+    const oldExtraBtn = document.getElementById("modalThirdChoiceBtn");
+    if (oldExtraBtn) {
+        oldExtraBtn.remove();
+    }
+
+    const btnParent = confirmBtn && confirmBtn.parentNode;
+    if (btnParent) {
+        btnParent.style.display = "flex";
+        btnParent.style.justifyContent = "center";
+        btnParent.style.alignItems = "center";
+        btnParent.style.gap = "8px";
+        btnParent.style.flexWrap = "wrap";
+    }
 
     modal.style.display = 'flex';
-    L.DomEvent.disableClickPropagation(modal);
 
-    confirmBtn.onclick = function() {
-        modal.style.display = 'none';
-        if (onConfirm) onConfirm();
+    
+    resetPageAndMapOffset();
+
+    
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    
+    modal.style.touchAction = "none";
+
+    modal.onwheel = function(e) {
+        e.preventDefault();
     };
 
-    document.getElementById('modalDeleteCancel').onclick = function() {
-        modal.style.display = 'none';
-        if (onCancel) onCancel();
+    modal.ontouchmove = function(e) {
+        e.preventDefault();
     };
+
+    if (typeof L !== "undefined" && L.DomEvent) {
+        L.DomEvent.disableClickPropagation(modal);
+        L.DomEvent.disableScrollPropagation(modal);
+    }
+
+    if (confirmBtn) {
+        confirmBtn.onclick = function() {
+            closeConfirmAndRestore(onConfirm);
+        };
+    }
+
+    if (cancelBtn) {
+        cancelBtn.onclick = function() {
+            closeConfirmAndRestore(onCancel);
+        };
+    }
 };
 
 let _lastFSState = null; 
@@ -8624,17 +16160,47 @@ function handleFullscreenStateChange() {
 					        });
 					
 					        
-					        const uiElements = modal.querySelectorAll('input, button, select, label, span, p');
-					        uiElements.forEach(el => {
-					            
-					            if (el.classList.contains('material-icons')) return;
-					
-					            if (el.tagName === 'P' || el.style.fontSize === '10px') {
-					                el.style.setProperty('font-size', '14px', 'important'); 
-					            } else {
-					                el.style.setProperty('font-size', '15px', 'important');
-					            }
-					        });
+									const uiElements = modal.querySelectorAll('input, button, select, label, span, p');
+									
+									uiElements.forEach(el => {
+									
+									    if (el.classList.contains('material-icons')) return;
+									
+									    
+									    if (
+									        modal.id === 'gpxManageModal' &&
+									        el.classList.contains('gpx-subroute-text')
+									    ) {
+									        el.style.setProperty('font-size', '14px', 'important');
+									        el.style.setProperty('line-height', '1.3', 'important');
+
+									        return;
+									    }
+									
+									    if (
+									        modal.id === 'gpxManageModal' &&
+									        el.classList.contains('gpx-subroute-meta')
+									    ) {
+									        el.style.setProperty('font-size', '13px', 'important');
+									        el.style.setProperty('line-height', '1.3', 'important');
+									        return;
+									    }
+									
+									    if (
+									        modal.id === 'gpxManageModal' &&
+									        el.classList.contains('gpx-subroute-badge')
+									    ) {
+									        el.style.setProperty('font-size', '13px', 'important');
+									        el.style.setProperty('line-height', '1.2', 'important');
+									        return;
+									    }
+									
+									    if (el.tagName === 'P' || el.style.fontSize === '10px') {
+									        el.style.setProperty('font-size', '14px', 'important'); 
+									    } else {
+									        el.style.setProperty('font-size', '15px', 'important');
+									    }
+									});
 					        
 					
 					        L.DomEvent.disableClickPropagation(modal);
@@ -8651,6 +16217,8 @@ function handleFullscreenStateChange() {
                     modal.style.fontSize = "";
                     const allText = modal.querySelectorAll('b, h3, input, button, select, label, span, p');
                     allText.forEach(el => el.style.removeProperty('font-size'));
+                    
+                    
                 }
             });
         }
@@ -8677,6 +16245,15 @@ fsClassObserver.observe(document.body, { attributes: true });
 
 function renderSideToolbar() {
     const sideToolbar = document.getElementById('side-toolbar');
+    
+    if (sideToolbar) {
+    sideToolbar.addEventListener("mousedown", function() {
+    }, true);
+
+    sideToolbar.addEventListener("touchstart", function() {
+    }, true);
+}
+
     if (!sideToolbar) return;
 
     const isFirstRender =
@@ -8719,50 +16296,70 @@ function renderSideToolbar() {
         drawBtn.onclick = function(e) {
             L.DomEvent.stopPropagation(e);
 
-            const summaryEl = document.getElementById("routeSummary");
-            const hasTrackText = summaryEl && summaryEl.innerText.includes("km");
-            const hasProjectLoaded = window.multiGpxStack && window.multiGpxStack.length > 0;
-            const isBlankMap = !hasTrackText && !hasProjectLoaded;
-
-            if (!isDrawingMode) {
-                if (isBlankMap) {
-                    
-                } else {
-                    
-                }
-            }
-
-            isDrawingMode = !isDrawingMode;
-
-            this.style.setProperty('background', isDrawingMode ? "#d35400" : "white", 'important');
-            this.style.setProperty('color', isDrawingMode ? "white" : "#5f6368", 'important');
-
-            const methodBtn = document.getElementById('drawMethodBtn');
-            if (methodBtn) {
-                methodBtn.style.display = isDrawingMode ? "block" : "none";
-            }
-
-            const mapEl = document.getElementById('map');
-            if (mapEl) {
-                mapEl.style.cursor = isDrawingMode ? 'crosshair' : '';
-            }
-
+            
             if (isDrawingMode) {
-                drawMethod = 'scribble';
+						    isDrawingMode = false;
+						    isScribbling = false;
+						    tempDrawPoints = [];
+						    lastScribbleLatLng = null;
 
-                if (typeof showMapToast === 'function') {
-                    showMapToast("手繪模式：按住拖曳繪製");
-                }
+						    const toast =
+						        document.getElementById("map-toast");
+						
+						    if (toast) {
+						        toast.style.opacity = "0";
+						    }
+						
+						    if (window.mapToastTimer) {
+						        clearTimeout(window.mapToastTimer);
+						        window.mapToastTimer = null;
+						    }
+						
+						    window.currentMapToast = null;
+						
+						    this.style.setProperty('background', "white", 'important');
+						    this.style.setProperty('color', "#5f6368", 'important');
+						
+						    const methodBtn =
+						        document.getElementById('drawMethodBtn');
+						
+						    if (methodBtn) {
+						        methodBtn.style.display = "none";
+						    }
+						
+						    const mapEl =
+						        document.getElementById('map');
+						
+						    if (mapEl) {
+						        mapEl.style.cursor = "";
+						    }
+						
+						    if (map && map.dragging) {
+						        map.dragging.enable();
+						    }
+						
+						    if (map && map.boxZoom) {
+						        map.boxZoom.enable();
+						    }
+						
+						    window.drawTargetMode = null;
+						
+						    return;
+						}
 
-                map.dragging.disable();
+            
+            const canStart =
+                prepareDrawingModeStart();
 
-                if (typeof loadRoute === 'function') {
-                    loadRoute(window.currentActiveIndex || 0);
-                }
-
-            } else {
-                map.dragging.enable();
+            if (canStart === "pending") {
+                return;
             }
+
+            if (!canStart) {
+                return;
+            }
+
+            activateDrawingModeUi();
         };
 
         methodBtn.onclick = function(e) {
@@ -8777,7 +16374,7 @@ function renderSideToolbar() {
                 map.boxZoom.disable();
 
                 if (typeof showMapToast === 'function') {
-                    showMapToast("手繪模式：按住拖曳繪製");
+                    showMapToast("手繪模式：按住拖曳繪製\n\n電腦：按住 Ctrl 移動地圖\n手機：兩指按住移動地圖");
                 }
 
             } else {
@@ -8795,16 +16392,7 @@ function renderSideToolbar() {
         document.getElementById('redoBtn').onclick = (e) => historyManager.redo();
     }
 
-    /*
-        沒有航點時，繪製 / undo / redo 會重複觸發：
-        loadRoute -> renderSideToolbar -> updateWptIconStatus。
-        這會讓「顯示航點名稱」icon 閃一下。
-
-        所以：
-        - 第一次建立 toolbar：允許初始化 icon
-        - 有航點時：允許更新 icon
-        - 沒有航點且不是第一次：不要更新 icon
-    */
+    
     const hasAnyWaypoints =
         (
             window.multiGpxStack &&
@@ -8939,7 +16527,9 @@ function addPointToTrack(latlng, useHistory = true) {
 
     if (targetTrack.points.length > 0) {
         const prev = targetTrack.points[targetTrack.points.length - 1];
+
         totalDistance = prev.distance || 0;
+
         totalDistance += calculateDistance(
             prev.lat,
             prev.lon,
@@ -8988,12 +16578,158 @@ function addPointToTrack(latlng, useHistory = true) {
                 this.targetTrack.layer instanceof L.Polyline
             ) {
                 this.targetTrack.layer.setLatLngs(this.targetTrack.segments);
+
                 this.targetTrack.layer.setStyle({
                     color: this.targetTrack.color || "#0000FF",
                     weight: 6,
                     opacity: 1,
-                    dashArray: null
+                    dashArray: null,
+                    interactive: true
                 });
+
+                
+                this.targetTrack.layer.off('click');
+
+                this.targetTrack.layer.on('click', (e) => {
+                    if (!e || !e.latlng) return;
+
+                    L.DomEvent.stopPropagation(e);
+
+                    const pts =
+                        Array.isArray(this.targetTrack.points)
+                            ? this.targetTrack.points
+                            : [];
+
+                    if (!pts || pts.length === 0) return;
+
+                    let minD = Infinity;
+                    let idx = 0;
+
+                    pts.forEach((pt, pIdx) => {
+                        if (!pt) return;
+
+                        const lat =
+                            Number(pt.lat);
+
+                        const lon =
+                            Number(
+                                pt.lon !== undefined
+                                    ? pt.lon
+                                    : pt.lng
+                            );
+
+                        if (
+                            !Number.isFinite(lat) ||
+                            !Number.isFinite(lon)
+                        ) {
+                            return;
+                        }
+
+                        const d =
+                            Math.sqrt(
+                                Math.pow(lat - e.latlng.lat, 2) +
+                                Math.pow(lon - e.latlng.lng, 2)
+                            );
+
+                        if (d < minD) {
+                            minD = d;
+                            idx = pIdx;
+                        }
+                    });
+
+                    
+                    if (minD * 111000 > 50) {
+                        return;
+                    }
+
+                    window.trackPoints = pts;
+                    trackPoints = pts;
+
+                    const progressBar =
+                        document.getElementById('gpxProgressBar');
+
+                    if (progressBar) {
+                        progressBar.value = idx;
+                        progressBar.dispatchEvent(
+                            new Event('input', { bubbles: true })
+                        );
+                    }
+
+                    if (
+                        typeof chart !== "undefined" &&
+                        chart
+                    ) {
+                        const meta =
+                            chart.getDatasetMeta(0);
+
+                        const point =
+                            meta.data[idx];
+
+                        if (point) {
+                            chart.setActiveElements([
+                                {
+                                    datasetIndex: 0,
+                                    index: idx
+                                }
+                            ]);
+
+                            chart.tooltip.setActiveElements(
+                                [
+                                    {
+                                        datasetIndex: 0,
+                                        index: idx
+                                    }
+                                ],
+                                {
+                                    x: point.x,
+                                    y: point.y
+                                }
+                            );
+
+                            chart.update('none');
+                        }
+                    }
+
+                    if (!hoverMarker) {
+                        hoverMarker =
+                            L.circleMarker(
+                                [
+                                    pts[idx].lat,
+                                    pts[idx].lon
+                                ],
+                                {
+                                    radius: 7,
+                                    color: '#ffffff',
+                                    weight: 2,
+                                    fillColor: '#1a73e8',
+                                    fillOpacity: 1,
+                                    interactive: false
+                                }
+                            ).addTo(map);
+
+                    } else if (!map.hasLayer(hoverMarker)) {
+                        hoverMarker.addTo(map);
+                    }
+
+                    hoverMarker
+                        .setLatLng([
+                            pts[idx].lat,
+                            pts[idx].lon
+                        ])
+                        .bringToFront();
+
+                    if (typeof showCustomPopup === 'function') {
+                        showCustomPopup(
+                            idx,
+                            "位置資訊",
+                            null
+                        );
+                    }
+                });
+
+                if (this.targetTrack.layer.bringToFront) {
+                    this.targetTrack.layer.bringToFront();
+                }
             }
 
             window.trackPoints = this.targetTrack.points;
@@ -9006,6 +16742,7 @@ function addPointToTrack(latlng, useHistory = true) {
             window.currentActiveIndex = this.routeIndex;
 
             const routeSelect = document.getElementById("routeSelect");
+
             if (
                 routeSelect &&
                 routeSelect.options &&
@@ -9051,6 +16788,120 @@ function addPointToTrack(latlng, useHistory = true) {
                 this.targetTrack.layer instanceof L.Polyline
             ) {
                 this.targetTrack.layer.setLatLngs(this.targetTrack.segments || []);
+
+                this.targetTrack.layer.setStyle({
+                    color: this.targetTrack.color || "#0000FF",
+                    weight: 6,
+                    opacity: this.targetTrack.points.length > 0 ? 1 : 0,
+                    dashArray: null,
+                    interactive: this.targetTrack.points.length > 0
+                });
+
+                
+                this.targetTrack.layer.off('click');
+
+                if (this.targetTrack.points.length > 0) {
+                    this.targetTrack.layer.on('click', (e) => {
+                        if (!e || !e.latlng) return;
+
+                        L.DomEvent.stopPropagation(e);
+
+                        const pts =
+                            Array.isArray(this.targetTrack.points)
+                                ? this.targetTrack.points
+                                : [];
+
+                        if (!pts || pts.length === 0) return;
+
+                        let minD = Infinity;
+                        let idx = 0;
+
+                        pts.forEach((pt, pIdx) => {
+                            if (!pt) return;
+
+                            const lat =
+                                Number(pt.lat);
+
+                            const lon =
+                                Number(
+                                    pt.lon !== undefined
+                                        ? pt.lon
+                                        : pt.lng
+                                );
+
+                            if (
+                                !Number.isFinite(lat) ||
+                                !Number.isFinite(lon)
+                            ) {
+                                return;
+                            }
+
+                            const d =
+                                Math.sqrt(
+                                    Math.pow(lat - e.latlng.lat, 2) +
+                                    Math.pow(lon - e.latlng.lng, 2)
+                                );
+
+                            if (d < minD) {
+                                minD = d;
+                                idx = pIdx;
+                            }
+                        });
+
+                        if (minD * 111000 > 50) {
+                            return;
+                        }
+
+                        window.trackPoints = pts;
+                        trackPoints = pts;
+
+                        const progressBar =
+                            document.getElementById('gpxProgressBar');
+
+                        if (progressBar) {
+                            progressBar.value = idx;
+                            progressBar.dispatchEvent(
+                                new Event('input', { bubbles: true })
+                            );
+                        }
+
+                        if (!hoverMarker) {
+                            hoverMarker =
+                                L.circleMarker(
+                                    [
+                                        pts[idx].lat,
+                                        pts[idx].lon
+                                    ],
+                                    {
+                                        radius: 7,
+                                        color: '#ffffff',
+                                        weight: 2,
+                                        fillColor: '#1a73e8',
+                                        fillOpacity: 1,
+                                        interactive: false
+                                    }
+                                ).addTo(map);
+
+                        } else if (!map.hasLayer(hoverMarker)) {
+                            hoverMarker.addTo(map);
+                        }
+
+                        hoverMarker
+                            .setLatLng([
+                                pts[idx].lat,
+                                pts[idx].lon
+                            ])
+                            .bringToFront();
+
+                        if (typeof showCustomPopup === 'function') {
+                            showCustomPopup(
+                                idx,
+                                "位置資訊",
+                                null
+                            );
+                        }
+                    });
+                }
             }
 
             window.trackPoints = this.targetTrack.points;
@@ -9061,6 +16912,7 @@ function addPointToTrack(latlng, useHistory = true) {
             }
 
             window.currentActiveIndex = this.routeIndex;
+
             loadRoute(this.routeIndex, null);
 
             if (typeof renderRouteInfo === 'function') {
@@ -9118,3 +16970,4438 @@ window.addEventListener('load', () => {
     } else {
     }
 });
+
+function cloneCustomRouteNames(customRouteNames) {
+    if (!customRouteNames || typeof customRouteNames !== "object") {
+        return null;
+    }
+
+    return JSON.parse(JSON.stringify(customRouteNames));
+}
+
+
+function rebuildAndRefreshManagedTrack(fileIdx, routeIdx, shouldSwitchToFile = false) {
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (!currentFile) return;
+
+    if (
+        typeof rebuildCombinedRouteForFile === "function" &&
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes.length > 0 &&
+        currentFile.routes[0] &&
+        currentFile.routes[0].isCombined === true
+    ) {
+        rebuildCombinedRouteForFile(currentFile);
+    }
+
+    
+    if (shouldSwitchToFile) {
+        if (
+            Array.isArray(currentFile.routes) &&
+            currentFile.routes.length > 0
+        ) {
+            if (routeIdx < 0 || routeIdx >= currentFile.routes.length) {
+                routeIdx = 0;
+            }
+        } else {
+            routeIdx = 0;
+        }
+
+        window.currentMultiIndex = fileIdx;
+        window.currentActiveIndex = routeIdx;
+
+        if (typeof syncDrawingGlobals === "function") {
+            syncDrawingGlobals(currentFile, routeIdx);
+        } else {
+            window.allTracks = currentFile.routes || [currentFile];
+            allTracks = window.allTracks;
+        }
+
+        if (typeof updateRouteSelectDropdown === "function") {
+            updateRouteSelectDropdown();
+        }
+
+        const routeSelect =
+            document.getElementById("routeSelect");
+
+        if (
+            routeSelect &&
+            routeSelect.options &&
+            routeSelect.options.length > routeIdx
+        ) {
+            routeSelect.value = String(routeIdx);
+        }
+
+        if (typeof loadRoute === "function") {
+            loadRoute(routeIdx);
+        }
+
+        if (typeof renderRouteInfo === "function") {
+            renderRouteInfo();
+        }
+
+        if (typeof renderWaypointsAndPeaks === "function") {
+            const routeForWpt =
+                currentFile.routes && currentFile.routes[routeIdx]
+                    ? currentFile.routes[routeIdx]
+                    : currentFile;
+
+            renderWaypointsAndPeaks(routeForWpt);
+        }
+
+        if (typeof syncProgressBarWithTrack === "function") {
+            syncProgressBarWithTrack(true);
+        }
+    }
+
+    if (typeof renderMultiGpxButtons === "function") {
+        renderMultiGpxButtons();
+    }
+
+    if (!window.gpxManagerExpanded) {
+        window.gpxManagerExpanded = {};
+    }
+
+    window.gpxManagerExpanded[fileIdx] = true;
+
+    if (typeof showGpxManagementModal === "function") {
+        showGpxManagementModal();
+    }
+
+    if (
+        typeof historyManager !== "undefined" &&
+        historyManager &&
+        typeof historyManager.updateUI === "function"
+    ) {
+        historyManager.updateUI();
+    }
+}
+
+window.deleteSubRoute = function(fileIdx, routeIdx, options = {}) {
+    const deleteOptions =
+        options && typeof options === "object"
+            ? options
+            : {};
+
+    const skipOpenGpxManager =
+        deleteOptions.skipOpenGpxManager === true;
+
+
+    const hideGpxManagerIfNeeded = function() {
+        if (!skipOpenGpxManager) return;
+
+        const gpxManageModal =
+            document.getElementById("gpxManageModal");
+
+        if (gpxManageModal) {
+            gpxManageModal.style.display = "none";
+        }
+    };
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (!currentFile) {
+        alert("找不到要刪除的路線");
+        return;
+    }
+
+    
+    let targetRoute = null;
+    let isFileRouteDelete = false;
+
+    if (
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes[routeIdx]
+    ) {
+        targetRoute =
+            currentFile.routes[routeIdx];
+
+    } else if (
+        currentFile.isDrawTrack === true ||
+        currentFile.isHandDrawRoute === true ||
+        (
+            Array.isArray(currentFile.points) &&
+            currentFile.points.length > 0
+        ) ||
+        (
+            Array.isArray(currentFile.segments) &&
+            currentFile.segments.length > 0
+        )
+    ) {
+        targetRoute =
+            currentFile;
+
+        routeIdx = 0;
+        isFileRouteDelete = true;
+    }
+
+    if (!targetRoute) {
+        alert("找不到要刪除的路線");
+        return;
+    }
+
+    if (targetRoute.isCombined === true) {
+        alert("結合路線不能刪除");
+        return;
+    }
+
+    const routeName =
+        targetRoute.displayName ||
+        targetRoute.routeDisplayName ||
+        targetRoute.name ||
+        "路線";
+
+    const activeFileBeforeDelete =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const activeRouteBeforeDelete =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    const customRouteNamesBefore =
+        typeof cloneCustomRouteNames === "function"
+            ? cloneCustomRouteNames(currentFile.customRouteNames)
+            : (
+                currentFile.customRouteNames
+                    ? JSON.parse(JSON.stringify(currentFile.customRouteNames))
+                    : null
+            );
+
+    const clonePoints = function(points) {
+        return Array.isArray(points)
+            ? points.map(function(p) {
+                return { ...p };
+            })
+            : [];
+    };
+
+    const cloneSegments = function(segments) {
+        return Array.isArray(segments)
+            ? segments.map(function(seg) {
+                return Array.isArray(seg)
+                    ? seg.map(function(p) {
+                        if (Array.isArray(p)) {
+                            return p.slice();
+                        }
+
+                        if (p && typeof p === "object") {
+                            return { ...p };
+                        }
+
+                        return p;
+                    })
+                    : [];
+            })
+            : [];
+    };
+
+    
+    const routesBeforeDelete =
+        Array.isArray(currentFile.routes)
+            ? currentFile.routes.slice()
+            : [];
+
+    const filePointsBefore =
+        clonePoints(currentFile.points);
+
+    const fileSegmentsBefore =
+        cloneSegments(currentFile.segments);
+
+    const targetPointsBefore =
+        clonePoints(targetRoute.points);
+
+    const targetSegmentsBefore =
+        cloneSegments(targetRoute.segments);
+
+    const fileLayerBefore =
+        currentFile.layer || null;
+
+    const fileFlagsBefore = {
+        isDrawTrack: currentFile.isDrawTrack,
+        isHandDrawRoute: currentFile.isHandDrawRoute,
+        isCombined: currentFile.isCombined,
+        isWaypointOnly: currentFile.isWaypointOnly,
+        routesDeletedByUser: currentFile._routesDeletedByUser
+    };
+
+    
+    let customRouteNamesAfter = null;
+
+    if (
+        !isFileRouteDelete &&
+        customRouteNamesBefore
+    ) {
+        customRouteNamesAfter = {};
+
+        Object.keys(customRouteNamesBefore).forEach(function(key) {
+            const oldIdx =
+                parseInt(key, 10);
+
+            if (!Number.isFinite(oldIdx)) return;
+
+            if (oldIdx < routeIdx) {
+                customRouteNamesAfter[oldIdx] =
+                    customRouteNamesBefore[key];
+
+            } else if (oldIdx > routeIdx) {
+                customRouteNamesAfter[oldIdx - 1] =
+                    customRouteNamesBefore[key];
+            }
+        });
+    }
+
+    const getRealRoutes = function(file) {
+        if (
+            !file ||
+            !Array.isArray(file.routes)
+        ) {
+            return [];
+        }
+
+        return file.routes.filter(function(route) {
+            if (!route) return false;
+            if (route.isCombined === true) return false;
+
+            return (
+                (Array.isArray(route.points) && route.points.length > 0) ||
+                (Array.isArray(route.segments) && route.segments.length > 0) ||
+                route.isDrawTrack === true ||
+                route.isHandDrawRoute === true ||
+                route.isMergedRoute === true
+            );
+        });
+    };
+
+    const clearMapWhenNoRoutes = function(file) {
+
+        if (
+            file &&
+            file.layer instanceof L.Polyline
+        ) {
+            if (
+                typeof map !== "undefined" &&
+                map.hasLayer(file.layer)
+            ) {
+                map.removeLayer(file.layer);
+            }
+
+            file.layer = null;
+        }
+
+        if (
+            typeof polyline !== "undefined" &&
+            polyline &&
+            typeof polyline.setLatLngs === "function"
+        ) {
+            polyline.setLatLngs([]);
+        }
+
+        if (Array.isArray(window.routePreviewLayers)) {
+            window.routePreviewLayers.forEach(function(layer) {
+                if (
+                    layer &&
+                    typeof map !== "undefined" &&
+                    map.hasLayer(layer)
+                ) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            window.routePreviewLayers = [];
+        }
+
+        if (
+            typeof markers !== "undefined" &&
+            Array.isArray(markers)
+        ) {
+            markers.forEach(function(m) {
+                if (
+                    m &&
+                    typeof map !== "undefined" &&
+                    map.hasLayer(m)
+                ) {
+                    map.removeLayer(m);
+                }
+            });
+
+            markers = [];
+        }
+
+        if (
+            typeof wptMarkers !== "undefined" &&
+            Array.isArray(wptMarkers)
+        ) {
+            wptMarkers.forEach(function(m) {
+                if (
+                    m &&
+                    typeof map !== "undefined" &&
+                    map.hasLayer(m)
+                ) {
+                    map.removeLayer(m);
+                }
+            });
+
+            wptMarkers = [];
+        }
+
+        if (
+            typeof hoverMarker !== "undefined" &&
+            hoverMarker &&
+            typeof map !== "undefined" &&
+            map.hasLayer(hoverMarker)
+        ) {
+            map.removeLayer(hoverMarker);
+        }
+
+        if (typeof hoverMarker !== "undefined") {
+            hoverMarker = null;
+        }
+
+        if (
+            window.activeFocusCircle &&
+            typeof map !== "undefined" &&
+            map.hasLayer(window.activeFocusCircle)
+        ) {
+            map.removeLayer(window.activeFocusCircle);
+            window.activeFocusCircle = null;
+        }
+
+        const routeSelect =
+            document.getElementById("routeSelect");
+
+        if (routeSelect) {
+            routeSelect.innerHTML = "";
+            routeSelect.value = "";
+        }
+
+        const routeSelectContainer =
+            document.getElementById("routeSelectContainer");
+
+        if (routeSelectContainer) {
+            routeSelectContainer.style.display = "none";
+        }
+
+        const routeSummary =
+            document.getElementById("routeSummary");
+
+        if (routeSummary) {
+            routeSummary.innerHTML =
+                file &&
+                Array.isArray(file.waypoints) &&
+                file.waypoints.length > 0
+                    ? "目前只有航點，沒有路線資料"
+                    : "目前沒有路線資料";
+        }
+
+        if (window.chart) {
+            window.chart.destroy();
+            window.chart = null;
+        }
+
+        const progressBar =
+            document.getElementById("gpxProgressBar");
+
+        if (progressBar) {
+            progressBar.value = 0;
+            progressBar.max = 0;
+        }
+
+        if (typeof trackPoints !== "undefined") {
+            trackPoints = [];
+        }
+
+        window.trackPoints = [];
+    };
+
+    const cleanupFileAfterDelete = function(file) {
+        if (!file) return;
+
+        
+        if (isFileRouteDelete) {
+            file.points = [];
+            file.segments = [];
+
+            if (Array.isArray(file.routes)) {
+                file.routes = [];
+            }
+
+            file.isDrawTrack = false;
+            file.isHandDrawRoute = false;
+            file.isCombined = false;
+
+            file.isWaypointOnly =
+                Array.isArray(file.waypoints) &&
+                file.waypoints.length > 0;
+
+            file._routesDeletedByUser = true;
+
+            window.currentActiveIndex = 0;
+
+            window.allTracks = [];
+
+            if (typeof allTracks !== "undefined") {
+                allTracks = [];
+            }
+
+            clearMapWhenNoRoutes(file);
+            return;
+        }
+
+        if (!Array.isArray(file.routes)) {
+            return;
+        }
+
+        const realRoutes =
+            getRealRoutes(file);
+
+        
+        if (realRoutes.length === 0) {
+            file.routes = [];
+            file.points = [];
+            file.segments = [];
+
+            if (
+                file.layer instanceof L.Polyline
+            ) {
+                if (
+                    typeof map !== "undefined" &&
+                    map.hasLayer(file.layer)
+                ) {
+                    map.removeLayer(file.layer);
+                }
+
+                file.layer = null;
+            }
+
+            file.isDrawTrack = false;
+            file.isHandDrawRoute = false;
+            file.isCombined = false;
+
+            file.isWaypointOnly =
+                Array.isArray(file.waypoints) &&
+                file.waypoints.length > 0;
+
+            file._routesDeletedByUser = true;
+
+            window.currentActiveIndex = 0;
+
+            window.allTracks = [];
+
+            if (typeof allTracks !== "undefined") {
+                allTracks = [];
+            }
+
+            clearMapWhenNoRoutes(file);
+        }
+    };
+
+    const getNextRouteIndexAfterDelete = function() {
+        let nextIdx =
+            activeRouteBeforeDelete;
+
+        if (activeFileBeforeDelete !== fileIdx) {
+            return nextIdx;
+        }
+
+        if (
+            !Array.isArray(currentFile.routes) ||
+            currentFile.routes.length === 0
+        ) {
+            return 0;
+        }
+
+        if (nextIdx === routeIdx) {
+            nextIdx = 0;
+        } else if (nextIdx > routeIdx) {
+            nextIdx--;
+        }
+
+        if (nextIdx < 0 || nextIdx >= currentFile.routes.length) {
+            nextIdx = 0;
+        }
+
+        return nextIdx;
+    };
+
+    const doDeleteWithHistory = function() {
+        const command = {
+            managedFileIndex: fileIdx,
+            routeIndex: routeIdx,
+            skipAutoLoadRouteAfterUndo: true,
+
+            do: function() {
+                if (!currentFile) {
+                    return;
+                }
+
+                if (isFileRouteDelete) {
+                    targetRoute.points = [];
+                    targetRoute.segments = [];
+
+                } else {
+                    if (!Array.isArray(currentFile.routes)) {
+                        return;
+                    }
+
+                    
+                    let deleteIdx =
+                        currentFile.routes.indexOf(targetRoute);
+
+                    if (deleteIdx === -1) {
+                        if (currentFile.routes[routeIdx] === targetRoute) {
+                            deleteIdx = routeIdx;
+                        }
+                    }
+
+                    if (deleteIdx === -1) {
+                        return;
+                    }
+
+                    currentFile.routes.splice(deleteIdx, 1);
+
+                    if (customRouteNamesAfter) {
+                        currentFile.customRouteNames =
+                            typeof cloneCustomRouteNames === "function"
+                                ? cloneCustomRouteNames(customRouteNamesAfter)
+                                : JSON.parse(JSON.stringify(customRouteNamesAfter));
+
+                    } else if (currentFile.customRouteNames) {
+                        delete currentFile.customRouteNames;
+                    }
+                }
+
+                cleanupFileAfterDelete(currentFile);
+
+                const shouldSwitchToFile =
+                    activeFileBeforeDelete === fileIdx;
+
+                const nextIdx =
+                    getNextRouteIndexAfterDelete();
+
+                
+                if (
+                    currentFile &&
+                    (
+                        !Array.isArray(currentFile.routes) ||
+                        currentFile.routes.length === 0
+                    )
+                ) {
+                    window.currentMultiIndex = fileIdx;
+                    window.currentActiveIndex = 0;
+
+                    if (typeof renderMultiGpxButtons === "function") {
+                        renderMultiGpxButtons();
+                    }
+
+                    if (typeof renderWaypointsAndPeaks === "function") {
+                        renderWaypointsAndPeaks(currentFile);
+                    }
+
+                    if (typeof window.refreshWaypointMarkersOnly === "function") {
+                        window.refreshWaypointMarkersOnly(0, null);
+                    }
+
+                    
+                    if (
+                        !skipOpenGpxManager &&
+                        typeof showGpxManagementModal === "function"
+                    ) {
+                        showGpxManagementModal();
+                    }
+
+                    hideGpxManagerIfNeeded();
+
+                    if (
+                        typeof historyManager !== "undefined" &&
+                        historyManager &&
+                        typeof historyManager.updateUI === "function"
+                    ) {
+                        historyManager.updateUI();
+                    }
+
+                    return;
+                }
+
+                if (
+                    typeof rebuildAndRefreshManagedTrack === "function"
+                ) {
+                    rebuildAndRefreshManagedTrack(
+                        fileIdx,
+                        nextIdx,
+                        shouldSwitchToFile
+                    );
+
+                    hideGpxManagerIfNeeded();
+
+                } else if (
+                    typeof loadRoute === "function" &&
+                    shouldSwitchToFile
+                ) {
+                    loadRoute(nextIdx, null);
+
+                    hideGpxManagerIfNeeded();
+                }
+            },
+
+            undo: function() {
+                if (!currentFile) {
+                    return;
+                }
+
+                currentFile.routes =
+                    routesBeforeDelete.slice();
+
+                currentFile.points =
+                    clonePoints(filePointsBefore);
+
+                currentFile.segments =
+                    cloneSegments(fileSegmentsBefore);
+
+                
+                if (isFileRouteDelete) {
+                    targetRoute.points =
+                        clonePoints(targetPointsBefore);
+
+                    targetRoute.segments =
+                        cloneSegments(targetSegmentsBefore);
+
+                    currentFile.points =
+                        targetRoute.points;
+
+                    currentFile.segments =
+                        targetRoute.segments;
+                }
+
+                currentFile.layer =
+                    fileLayerBefore;
+
+                currentFile.isDrawTrack =
+                    fileFlagsBefore.isDrawTrack;
+
+                currentFile.isHandDrawRoute =
+                    fileFlagsBefore.isHandDrawRoute;
+
+                currentFile.isCombined =
+                    fileFlagsBefore.isCombined;
+
+                currentFile.isWaypointOnly =
+                    fileFlagsBefore.isWaypointOnly;
+
+                if (fileFlagsBefore.routesDeletedByUser === undefined) {
+                    delete currentFile._routesDeletedByUser;
+                } else {
+                    currentFile._routesDeletedByUser =
+                        fileFlagsBefore.routesDeletedByUser;
+                }
+
+                if (customRouteNamesBefore) {
+                    currentFile.customRouteNames =
+                        typeof cloneCustomRouteNames === "function"
+                            ? cloneCustomRouteNames(customRouteNamesBefore)
+                            : JSON.parse(JSON.stringify(customRouteNamesBefore));
+
+                } else if (currentFile.customRouteNames) {
+                    delete currentFile.customRouteNames;
+                }
+
+                const shouldSwitchToFile =
+                    activeFileBeforeDelete === fileIdx;
+
+                
+                if (
+                    typeof rebuildAndRefreshManagedTrack === "function" &&
+                    !isFileRouteDelete
+                ) {
+                    rebuildAndRefreshManagedTrack(
+                        fileIdx,
+                        routeIdx,
+                        shouldSwitchToFile
+                    );
+
+                    hideGpxManagerIfNeeded();
+
+                } else if (
+                    typeof syncDrawingGlobals === "function" &&
+                    isFileRouteDelete
+                ) {
+                    syncDrawingGlobals(currentFile, 0);
+
+                    if (typeof loadRoute === "function") {
+                        loadRoute(0, null);
+                    }
+
+                    if (typeof renderRouteInfo === "function") {
+                        renderRouteInfo();
+                    }
+
+                    if (typeof renderMultiGpxButtons === "function") {
+                        renderMultiGpxButtons();
+                    }
+
+                    hideGpxManagerIfNeeded();
+
+                    if (
+                        typeof historyManager !== "undefined" &&
+                        historyManager &&
+                        typeof historyManager.updateUI === "function"
+                    ) {
+                        historyManager.updateUI();
+                    }
+
+                } else if (
+                    typeof loadRoute === "function" &&
+                    shouldSwitchToFile
+                ) {
+                    loadRoute(0, null);
+
+                    hideGpxManagerIfNeeded();
+                }
+            }
+        };
+
+        if (
+            typeof historyManager !== "undefined" &&
+            historyManager &&
+            typeof historyManager.execute === "function"
+        ) {
+            historyManager.execute(command);
+        } else {
+            command.do();
+        }
+    };
+
+    if (typeof window.showAppConfirm === "function") {
+        window.showAppConfirm(
+            "刪除路線",
+            "確定要刪除「" + routeName + "」嗎？<br>航點會保留。",
+            doDeleteWithHistory,
+            null,
+            "刪除"
+        );
+
+        const confirmModal =
+            document.getElementById("deleteConfirmModal") ||
+            document.getElementById("appConfirmModal") ||
+            document.querySelector(".app-confirm-modal");
+
+        const gpxManageModal =
+            document.getElementById("gpxManageModal");
+
+        if (confirmModal) {
+            confirmModal.style.setProperty(
+                "z-index",
+                "2147483647",
+                "important"
+            );
+        }
+
+        if (gpxManageModal) {
+            gpxManageModal.style.setProperty(
+                "z-index",
+                "2147483645",
+                "important"
+            );
+        }
+
+    } else {
+        if (confirm("確定要刪除「" + routeName + "」嗎？航點會保留。")) {
+            doDeleteWithHistory();
+        }
+    }
+};
+
+window.gpxMergeSelections = window.gpxMergeSelections || {};
+
+window.toggleMergeRouteSelection = function(fileIdx, routeIdx) {
+    window.gpxMergeSelections = window.gpxMergeSelections || {};
+    window.gpxMergeOrder = window.gpxMergeOrder || {};
+
+    if (!window.gpxMergeSelections[fileIdx]) {
+        window.gpxMergeSelections[fileIdx] = {};
+    }
+
+    if (!Array.isArray(window.gpxMergeOrder[fileIdx])) {
+        window.gpxMergeOrder[fileIdx] = [];
+    }
+
+    const currentFile =
+        window.multiGpxStack &&
+        window.multiGpxStack[fileIdx];
+
+    if (
+        !currentFile ||
+        !Array.isArray(currentFile.routes) ||
+        !currentFile.routes[routeIdx]
+    ) {
+        return;
+    }
+
+    const route =
+        currentFile.routes[routeIdx];
+
+    if (
+        route.isCombined === true ||
+        !(
+            (Array.isArray(route.points) && route.points.length > 0) ||
+            (Array.isArray(route.segments) && route.segments.length > 0)
+        )
+    ) {
+        return;
+    }
+
+    const isSelected =
+        window.gpxMergeSelections[fileIdx][routeIdx] === true;
+
+    if (isSelected) {
+        
+        delete window.gpxMergeSelections[fileIdx][routeIdx];
+
+        window.gpxMergeOrder[fileIdx] =
+            window.gpxMergeOrder[fileIdx].filter(function(idx) {
+                return Number(idx) !== Number(routeIdx);
+            });
+
+    } else {
+        
+        window.gpxMergeSelections[fileIdx][routeIdx] = true;
+
+        if (
+            !window.gpxMergeOrder[fileIdx]
+                .map(Number)
+                .includes(Number(routeIdx))
+        ) {
+            window.gpxMergeOrder[fileIdx].push(Number(routeIdx));
+        }
+    }
+
+    if (typeof showGpxManagementModal === "function") {
+        const scrollBodyBefore =
+            document.getElementById("gpxManageScrollBody");
+
+        const oldScrollTop =
+            scrollBodyBefore
+                ? scrollBodyBefore.scrollTop
+                : 0;
+
+        showGpxManagementModal();
+
+        setTimeout(function() {
+            const scrollBodyAfter =
+                document.getElementById("gpxManageScrollBody");
+
+            if (scrollBodyAfter) {
+                scrollBodyAfter.scrollTop =
+                    oldScrollTop;
+            }
+        }, 0);
+    }
+};
+
+
+window.clearMergeRouteSelection = function(fileIdx) {
+    window.gpxMergeSelections = window.gpxMergeSelections || {};
+    window.gpxMergeOrder = window.gpxMergeOrder || {};
+
+    window.gpxMergeSelections[fileIdx] = {};
+    window.gpxMergeOrder[fileIdx] = [];
+
+    if (typeof showGpxManagementModal === "function") {
+        const scrollBodyBefore =
+            document.getElementById("gpxManageScrollBody");
+
+        const oldScrollTop =
+            scrollBodyBefore
+                ? scrollBodyBefore.scrollTop
+                : 0;
+
+        showGpxManagementModal();
+
+        setTimeout(function() {
+            const scrollBodyAfter =
+                document.getElementById("gpxManageScrollBody");
+
+            if (scrollBodyAfter) {
+                scrollBodyAfter.scrollTop =
+                    oldScrollTop;
+            }
+        }, 0);
+    }
+};
+
+
+window.mergeSelectedSubRoutes = function(fileIdx) {
+    if (window.event) {
+        window.event.stopPropagation();
+        window.event.preventDefault();
+    }
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (
+        !currentFile ||
+        !Array.isArray(currentFile.routes)
+    ) {
+        alert("找不到要合併的 GPX");
+        return;
+    }
+
+    const selectedMap =
+        window.gpxMergeSelections &&
+        window.gpxMergeSelections[fileIdx]
+            ? window.gpxMergeSelections[fileIdx]
+            : {};
+
+    const orderList =
+        window.gpxMergeOrder &&
+        Array.isArray(window.gpxMergeOrder[fileIdx])
+            ? window.gpxMergeOrder[fileIdx].map(Number)
+            : [];
+
+    
+    let selectedIndexes =
+        orderList
+            .filter(function(idx, pos, arr) {
+                return (
+                    Number.isFinite(idx) &&
+                    arr.indexOf(idx) === pos &&
+                    selectedMap[idx] === true &&
+                    currentFile.routes[idx]
+                );
+            });
+
+    Object.keys(selectedMap).forEach(function(key) {
+        const idx =
+            parseInt(key, 10);
+
+        if (
+            Number.isFinite(idx) &&
+            selectedMap[idx] === true &&
+            currentFile.routes[idx] &&
+            !selectedIndexes.includes(idx)
+        ) {
+            selectedIndexes.push(idx);
+        }
+    });
+
+    const selectedRoutes =
+        selectedIndexes
+            .map(function(idx) {
+                return currentFile.routes[idx];
+            })
+            .filter(function(route) {
+                if (!route) return false;
+                if (route.isCombined === true) return false;
+
+                return (
+                    (Array.isArray(route.points) && route.points.length > 0) ||
+                    (Array.isArray(route.segments) && route.segments.length > 0)
+                );
+            });
+
+    if (selectedRoutes.length < 2) {
+        alert("請至少選擇兩條有軌跡資料的子路線");
+        return;
+    }
+
+    
+    const getRouteFirstPoint = function(route) {
+        if (
+            route &&
+            Array.isArray(route.points) &&
+            route.points.length > 0
+        ) {
+            return route.points[0];
+        }
+
+        if (
+            route &&
+            Array.isArray(route.segments) &&
+            route.segments.length > 0
+        ) {
+            const firstSeg =
+                route.segments[0];
+
+            if (
+                Array.isArray(firstSeg) &&
+                firstSeg.length > 0
+            ) {
+                const p =
+                    firstSeg[0];
+
+                if (Array.isArray(p)) {
+                    return {
+                        lat: p[0],
+                        lon: p[1]
+                    };
+                }
+
+                if (p && typeof p === "object") {
+                    return {
+                        lat: p.lat,
+                        lon: p.lon !== undefined ? p.lon : p.lng
+                    };
+                }
+            }
+        }
+
+        return null;
+    };
+
+    const getRouteLastPoint = function(route) {
+        if (
+            route &&
+            Array.isArray(route.points) &&
+            route.points.length > 0
+        ) {
+            return route.points[route.points.length - 1];
+        }
+
+        if (
+            route &&
+            Array.isArray(route.segments) &&
+            route.segments.length > 0
+        ) {
+            const lastSeg =
+                route.segments[route.segments.length - 1];
+
+            if (
+                Array.isArray(lastSeg) &&
+                lastSeg.length > 0
+            ) {
+                const p =
+                    lastSeg[lastSeg.length - 1];
+
+                if (Array.isArray(p)) {
+                    return {
+                        lat: p[0],
+                        lon: p[1]
+                    };
+                }
+
+                if (p && typeof p === "object") {
+                    return {
+                        lat: p.lat,
+                        lon: p.lon !== undefined ? p.lon : p.lng
+                    };
+                }
+            }
+        }
+
+        return null;
+    };
+
+    const getRouteNameForMergeWarning = function(route, fallbackIndex) {
+        return (
+            route.routeDisplayName ||
+            route.displayName ||
+            route.name ||
+            "路線 " + fallbackIndex
+        );
+    };
+
+    const longConnectionWarnings = [];
+    const warningDistanceMeters = 500;
+
+    for (let i = 1; i < selectedRoutes.length; i++) {
+        const prevRoute =
+            selectedRoutes[i - 1];
+
+        const nextRoute =
+            selectedRoutes[i];
+
+        const prevEnd =
+            getRouteLastPoint(prevRoute);
+
+        const nextStart =
+            getRouteFirstPoint(nextRoute);
+
+        if (!prevEnd || !nextStart) continue;
+
+        let distMeters = 0;
+
+        if (typeof calculateDistance === "function") {
+            distMeters =
+                calculateDistance(
+                    Number(prevEnd.lat),
+                    Number(prevEnd.lon),
+                    Number(nextStart.lat),
+                    Number(nextStart.lon)
+                ) * 1000;
+        } else {
+            distMeters =
+                Math.sqrt(
+                    Math.pow(Number(prevEnd.lat) - Number(nextStart.lat), 2) +
+                    Math.pow(Number(prevEnd.lon) - Number(nextStart.lon), 2)
+                ) * 111000;
+        }
+
+        if (distMeters > warningDistanceMeters) {
+            longConnectionWarnings.push({
+                fromName:
+                    getRouteNameForMergeWarning(prevRoute, i),
+                toName:
+                    getRouteNameForMergeWarning(nextRoute, i + 1),
+                distance:
+                    distMeters
+            });
+        }
+    }
+
+    
+    const runMerge = function() {
+
+        
+        const sourceRouteIndexes =
+            selectedIndexes.slice();
+
+        const sourceRouteIds =
+            selectedIndexes
+                .map(function(idx) {
+                    const route =
+                        currentFile.routes[idx];
+
+                    return route && route.id
+                        ? route.id
+                        : null;
+                })
+                .filter(function(id) {
+                    return !!id;
+                });
+
+        let mergedSegments = [];
+        let rawSegmentPointGroups = [];
+
+        
+        selectedRoutes.forEach(function(route) {
+            const pts =
+                Array.isArray(route.points)
+                    ? route.points
+                    : [];
+
+            if (
+                Array.isArray(route.segments) &&
+                route.segments.length > 0
+            ) {
+                route.segments.forEach(function(seg) {
+                    if (!Array.isArray(seg) || seg.length === 0) return;
+
+                    const segmentLatLngs = [];
+                    const segmentPoints = [];
+
+                    seg.forEach(function(latlng) {
+                        let lat;
+                        let lon;
+
+                        if (Array.isArray(latlng)) {
+                            lat = latlng[0];
+                            lon = latlng[1];
+
+                        } else if (latlng && typeof latlng === "object") {
+                            lat = latlng.lat;
+                            lon =
+                                latlng.lon !== undefined
+                                    ? latlng.lon
+                                    : latlng.lng;
+                        }
+
+                        if (
+                            typeof lat === "number" &&
+                            typeof lon === "number" &&
+                            Number.isFinite(lat) &&
+                            Number.isFinite(lon)
+                        ) {
+                            segmentLatLngs.push([lat, lon]);
+
+                            const matchedPoint =
+                                pts.find(function(p) {
+                                    return (
+                                        p &&
+                                        Math.abs(Number(p.lat) - Number(lat)) < 0.0000001 &&
+                                        Math.abs(Number(p.lon) - Number(lon)) < 0.0000001
+                                    );
+                                });
+
+                            segmentPoints.push(
+                                matchedPoint
+                                    ? { ...matchedPoint }
+                                    : {
+                                        lat: lat,
+                                        lon: lon,
+                                        ele: 0,
+                                        time: null,
+                                        timeLocal: "",
+                                        distance: 0
+                                    }
+                            );
+                        }
+                    });
+
+                    if (segmentLatLngs.length > 0) {
+                        mergedSegments.push(segmentLatLngs);
+                        rawSegmentPointGroups.push(segmentPoints);
+                    }
+                });
+
+            } else if (pts.length > 0) {
+                const segmentLatLngs =
+                    pts.map(function(p) {
+                        return [p.lat, p.lon];
+                    });
+
+                mergedSegments.push(segmentLatLngs);
+
+                rawSegmentPointGroups.push(
+                    pts.map(function(p) {
+                        return { ...p };
+                    })
+                );
+            }
+        });
+
+        if (rawSegmentPointGroups.length === 0) {
+            alert("沒有可合併的軌跡點");
+            return;
+        }
+
+        
+        let totalDist = 0;
+        let recalculatedPoints = [];
+        let recalculatedSegments = [];
+
+        rawSegmentPointGroups.forEach(function(segmentPoints) {
+            const recalculatedSegment = [];
+
+            segmentPoints.forEach(function(p, idx) {
+                if (idx > 0) {
+                    const prev =
+                        segmentPoints[idx - 1];
+
+                    if (typeof calculateDistance === "function") {
+                        totalDist += calculateDistance(
+                            prev.lat,
+                            prev.lon,
+                            p.lat,
+                            p.lon
+                        );
+                    }
+                }
+
+                const newPoint = {
+                    ...p,
+                    distance: totalDist
+                };
+
+                recalculatedPoints.push(newPoint);
+                recalculatedSegment.push([
+                    newPoint.lat,
+                    newPoint.lon
+                ]);
+            });
+
+            if (recalculatedSegment.length > 0) {
+                recalculatedSegments.push(recalculatedSegment);
+            }
+        });
+
+        let mergeNo = 1;
+
+        currentFile.routes.forEach(function(route) {
+            if (!route) return;
+
+            const name =
+                route.routeDisplayName ||
+                route.displayName ||
+                route.name ||
+                "";
+
+            const match =
+                String(name).match(/^合併路線\s*(\d+)?$/);
+
+            if (match) {
+                const n =
+                    match[1]
+                        ? parseInt(match[1], 10)
+                        : 1;
+
+                if (Number.isFinite(n)) {
+                    mergeNo =
+                        Math.max(mergeNo, n + 1);
+                }
+            }
+        });
+
+        const mergedName =
+            mergeNo === 1
+                ? "合併路線"
+                : "合併路線 " + mergeNo;
+
+        const continuousMergedSegment =
+            recalculatedPoints.map(function(p) {
+                return [p.lat, p.lon];
+            });
+					
+				const mergedWaypoints =
+				    Array.isArray(currentFile.waypoints)
+				        ? currentFile.waypoints.filter(function(wpt) {
+            if (!wpt) return false;
+
+            
+            return sourceRouteIndexes.some(function(sourceRouteIdx) {
+                const sourceRoute =
+                    currentFile.routes &&
+                    currentFile.routes[sourceRouteIdx]
+                        ? currentFile.routes[sourceRouteIdx]
+                        : null;
+
+                if (!sourceRoute) {
+                    return false;
+                }
+
+                if (typeof window.isWaypointVisibleOnCurrentRoute === "function") {
+                    return window.isWaypointVisibleOnCurrentRoute(
+                        wpt,
+                        sourceRouteIdx,
+                        sourceRoute
+                    );
+                }
+
+                
+                if (wpt.belongsToRoute !== undefined) {
+                    return Number(wpt.belongsToRoute) === Number(sourceRouteIdx);
+                }
+
+                return false;
+            });
+        })
+        : [];
+        
+        const mergedRoute = {
+            id: "merged_route_" + Date.now(),
+            name: mergedName,
+            displayName: mergedName,
+            routeDisplayName: mergedName,
+            fileName: currentFile.fileName || currentFile.name || "GPX",
+            color: currentFile.color || "#0000FF",
+
+            
+            points: recalculatedPoints,
+
+            
+            segments: [
+                continuousMergedSegment
+            ],
+
+            
+            originalMergedSegments: recalculatedSegments,
+
+						waypoints: mergedWaypoints,
+
+            visible: true,
+            isCombined: false,
+            isDrawTrack: false,
+            isHandDrawRoute: false,
+						isMergedRoute: true,
+						
+						
+						useOwnWaypointsOnly: true,
+						
+						sourceRouteIndexes: sourceRouteIndexes,
+						sourceRouteIds: sourceRouteIds
+        };
+
+        const activeFileBeforeMerge =
+            typeof window.currentMultiIndex === "number"
+                ? window.currentMultiIndex
+                : 0;
+
+        const activeRouteBeforeMerge =
+            typeof window.currentActiveIndex === "number"
+                ? window.currentActiveIndex
+                : 0;
+
+        const selectionSnapshot =
+            JSON.parse(JSON.stringify(selectedMap || {}));
+
+        const orderSnapshot =
+            window.gpxMergeOrder &&
+            Array.isArray(window.gpxMergeOrder[fileIdx])
+                ? window.gpxMergeOrder[fileIdx].slice()
+                : [];
+
+        const command = {
+            managedFileIndex: fileIdx,
+            skipAutoLoadRouteAfterUndo: true,
+
+            do: function() {
+                if (
+                    !currentFile ||
+                    !Array.isArray(currentFile.routes)
+                ) {
+                    return;
+                }
+
+                if (!currentFile.routes.includes(mergedRoute)) {
+                    currentFile.routes.push(mergedRoute);
+                }
+
+                const mergedRouteIdx =
+                    currentFile.routes.indexOf(mergedRoute);
+
+                if (!window.gpxMergeSelections) {
+                    window.gpxMergeSelections = {};
+                }
+
+                if (!window.gpxMergeOrder) {
+                    window.gpxMergeOrder = {};
+                }
+
+                window.gpxMergeSelections[fileIdx] = {};
+                window.gpxMergeOrder[fileIdx] = [];
+
+                const shouldSwitchToFile =
+                    activeFileBeforeMerge === fileIdx;
+
+                rebuildAndRefreshManagedTrack(
+                    fileIdx,
+                    mergedRouteIdx,
+                    shouldSwitchToFile
+                );
+
+                if (shouldSwitchToFile) {
+                    const routeForWpt =
+                        currentFile.routes &&
+                        currentFile.routes[mergedRouteIdx]
+                            ? currentFile.routes[mergedRouteIdx]
+                            : mergedRoute;
+
+                    if (typeof renderWaypointsAndPeaks === "function") {
+                        renderWaypointsAndPeaks(routeForWpt);
+                    }
+
+                    if (typeof updateWptIconStatus === "function") {
+                        updateWptIconStatus();
+                    }
+                }
+            },
+
+            undo: function() {
+                if (
+                    !currentFile ||
+                    !Array.isArray(currentFile.routes)
+                ) {
+                    return;
+                }
+
+                const idx =
+                    currentFile.routes.indexOf(mergedRoute);
+
+                if (idx > -1) {
+                    currentFile.routes.splice(idx, 1);
+                }
+
+                if (!window.gpxMergeSelections) {
+                    window.gpxMergeSelections = {};
+                }
+
+                if (!window.gpxMergeOrder) {
+                    window.gpxMergeOrder = {};
+                }
+
+                window.gpxMergeSelections[fileIdx] =
+                    JSON.parse(JSON.stringify(selectionSnapshot));
+
+                window.gpxMergeOrder[fileIdx] =
+                    orderSnapshot.slice();
+
+                const shouldSwitchToFile =
+                    activeFileBeforeMerge === fileIdx;
+
+                let routeIdxToShow =
+                    activeRouteBeforeMerge;
+
+                if (
+                    !Array.isArray(currentFile.routes) ||
+                    currentFile.routes.length === 0
+                ) {
+                    routeIdxToShow = 0;
+                } else if (
+                    routeIdxToShow < 0 ||
+                    routeIdxToShow >= currentFile.routes.length
+                ) {
+                    routeIdxToShow = 0;
+                }
+
+                rebuildAndRefreshManagedTrack(
+                    fileIdx,
+                    routeIdxToShow,
+                    shouldSwitchToFile
+                );
+
+                if (shouldSwitchToFile) {
+                    const routeForWpt =
+                        currentFile.routes &&
+                        currentFile.routes[routeIdxToShow]
+                            ? currentFile.routes[routeIdxToShow]
+                            : currentFile;
+
+                    if (typeof renderWaypointsAndPeaks === "function") {
+                        renderWaypointsAndPeaks(routeForWpt);
+                    }
+
+                    if (typeof updateWptIconStatus === "function") {
+                        updateWptIconStatus();
+                    }
+                }
+            }
+        };
+
+        if (
+            typeof historyManager !== "undefined" &&
+            historyManager &&
+            typeof historyManager.execute === "function"
+        ) {
+            historyManager.execute(command);
+        } else {
+            command.do();
+        }
+    };
+
+    
+    if (longConnectionWarnings.length > 0) {
+        const warningHtml =
+            "偵測到合併路線之間距離較遠，<br>匯出後可能會出現長直線：<br><br>" +
+            longConnectionWarnings.map(function(item, idx) {
+								 return (
+								    '<span style="font-weight:700; color:#0b3d91;">「' +
+								    item.fromName +
+								    '」 → 「' +
+								    item.toName +
+								    '」約 ' +
+								    item.distance.toFixed(0) +
+								    ' m</span>'
+								);
+            }).join("<br>") +
+            "<br><br>建議先確認合併順序，或反轉其中一條路線。<br>仍要合併嗎？";
+
+				if (typeof window.showAppConfirm === "function") {
+				    window.showAppConfirm(
+				        "合併路線提醒",
+				        warningHtml,
+				        runMerge,
+				        null,
+				        "仍要合併"
+				    );
+				
+				    
+				    setTimeout(function() {
+				        const confirmModal =
+				            document.getElementById("deleteConfirmModal") ||
+				            document.getElementById("appConfirmModal") ||
+				            document.querySelector(".app-confirm-modal");
+				
+				        const gpxManageModal =
+				            document.getElementById("gpxManageModal");
+				
+				        const searchModal =
+				            document.getElementById("searchModal");
+				
+				        const renameModal =
+				            document.getElementById("renameModal");
+				
+				        const coordModal =
+				            document.getElementById("coordModal");
+				
+				        const wptEditModal =
+				            document.getElementById("wptEditModal");
+				
+				        
+				        const fsElement =
+				            document.fullscreenElement ||
+				            document.webkitFullscreenElement ||
+				            document.mozFullScreenElement ||
+				            document.msFullscreenElement;
+				
+				        const mapEl =
+				            document.getElementById("map");
+				
+				        const isIphoneFakeFullscreen =
+				            document.body.classList.contains("iphone-fullscreen");
+				
+				        if (
+				            confirmModal &&
+				            fsElement &&
+				            confirmModal.parentElement !== fsElement
+				        ) {
+				            fsElement.appendChild(confirmModal);
+				        }
+				
+				        if (
+				            confirmModal &&
+				            !fsElement &&
+				            isIphoneFakeFullscreen &&
+				            mapEl &&
+				            confirmModal.parentElement !== mapEl
+				        ) {
+				            mapEl.appendChild(confirmModal);
+				        }
+				
+				        
+				        [
+				            gpxManageModal,
+				            searchModal,
+				            renameModal,
+				            coordModal,
+				            wptEditModal
+				        ].forEach(function(modal) {
+				            if (!modal) return;
+				
+				            modal.style.setProperty(
+				                "z-index",
+				                "2147483644",
+				                "important"
+				            );
+				        });
+				
+				        
+				        if (confirmModal) {
+				            confirmModal.style.setProperty(
+				                "position",
+				                "fixed",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "top",
+				                "0",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "left",
+				                "0",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "width",
+				                "100vw",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "height",
+				                "100vh",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "z-index",
+				                "2147483647",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "display",
+				                "flex",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "justify-content",
+				                "center",
+				                "important"
+				            );
+				
+				            confirmModal.style.setProperty(
+				                "align-items",
+				                "center",
+				                "important"
+				            );
+				
+				            
+				            const confirmContent =
+				                confirmModal.firstElementChild;
+				
+				            if (confirmContent) {
+				                confirmContent.style.setProperty(
+				                    "position",
+				                    "relative",
+				                    "important"
+				                );
+				
+				                confirmContent.style.setProperty(
+				                    "z-index",
+				                    "2147483647",
+				                    "important"
+				                );
+				            }
+				        }
+				    }, 30);
+				
+				} else {
+            const warningText =
+                "偵測到合併路線之間距離較遠，匯出後可能會出現長直線。\n\n" +
+                longConnectionWarnings.map(function(item, idx) {
+                    return (
+                        (idx + 1) + ". 「" +
+                        item.fromName +
+                        "」 → 「" +
+                        item.toName +
+                        "」約 " +
+                        item.distance.toFixed(0) +
+                        " m"
+                    );
+                }).join("\n") +
+                "\n\n建議先確認合併順序，或反轉其中一條路線。\n\n仍要合併嗎？";
+
+            if (confirm(warningText)) {
+                runMerge();
+            }
+        }
+
+        return;
+    }
+
+    runMerge();
+};
+
+window.reverseSubRoute = function(fileIdx, routeIdx, options = {}) {
+
+    const reverseOptions =
+        options && typeof options === "object"
+            ? options
+            : {};
+
+    const skipOpenGpxManager =
+        reverseOptions.skipOpenGpxManager === true;
+
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (!currentFile) {
+        alert("找不到要反轉的路線");
+        return;
+    }
+
+    
+    let targetRoute = null;
+    let isFileRoute = false;
+
+    if (
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes[routeIdx]
+    ) {
+        targetRoute =
+            currentFile.routes[routeIdx];
+
+    } else if (
+        currentFile.isDrawTrack === true ||
+        currentFile.isHandDrawRoute === true ||
+        (
+            Array.isArray(currentFile.points) &&
+            currentFile.points.length > 0
+        ) ||
+        (
+            Array.isArray(currentFile.segments) &&
+            currentFile.segments.length > 0
+        )
+    ) {
+        targetRoute =
+            currentFile;
+
+        routeIdx = 0;
+        isFileRoute = true;
+    }
+
+    if (!targetRoute) {
+        alert("找不到要反轉的路線");
+        return;
+    }
+
+    if (targetRoute.isCombined === true) {
+        alert("結合路線不能直接反轉，請反轉子路線");
+        return;
+    }
+
+    const hasPoints =
+        Array.isArray(targetRoute.points) &&
+        targetRoute.points.length > 1;
+
+    const hasSegments =
+        Array.isArray(targetRoute.segments) &&
+        targetRoute.segments.length > 0;
+
+    if (!hasPoints && !hasSegments) {
+        alert("此路線沒有足夠的軌跡點可反轉");
+        return;
+    }
+
+    const routeName =
+        targetRoute.routeDisplayName ||
+        targetRoute.displayName ||
+        targetRoute.name ||
+        "路線";
+
+    const activeFileBeforeReverse =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const activeRouteBeforeReverse =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    const clonePoints = function(points) {
+        return Array.isArray(points)
+            ? points.map(function(p) {
+                return { ...p };
+            })
+            : [];
+    };
+
+    const cloneSegments = function(segments) {
+        return Array.isArray(segments)
+            ? segments.map(function(seg) {
+                return Array.isArray(seg)
+                    ? seg.map(function(latlng) {
+                        if (Array.isArray(latlng)) {
+                            return latlng.slice();
+                        }
+
+                        if (latlng && typeof latlng === "object") {
+                            return { ...latlng };
+                        }
+
+                        return latlng;
+                    })
+                    : [];
+            })
+            : [];
+    };
+
+    const pointsBefore =
+        clonePoints(targetRoute.points);
+
+    const segmentsBefore =
+        cloneSegments(targetRoute.segments);
+
+    const filePointsBefore =
+        clonePoints(currentFile.points);
+
+    const fileSegmentsBefore =
+        cloneSegments(currentFile.segments);
+
+    const recomputePointDistances = function(points) {
+        if (!Array.isArray(points)) return [];
+
+        let totalDist = 0;
+
+        return points.map(function(p, idx, arr) {
+            const np =
+                { ...p };
+
+            if (idx === 0) {
+                totalDist = 0;
+            } else {
+                const prev =
+                    arr[idx - 1];
+
+                if (typeof calculateDistance === "function") {
+                    totalDist += calculateDistance(
+                        prev.lat,
+                        prev.lon,
+                        p.lat,
+                        p.lon
+                    );
+                }
+            }
+
+            np.distance =
+                totalDist;
+
+            return np;
+        });
+    };
+
+    const reverseRouteData = function(route) {
+        
+        if (
+            Array.isArray(route.points) &&
+            route.points.length > 0
+        ) {
+            route.points =
+                recomputePointDistances(
+                    route.points
+                        .slice()
+                        .reverse()
+                        .map(function(p) {
+                            return { ...p };
+                        })
+                );
+        }
+
+        
+        if (
+            Array.isArray(route.segments) &&
+            route.segments.length > 0
+        ) {
+            route.segments =
+                route.segments
+                    .slice()
+                    .reverse()
+                    .map(function(seg) {
+                        if (!Array.isArray(seg)) return [];
+
+                        return seg
+                            .slice()
+                            .reverse()
+                            .map(function(latlng) {
+                                if (Array.isArray(latlng)) {
+                                    return latlng.slice();
+                                }
+
+                                if (latlng && typeof latlng === "object") {
+                                    return { ...latlng };
+                                }
+
+                                return latlng;
+                            });
+                    });
+
+        } else if (
+            Array.isArray(route.points) &&
+            route.points.length > 0
+        ) {
+            route.segments = [
+                route.points.map(function(p) {
+                    return [p.lat, p.lon];
+                })
+            ];
+        }
+
+        
+        if (
+            (!Array.isArray(route.segments) || route.segments.length === 0) &&
+            Array.isArray(route.points) &&
+            route.points.length > 0
+        ) {
+            route.segments = [
+                route.points.map(function(p) {
+                    return [p.lat, p.lon];
+                })
+            ];
+        }
+    };
+
+    const restoreRouteData = function(route, points, segments) {
+        route.points =
+            clonePoints(points);
+
+        route.segments =
+            cloneSegments(segments);
+
+        if (
+            (!Array.isArray(route.segments) || route.segments.length === 0) &&
+            Array.isArray(route.points) &&
+            route.points.length > 0
+        ) {
+            route.segments = [
+                route.points.map(function(p) {
+                    return [p.lat, p.lon];
+                })
+            ];
+        }
+    };
+
+    const refreshAfterReverse = function() {
+        
+        if (
+            currentFile &&
+            Array.isArray(currentFile.routes) &&
+            currentFile.routes.length > 1 &&
+            currentFile.routes[0] &&
+            currentFile.routes[0].isCombined === true &&
+            typeof rebuildCombinedRouteForFile === "function"
+        ) {
+            rebuildCombinedRouteForFile(currentFile);
+        }
+
+        const shouldSwitchToFile =
+            activeFileBeforeReverse === fileIdx;
+
+        if (shouldSwitchToFile) {
+            window.currentMultiIndex =
+                fileIdx;
+
+            window.currentActiveIndex =
+                isFileRoute ? 0 : routeIdx;
+
+            if (typeof syncDrawingGlobals === "function") {
+                syncDrawingGlobals(
+                    currentFile,
+                    isFileRoute ? 0 : routeIdx
+                );
+            } else {
+                if (
+                    Array.isArray(currentFile.routes) &&
+                    currentFile.routes.length > 0
+                ) {
+                    window.allTracks =
+                        currentFile.routes;
+
+                    if (typeof allTracks !== "undefined") {
+                        allTracks = window.allTracks;
+                    }
+
+                    const routeForTrack =
+                        currentFile.routes[isFileRoute ? 0 : routeIdx];
+
+                    if (routeForTrack) {
+                        trackPoints =
+                            routeForTrack.points || [];
+
+                        window.trackPoints =
+                            trackPoints;
+                    }
+
+                } else {
+                    window.allTracks =
+                        [currentFile];
+
+                    if (typeof allTracks !== "undefined") {
+                        allTracks = window.allTracks;
+                    }
+
+                    trackPoints =
+                        currentFile.points || [];
+
+                    window.trackPoints =
+                        trackPoints;
+                }
+            }
+
+            if (typeof updateRouteSelectDropdown === "function") {
+                updateRouteSelectDropdown();
+            }
+
+            const routeSelect =
+                document.getElementById("routeSelect");
+
+            if (
+                routeSelect &&
+                routeSelect.options &&
+                routeSelect.options.length > (isFileRoute ? 0 : routeIdx)
+            ) {
+                routeSelect.value =
+                    String(isFileRoute ? 0 : routeIdx);
+            }
+
+            if (typeof loadRoute === "function") {
+                loadRoute(
+                    isFileRoute ? 0 : routeIdx,
+                    null
+                );
+            }
+
+            if (typeof renderRouteInfo === "function") {
+                renderRouteInfo();
+            }
+        }
+
+        if (typeof renderMultiGpxButtons === "function") {
+            renderMultiGpxButtons();
+        }
+
+        if (!window.gpxManagerExpanded) {
+            window.gpxManagerExpanded = {};
+        }
+
+        window.gpxManagerExpanded[fileIdx] = true;
+
+        
+        if (
+            !skipOpenGpxManager &&
+            typeof showGpxManagementModal === "function"
+        ) {
+            showGpxManagementModal();
+        }
+
+        if (
+            typeof historyManager !== "undefined" &&
+            historyManager &&
+            typeof historyManager.updateUI === "function"
+        ) {
+            historyManager.updateUI();
+        }
+    };
+
+    const command = {
+        managedFileIndex: fileIdx,
+        routeIndex: isFileRoute ? 0 : routeIdx,
+        skipAutoLoadRouteAfterUndo: true,
+
+        do: function() {
+            reverseRouteData(targetRoute);
+
+            
+            if (isFileRoute) {
+                currentFile.points =
+                    clonePoints(targetRoute.points);
+
+                currentFile.segments =
+                    cloneSegments(targetRoute.segments);
+
+            } else if (
+                currentFile &&
+                (
+                    !Array.isArray(currentFile.routes) ||
+                    currentFile.routes.length <= 1 ||
+                    currentFile.isDrawTrack === true
+                )
+            ) {
+                currentFile.points =
+                    clonePoints(targetRoute.points);
+
+                currentFile.segments =
+                    cloneSegments(targetRoute.segments);
+            }
+
+            if (
+                currentFile.layer instanceof L.Polyline &&
+                Array.isArray(currentFile.segments)
+            ) {
+                currentFile.layer.setLatLngs(
+                    currentFile.segments
+                );
+            }
+
+            refreshAfterReverse();
+        },
+
+        undo: function() {
+            restoreRouteData(
+                targetRoute,
+                pointsBefore,
+                segmentsBefore
+            );
+
+            currentFile.points =
+                clonePoints(filePointsBefore);
+
+            currentFile.segments =
+                cloneSegments(fileSegmentsBefore);
+
+            if (
+                currentFile.layer instanceof L.Polyline &&
+                Array.isArray(currentFile.segments)
+            ) {
+                currentFile.layer.setLatLngs(
+                    currentFile.segments
+                );
+            }
+
+            refreshAfterReverse();
+        }
+    };
+
+    const runReverse = function() {
+        if (
+            typeof historyManager !== "undefined" &&
+            historyManager &&
+            typeof historyManager.execute === "function"
+        ) {
+            historyManager.execute(command);
+        } else {
+            command.do();
+        }
+    };
+
+    if (typeof window.showAppConfirm === "function") {
+        window.showAppConfirm(
+            "反轉路線",
+            "確定要反轉「" + routeName + "」嗎？",
+            runReverse,
+            null,
+            "反轉"
+        );
+
+        
+        const confirmModal =
+            document.getElementById("deleteConfirmModal") ||
+            document.getElementById("appConfirmModal") ||
+            document.querySelector(".app-confirm-modal");
+
+        const gpxManageModal =
+            document.getElementById("gpxManageModal");
+
+        if (confirmModal) {
+            confirmModal.style.setProperty(
+                "z-index",
+                "2147483647",
+                "important"
+            );
+        }
+
+        if (gpxManageModal) {
+            gpxManageModal.style.setProperty(
+                "z-index",
+                "2147483645",
+                "important"
+            );
+        }
+
+    } else {
+        if (confirm("確定要反轉「" + routeName + "」嗎？")) {
+            runReverse();
+        }
+    }
+};
+
+
+window.renderRouteToolControl = function() {
+    const mapEl =
+        document.getElementById("map");
+
+    if (!mapEl) return;
+
+    let control =
+        document.getElementById("routeToolControl");
+
+    if (!control) {
+        control =
+            document.createElement("div");
+
+        control.id =
+            "routeToolControl";
+
+        control.innerHTML = `
+            <button type="button"
+                    id="routeToolMainBtn"
+                    class="route-tool-main-btn"
+                    title="路線工具">
+                <span class="material-icons">build</span>
+            </button>
+
+            <div id="routeToolPanel" class="route-tool-panel">
+                
+                <div class="route-tool-item" data-action="split">
+                    <span class="material-icons" style="font-size:18px;">content_cut</span>
+                    <span>分割路線</span>
+                </div>
+
+                <div class="route-tool-item" data-action="reverse">
+                    <span class="material-icons" style="font-size:18px;">swap_vert</span>
+                    <span>反轉路線</span>
+                </div>
+
+                <div class="route-tool-item" data-action="rename">
+                    <span class="material-icons" style="font-size:18px;">edit</span>
+                    <span>修改名稱</span>
+                </div>
+
+                <div class="route-tool-item delete" data-action="delete">
+                    <span class="material-icons" style="font-size:18px;">delete</span>
+                    <span>刪除路線</span>
+                </div>
+            </div>
+        `;
+
+        mapEl.appendChild(control);
+
+        if (typeof L !== "undefined" && L.DomEvent) {
+            L.DomEvent.disableClickPropagation(control);
+            L.DomEvent.disableScrollPropagation(control);
+        }
+    }
+
+    const mainBtn =
+        document.getElementById("routeToolMainBtn");
+
+    const panel =
+        document.getElementById("routeToolPanel");
+
+    if (!mainBtn || !panel) return;
+
+    const getCurrentRouteToolTarget = function() {
+        const fileIdx =
+            typeof window.currentMultiIndex === "number"
+                ? window.currentMultiIndex
+                : 0;
+
+        const routeIdx =
+            typeof window.currentActiveIndex === "number"
+                ? window.currentActiveIndex
+                : 0;
+
+        const currentFile =
+            window.multiGpxStack &&
+            window.multiGpxStack[fileIdx];
+
+        if (!currentFile) {
+            return {
+                fileIdx,
+                routeIdx,
+                route: null,
+                canOperate: false,
+                isCombinedRoute: false
+            };
+        }
+
+        let route = null;
+
+        if (
+            Array.isArray(currentFile.routes) &&
+            currentFile.routes[routeIdx]
+        ) {
+            route =
+                currentFile.routes[routeIdx];
+
+        } else {
+            route =
+                currentFile;
+        }
+
+        const isCombinedRoute =
+            route &&
+            (
+                route.isCombined === true ||
+                (
+                    Number(routeIdx) === 0 &&
+                    Array.isArray(currentFile.routes) &&
+                    currentFile.routes.length > 1
+                ) ||
+                String(route.name || "").includes("結合") ||
+                String(route.displayName || "").includes("結合") ||
+                String(route.routeDisplayName || "").includes("結合")
+            );
+
+        const hasRouteData =
+            route &&
+            (
+                (
+                    Array.isArray(route.points) &&
+                    route.points.length > 0
+                ) ||
+                (
+                    Array.isArray(route.segments) &&
+                    route.segments.length > 0
+                ) ||
+                route.isDrawTrack === true ||
+                route.isHandDrawRoute === true ||
+                route.isMergedRoute === true
+            );
+
+        return {
+            fileIdx,
+            routeIdx,
+            route,
+            canOperate:
+                !!route &&
+                !!hasRouteData &&
+                !isCombinedRoute,
+            isCombinedRoute
+        };
+    };
+
+    const refreshPanelState = function() {
+        const target =
+            getCurrentRouteToolTarget();
+
+        const items =
+            panel.querySelectorAll(".route-tool-item");
+
+        items.forEach(function(item) {
+				    const action =
+				        item.dataset.action;
+				
+				    let canUse =
+				        target.canOperate;
+				
+				    
+				    if (action === "split") {
+				        canUse =
+				            target.canOperate &&
+				            target.route &&
+				            Array.isArray(target.route.points) &&
+				            target.route.points.length > 2;
+				    }
+				
+				    if (canUse) {
+				        item.classList.remove("disabled");
+				        item.dataset.disabled = "false";
+				    } else {
+				        item.classList.add("disabled");
+				        item.dataset.disabled = "true";
+				    }
+				});
+
+        if (target.route) {
+            mainBtn.classList.remove("disabled");
+        } else {
+            mainBtn.classList.add("disabled");
+        }
+    };
+
+    mainBtn.onclick = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+
+        refreshPanelState();
+
+        control.classList.toggle("open");
+
+        if (control.classList.contains("open")) {
+            mainBtn.classList.add("active");
+        } else {
+            mainBtn.classList.remove("active");
+        }
+    };
+
+    panel.querySelectorAll(".route-tool-item").forEach(function(item) {
+        item.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (item.dataset.disabled === "true") {
+                return;
+            }
+
+            const target =
+                getCurrentRouteToolTarget();
+
+            if (!target.route || !target.canOperate) {
+                return;
+            }
+
+            const action =
+                item.dataset.action;
+
+            control.classList.remove("open");
+            mainBtn.classList.remove("active");
+
+            
+            if (action === "split") {
+						    
+						    if (typeof window.startSplitRouteMode === "function") {
+						        window.startSplitRouteMode(
+						            target.fileIdx,
+						            target.routeIdx
+						        );
+						    }
+						}
+
+            if (action === "reverse") {
+                if (typeof reverseSubRoute === "function") {
+                    reverseSubRoute(
+                        target.fileIdx,
+                        target.routeIdx,
+                        {
+                            skipOpenGpxManager: true
+                        }
+                    );
+                }
+            }
+
+            if (action === "rename") {
+                if (typeof renameSubRoute === "function") {
+                    renameSubRoute(
+                        target.fileIdx,
+                        target.routeIdx,
+                        {
+                            skipOpenGpxManager: true
+                        }
+                    );
+                }
+            }
+
+            if (action === "delete") {
+                if (typeof deleteSubRoute === "function") {
+                    deleteSubRoute(
+                        target.fileIdx,
+                        target.routeIdx,
+                        {
+                            skipOpenGpxManager: true
+                        }
+                    );
+                }
+            }
+        };
+    });
+
+    
+    if (!window.routeToolOutsideCloseInstalled) {
+        window.routeToolOutsideCloseInstalled = true;
+
+        document.addEventListener(
+            "mousedown",
+            function(e) {
+                const c =
+                    document.getElementById("routeToolControl");
+
+                if (!c) return;
+
+                if (c.contains(e.target)) return;
+
+                c.classList.remove("open");
+
+                const btn =
+                    document.getElementById("routeToolMainBtn");
+
+                if (btn) {
+                    btn.classList.remove("active");
+                }
+            },
+            true
+        );
+
+        document.addEventListener(
+            "touchstart",
+            function(e) {
+                const c =
+                    document.getElementById("routeToolControl");
+
+                if (!c) return;
+
+                if (c.contains(e.target)) return;
+
+                c.classList.remove("open");
+
+                const btn =
+                    document.getElementById("routeToolMainBtn");
+
+                if (btn) {
+                    btn.classList.remove("active");
+                }
+            },
+            true
+        );
+    }
+
+    refreshPanelState();
+};
+
+window.refreshGpxManagerIfOpen = function() {
+    const modal =
+        document.getElementById("gpxManageModal");
+
+    const isOpen =
+        modal &&
+        modal.style.display !== "none";
+
+    if (
+        !isOpen ||
+        typeof showGpxManagementModal !== "function"
+    ) {
+        return;
+    }
+
+    const scrollBodyBefore =
+        document.getElementById("gpxManageScrollBody");
+
+    const oldScrollTop =
+        scrollBodyBefore
+            ? scrollBodyBefore.scrollTop
+            : 0;
+
+    showGpxManagementModal();
+
+    setTimeout(function() {
+        const scrollBodyAfter =
+            document.getElementById("gpxManageScrollBody");
+
+        if (scrollBodyAfter) {
+            scrollBodyAfter.scrollTop =
+                oldScrollTop;
+        }
+    }, 0);
+};
+
+window.fixPageAndMapOffset = function() {
+    
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+
+    
+    document.documentElement.style.marginLeft = "0px";
+    document.documentElement.style.transform = "";
+
+    document.body.style.marginLeft = "0px";
+    document.body.style.transform = "";
+    document.body.style.left = "0px";
+    document.body.style.right = "0px";
+
+    const mapEl =
+        document.getElementById("map");
+
+    if (mapEl) {
+        mapEl.style.left = "0px";
+        mapEl.style.right = "0px";
+        mapEl.style.marginLeft = "0px";
+        mapEl.style.marginRight = "0px";
+        mapEl.style.transform = "";
+    }
+
+    if (
+        typeof map !== "undefined" &&
+        map
+    ) {
+        setTimeout(function() {
+            if (typeof map.invalidateSize === "function") {
+                map.invalidateSize();
+            }
+
+            if (typeof map.panBy === "function") {
+                map.panBy([0, 0], {
+                    animate: false
+                });
+            }
+        }, 50);
+    }
+};
+
+function cloneRouteForSplit(route) {
+    return JSON.parse(JSON.stringify(route));
+}
+
+function cloneWaypointsForSplit(waypoints) {
+    return JSON.parse(JSON.stringify(waypoints || []));
+}
+
+function pointsToSingleSegment(points) {
+    return [
+        points.map(function(p) {
+            return [p.lat, p.lon];
+        })
+    ];
+}
+
+function getUniqueSplitRouteName(routes, baseName) {
+    baseName =
+        String(baseName || "子路線").trim();
+
+    let maxNo = 1;
+
+    const pattern =
+        new RegExp("^" + baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*(\\d+)?$");
+
+    routes.forEach(function(route) {
+        if (!route) return;
+
+        const name =
+            String(
+                route.routeDisplayName ||
+                route.displayName ||
+                route.name ||
+                ""
+            ).trim();
+
+        const match =
+            name.match(pattern);
+
+        if (match) {
+            const n =
+                match[1]
+                    ? parseInt(match[1], 10)
+                    : 1;
+
+            if (Number.isFinite(n)) {
+                maxNo =
+                    Math.max(maxNo, n);
+            }
+        }
+    });
+
+    return baseName + " " + (maxNo + 1);
+}
+
+function findNearestPointIndexOnRoute(latlng, route) {
+    if (
+        !latlng ||
+        !route ||
+        !Array.isArray(route.points) ||
+        route.points.length === 0
+    ) {
+        return -1;
+    }
+
+    let nearestIdx =
+        -1;
+
+    let nearestDist =
+        Infinity;
+
+    route.points.forEach(function(p, idx) {
+        if (!p) return;
+
+        const d =
+            Math.sqrt(
+                Math.pow(Number(p.lat) - Number(latlng.lat), 2) +
+                Math.pow(Number(p.lon) - Number(latlng.lng), 2)
+            );
+
+        if (d < nearestDist) {
+            nearestDist =
+                d;
+
+            nearestIdx =
+                idx;
+        }
+    });
+
+    return nearestIdx;
+}
+
+function isWaypointAfterSplitPoint(wpt, beforePoints, afterPoints, splitIdx) {
+    if (!wpt) return false;
+
+    const splitPoint =
+        beforePoints &&
+        beforePoints[beforePoints.length - 1]
+            ? beforePoints[beforePoints.length - 1]
+            : null;
+
+    if (
+        splitPoint &&
+        Number.isFinite(Number(splitPoint.distance)) &&
+        Number.isFinite(Number(wpt.distance))
+    ) {
+        return Number(wpt.distance) >= Number(splitPoint.distance);
+    }
+
+    if (
+        splitPoint &&
+        splitPoint.time &&
+        wpt.time
+    ) {
+        const splitTime =
+            new Date(splitPoint.time).getTime();
+
+        const wptTime =
+            new Date(wpt.time).getTime();
+
+        if (
+            Number.isFinite(splitTime) &&
+            Number.isFinite(wptTime)
+        ) {
+            return wptTime >= splitTime;
+        }
+    }
+
+    const allPoints =
+        beforePoints.concat(afterPoints.slice(1));
+
+    let nearestIdx =
+        -1;
+
+    let nearestDist =
+        Infinity;
+
+    allPoints.forEach(function(p, idx) {
+        if (!p) return;
+
+        const d =
+            Math.sqrt(
+                Math.pow(Number(p.lat) - Number(wpt.lat), 2) +
+                Math.pow(Number(p.lon) - Number(wpt.lon), 2)
+            );
+
+        if (d < nearestDist) {
+            nearestDist =
+                d;
+
+            nearestIdx =
+                idx;
+        }
+    });
+
+    return nearestIdx >= splitIdx;
+}
+
+function remapRouteIndexArrayForSplit(arr, routeIdx, newRouteIdx, moveToSecond) {
+    if (!Array.isArray(arr)) return [];
+
+    let result =
+        arr
+            .map(Number)
+            .filter(function(idx) {
+                return Number.isFinite(idx);
+            })
+            .map(function(idx) {
+
+                if (idx > routeIdx) {
+                    return idx + 1;
+                }
+
+                return idx;
+            });
+
+    if (moveToSecond) {
+        result =
+            result.map(function(idx) {
+                return idx === routeIdx
+                    ? newRouteIdx
+                    : idx;
+            });
+    }
+
+    return Array.from(new Set(result));
+}
+
+function refreshAfterSplit(fileIdx, routeIdxToShow) {
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (!currentFile) return;
+
+    window.currentMultiIndex =
+        fileIdx;
+
+    window.currentActiveIndex =
+        routeIdxToShow;
+
+    if (typeof rebuildCombinedRouteForFile === "function") {
+        rebuildCombinedRouteForFile(currentFile);
+    }
+
+    if (typeof syncDrawingGlobals === "function") {
+        syncDrawingGlobals(
+            currentFile,
+            routeIdxToShow
+        );
+    }
+
+    if (typeof updateRouteSelectDropdown === "function") {
+        updateRouteSelectDropdown();
+    }
+
+    const routeSelect =
+        document.getElementById("routeSelect");
+
+    if (
+        routeSelect &&
+        routeSelect.options &&
+        routeSelect.options.length > routeIdxToShow
+    ) {
+        routeSelect.value =
+            String(routeIdxToShow);
+    }
+
+    if (typeof loadRoute === "function") {
+        loadRoute(routeIdxToShow, null);
+    }
+
+    if (typeof renderRouteInfo === "function") {
+        renderRouteInfo();
+    }
+
+    if (typeof renderMultiGpxButtons === "function") {
+        renderMultiGpxButtons();
+    }
+
+    if (typeof window.refreshGpxManagerIfOpen === "function") {
+        window.refreshGpxManagerIfOpen();
+    }
+
+    if (
+        typeof historyManager !== "undefined" &&
+        historyManager &&
+        typeof historyManager.updateUI === "function"
+    ) {
+        historyManager.updateUI();
+    }
+}
+
+window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}) {
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (!currentFile) {
+        alert("找不到要分割的路線");
+        return;
+    }
+
+    let targetRoute = null;
+
+    if (
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes[routeIdx]
+    ) {
+        targetRoute =
+            currentFile.routes[routeIdx];
+
+		} else if (
+		    currentFile &&
+		    (
+		        currentFile.isDrawTrack === true ||
+		        currentFile.isHandDrawRoute === true ||
+		        options.isFileRoute === true
+		    ) &&
+		    Array.isArray(currentFile.points) &&
+		    currentFile.points.length >= 2
+		) {
+		    
+		    routeIdx =
+		        0;
+		
+		    targetRoute =
+		        currentFile;
+		}
+
+    if (!targetRoute) {
+        alert("找不到要分割的路線");
+        return;
+    }
+
+    if (targetRoute.isCombined === true) {
+        alert("結合路線不能直接分割，請切到子路線再分割");
+        return;
+    }
+
+    if (
+        !Array.isArray(targetRoute.points) ||
+        targetRoute.points.length < 2
+    ) {
+        alert("此路線點數不足，無法分割");
+        return;
+    }
+
+    splitPointIndex =
+        parseInt(splitPointIndex, 10);
+
+    const hasInsertPoint =
+        options &&
+        options.insertPoint;
+
+    if (
+        !Number.isFinite(splitPointIndex) ||
+        splitPointIndex <= 0 ||
+        (
+            !hasInsertPoint &&
+            splitPointIndex >= targetRoute.points.length - 1
+        ) ||
+        (
+            hasInsertPoint &&
+            splitPointIndex >= targetRoute.points.length
+        )
+    ) {
+        alert("分割位置太靠近起點或終點，請選路線中間位置");
+        return;
+    }
+
+    const fileStateBefore = {
+    routes: Array.isArray(currentFile.routes)
+        ? currentFile.routes.map(function(route) {
+            return cloneRouteForSplit(route);
+        })
+        : null,
+
+    points: Array.isArray(currentFile.points)
+        ? currentFile.points.map(function(p) {
+            return { ...p };
+        })
+        : [],
+
+    segments: Array.isArray(currentFile.segments)
+        ? JSON.parse(JSON.stringify(currentFile.segments))
+        : [],
+
+    waypoints: cloneWaypointsForSplit(currentFile.waypoints || []),
+
+    isDrawTrack: currentFile.isDrawTrack === true,
+    isHandDrawRoute: currentFile.isHandDrawRoute === true,
+    isCombined: currentFile.isCombined === true,
+    customRouteNames: currentFile.customRouteNames
+        ? { ...currentFile.customRouteNames }
+        : {}
+		};
+		
+		const routesBefore =
+		    fileStateBefore.routes
+		        ? fileStateBefore.routes.map(function(route) {
+		            return cloneRouteForSplit(route);
+		        })
+		        : [];
+		
+		const waypointsBefore =
+		    cloneWaypointsForSplit(fileStateBefore.waypoints || []);
+
+    const activeFileBefore =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const activeRouteBefore =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    let newRouteIdxAfterSplit =
+        routeIdx + 1;
+
+    const applySplit = function() {
+
+        if (
+		    fileStateBefore.routes &&
+		    fileStateBefore.routes.length > 0
+		) {
+		    currentFile.routes =
+		        fileStateBefore.routes.map(function(route) {
+		            return cloneRouteForSplit(route);
+		        });
+		
+		} else {
+		    const firstRouteName =
+		        currentFile.routeDisplayName ||
+		        currentFile.displayName ||
+		        currentFile.name ||
+		        "自訂路線";
+		
+		    const firstRoute = {
+		        id: currentFile.id || ("draw_route_" + Date.now()),
+		        name: firstRouteName,
+		        displayName: firstRouteName,
+		        routeDisplayName: firstRouteName,
+		        fileName: currentFile.fileName || currentFile.name || "自訂路線",
+		        color: currentFile.color || "#0000FF",
+		        points: fileStateBefore.points.map(function(p) {
+		            return { ...p };
+		        }),
+		        segments: JSON.parse(JSON.stringify(fileStateBefore.segments || [])),
+		        waypoints: cloneWaypointsForSplit(fileStateBefore.waypoints || []),
+		        visible: true,
+		        isCombined: false,
+		        isDrawTrack: true,
+		        isHandDrawRoute: true
+		    };
+		
+		    currentFile.routes =
+		        [firstRoute];
+		
+		    routeIdx =
+		        0;
+		}
+		
+		currentFile.waypoints =
+		    cloneWaypointsForSplit(waypointsBefore);
+		
+		currentFile.isDrawTrack =
+		    false;
+		
+		currentFile.isHandDrawRoute =
+		    false;
+		
+		currentFile.isCombined =
+		    false;
+		
+		const routeToSplit =
+		    currentFile.routes[routeIdx];
+
+        let points =
+            Array.isArray(routeToSplit.points)
+                ? routeToSplit.points.slice()
+                : [];
+
+        if (
+            options &&
+            options.insertPoint
+        ) {
+            const insertPoint = {
+                ...options.insertPoint
+            };
+
+            if (
+                splitPointIndex > 0 &&
+                splitPointIndex < points.length
+            ) {
+                points.splice(
+                    splitPointIndex,
+                    0,
+                    insertPoint
+                );
+            }
+        }
+
+        routeToSplit.points =
+            points;
+
+        const firstPoints =
+            points.slice(0, splitPointIndex + 1);
+
+        const secondPoints =
+            points.slice(splitPointIndex);
+
+        const baseName =
+            routeToSplit.routeDisplayName ||
+            routeToSplit.displayName ||
+            routeToSplit.name ||
+            "子路線";
+
+        const newRouteName =
+            getUniqueSplitRouteName(
+                currentFile.routes,
+                baseName
+            );
+
+        routeToSplit.points =
+            firstPoints;
+
+        routeToSplit.segments =
+            pointsToSingleSegment(firstPoints);
+
+        routeToSplit.isCombined =
+            false;
+
+        const newRoute = {
+            ...cloneRouteForSplit(routeToSplit),
+            id: "split_route_" + Date.now(),
+            name: newRouteName,
+            displayName: newRouteName,
+            routeDisplayName: newRouteName,
+            points: secondPoints,
+            segments: pointsToSingleSegment(secondPoints),
+            visible: true,
+            isCombined: false,
+            isDrawTrack: routeToSplit.isDrawTrack === true,
+            isHandDrawRoute: routeToSplit.isHandDrawRoute === true,
+            waypoints: currentFile.waypoints || []
+        };
+
+        currentFile.routes.splice(
+            routeIdx + 1,
+            0,
+            newRoute
+        );
+
+        newRouteIdxAfterSplit =
+            routeIdx + 1;
+
+        if (Array.isArray(currentFile.waypoints)) {
+            currentFile.waypoints.forEach(function(wpt) {
+                if (!wpt) return;
+
+                const moveToSecond =
+                    isWaypointAfterSplitPoint(
+                        wpt,
+                        firstPoints,
+                        secondPoints,
+                        splitPointIndex
+                    );
+
+                if (wpt.belongsToRoute !== undefined) {
+                    const oldBelongs =
+                        Number(wpt.belongsToRoute);
+
+                    if (oldBelongs > routeIdx) {
+                        wpt.belongsToRoute =
+                            oldBelongs + 1;
+
+                    } else if (
+                        oldBelongs === routeIdx &&
+                        moveToSecond
+                    ) {
+                        wpt.belongsToRoute =
+                            newRouteIdxAfterSplit;
+                    }
+                }
+
+                wpt.visibleRouteIndexes =
+                    remapRouteIndexArrayForSplit(
+                        wpt.visibleRouteIndexes,
+                        routeIdx,
+                        newRouteIdxAfterSplit,
+                        moveToSecond
+                    );
+
+                wpt.hiddenRouteIndexes =
+                    remapRouteIndexArrayForSplit(
+                        wpt.hiddenRouteIndexes,
+                        routeIdx,
+                        newRouteIdxAfterSplit,
+                        moveToSecond
+                    );
+            });
+        }
+
+        
+        const combinedIdxBeforeNormalize =
+            currentFile.routes.findIndex(function(route) {
+                return route && route.isCombined === true;
+            });
+
+        if (
+            combinedIdxBeforeNormalize === -1 &&
+            currentFile.routes.length >= 2
+        ) {
+            const childRoutes =
+                currentFile.routes.map(function(route) {
+                    if (route) {
+                        route.isCombined =
+                            false;
+                    }
+
+                    return route;
+                });
+
+            const originalFirstRoute =
+                childRoutes[0];
+
+            const originalFirstRouteName =
+                originalFirstRoute.routeDisplayName ||
+                originalFirstRoute.displayName ||
+                originalFirstRoute.name ||
+                baseName ||
+                "路線";
+
+            const combinedName =
+                originalFirstRouteName;
+
+            const combinedPoints = [];
+
+            childRoutes.forEach(function(route) {
+                if (
+                    route &&
+                    Array.isArray(route.points)
+                ) {
+                    route.points.forEach(function(p) {
+                        combinedPoints.push(p);
+                    });
+                }
+            });
+
+            const combinedRoute = {
+                id: "combined_route_" + Date.now(),
+                name: combinedName,
+                displayName: combinedName,
+                routeDisplayName: combinedName,
+                fileName: currentFile.fileName || currentFile.name || originalFirstRouteName,
+                color: originalFirstRoute.color || currentFile.color || "#0000FF",
+                points: combinedPoints,
+                segments: pointsToSingleSegment(combinedPoints),
+                waypoints: currentFile.waypoints || [],
+                visible: true,
+                isCombined: true,
+                isDrawTrack: false,
+                isHandDrawRoute: false
+            };
+
+            currentFile.routes =
+                [combinedRoute].concat(childRoutes);
+
+            
+            newRouteIdxAfterSplit =
+                newRouteIdxAfterSplit + 1;
+
+            if (Array.isArray(currentFile.waypoints)) {
+                currentFile.waypoints.forEach(function(wpt) {
+                    if (!wpt) return;
+
+                    if (wpt.belongsToRoute !== undefined) {
+                        const oldBelongs =
+                            Number(wpt.belongsToRoute);
+
+                        if (Number.isFinite(oldBelongs)) {
+                            wpt.belongsToRoute =
+                                oldBelongs + 1;
+                        }
+                    }
+
+                    if (Array.isArray(wpt.visibleRouteIndexes)) {
+                        wpt.visibleRouteIndexes =
+                            wpt.visibleRouteIndexes.map(function(idx) {
+                                const n =
+                                    Number(idx);
+
+                                return Number.isFinite(n)
+                                    ? n + 1
+                                    : idx;
+                            });
+                    }
+
+                    if (Array.isArray(wpt.hiddenRouteIndexes)) {
+                        wpt.hiddenRouteIndexes =
+                            wpt.hiddenRouteIndexes.map(function(idx) {
+                                const n =
+                                    Number(idx);
+
+                                return Number.isFinite(n)
+                                    ? n + 1
+                                    : idx;
+                            });
+                    }
+                });
+            }
+
+        } else {
+            
+            const combinedIdx =
+                currentFile.routes.findIndex(function(route) {
+                    return route && route.isCombined === true;
+                });
+
+            if (combinedIdx > -1) {
+                const combinedRoute =
+                    currentFile.routes[combinedIdx];
+
+                const combinedPoints = [];
+
+                currentFile.routes.forEach(function(route, idx) {
+                    if (
+                        idx !== combinedIdx &&
+                        route &&
+                        route.isCombined !== true &&
+                        Array.isArray(route.points)
+                    ) {
+                        route.points.forEach(function(p) {
+                            combinedPoints.push(p);
+                        });
+                    }
+                });
+
+                combinedRoute.points =
+                    combinedPoints;
+
+                combinedRoute.segments =
+                    pointsToSingleSegment(combinedPoints);
+
+                combinedRoute.waypoints =
+                    currentFile.waypoints || [];
+
+                combinedRoute.visible =
+                    true;
+
+                combinedRoute.isCombined =
+                    true;
+            }
+        }
+
+        currentFile.routes.forEach(function(route) {
+            if (route) {
+                route.waypoints =
+                    currentFile.waypoints || [];
+            }
+        });
+
+        
+        currentFile.customRouteNames =
+            {};
+
+        currentFile.routes.forEach(function(route, idx) {
+            if (!route) return;
+
+            const routeName =
+                route.routeDisplayName ||
+                route.displayName ||
+                route.name ||
+                ("路線" + idx);
+
+            currentFile.customRouteNames[idx] =
+                routeName;
+        });
+
+        
+        if (
+            currentFile.routes[0] &&
+            currentFile.routes[0].isCombined === true
+        ) {
+            currentFile.points =
+                currentFile.routes[0].points || [];
+
+            currentFile.segments =
+                currentFile.routes[0].segments || [];
+
+        } else {
+            currentFile.points =
+                routeToSplit.points;
+
+            currentFile.segments =
+                routeToSplit.segments;
+        }
+
+        refreshAfterSplit(
+            fileIdx,
+            newRouteIdxAfterSplit
+        );
+    };
+    
+
+		const undoSplit = function() {
+		    
+		    if (
+		        fileStateBefore.routes &&
+		        fileStateBefore.routes.length > 0
+		    ) {
+		        currentFile.routes =
+		            fileStateBefore.routes.map(function(route) {
+		                return cloneRouteForSplit(route);
+		            });
+		
+		    } else {
+		        delete currentFile.routes;
+		    }
+		
+		    currentFile.points =
+		        fileStateBefore.points.map(function(p) {
+		            return { ...p };
+		        });
+		
+		    currentFile.segments =
+		        JSON.parse(JSON.stringify(fileStateBefore.segments || []));
+		
+		    currentFile.waypoints =
+		        cloneWaypointsForSplit(fileStateBefore.waypoints || []);
+		
+		    currentFile.isDrawTrack =
+		        fileStateBefore.isDrawTrack;
+		
+		    currentFile.isHandDrawRoute =
+		        fileStateBefore.isHandDrawRoute;
+		
+		    currentFile.isCombined =
+		        fileStateBefore.isCombined;
+		
+		    currentFile.customRouteNames =
+		        fileStateBefore.customRouteNames
+		            ? { ...fileStateBefore.customRouteNames }
+		            : {};
+		
+		    if (
+		        Array.isArray(currentFile.routes)
+		    ) {
+		        currentFile.routes.forEach(function(route) {
+		            if (route) {
+		                route.waypoints =
+		                    currentFile.waypoints || [];
+		            }
+		        });
+		    }
+		
+		    if (
+		        fileStateBefore.routes &&
+		        fileStateBefore.routes[routeIdx]
+		    ) {
+		        currentFile.points =
+		            fileStateBefore.routes[routeIdx].points || [];
+		
+		        currentFile.segments =
+		            fileStateBefore.routes[routeIdx].segments || [];
+		    }
+		
+		    allTracks =
+		        Array.isArray(currentFile.routes) && currentFile.routes.length > 0
+		            ? currentFile.routes
+		            : [currentFile];
+		
+		    window.allTracks =
+		        allTracks;
+		
+		    trackPoints =
+		        Array.isArray(currentFile.points)
+		            ? currentFile.points
+		            : [];
+		
+		    window.trackPoints =
+		        trackPoints;
+		
+		    window.currentMultiIndex =
+		        activeFileBefore;
+		
+		    window.currentActiveIndex =
+		        activeRouteBefore;
+		
+		    if (typeof updateRouteSelectDropdown === "function") {
+		        updateRouteSelectDropdown();
+		    }
+		
+		    
+		    if (
+		        typeof activeRouteLayer !== "undefined" &&
+		        activeRouteLayer &&
+		        map &&
+		        map.hasLayer(activeRouteLayer)
+		    ) {
+		        map.removeLayer(activeRouteLayer);
+		        activeRouteLayer = null;
+		    }
+		
+		    if (
+		        typeof window.activeRouteLayer !== "undefined" &&
+		        window.activeRouteLayer &&
+		        map &&
+		        map.hasLayer(window.activeRouteLayer)
+		    ) {
+		        map.removeLayer(window.activeRouteLayer);
+		        window.activeRouteLayer = null;
+		    }
+		
+		    refreshAfterSplit(
+		        fileIdx,
+		        activeRouteBefore
+		    );
+		};
+
+    const command = {
+        managedFileIndex: fileIdx,
+        routeIndex: routeIdx,
+        skipAutoLoadRouteAfterUndo: true,
+
+        do: function() {
+            applySplit();
+        },
+
+        undo: function() {
+            undoSplit();
+        },
+
+        redo: function() {
+            applySplit();
+        }
+    };
+
+    if (
+        typeof historyManager !== "undefined" &&
+        historyManager &&
+        typeof historyManager.execute === "function"
+    ) {
+        historyManager.execute(command);
+    } else {
+        command.do();
+    }
+};
+
+window.startSplitRouteMode = function(fileIdx, routeIdx) {
+	
+	   if (typeof isDrawingMode !== 'undefined' && isDrawingMode) {
+        isDrawingMode = false;
+
+        const drawBtn = document.getElementById('drawModeBtn');
+        const methodBtn = document.getElementById('drawMethodBtn');
+
+        if (drawBtn) {
+            drawBtn.style.setProperty('background', "white", 'important');
+            drawBtn.style.setProperty('color', "#5f6368", 'important');
+        }
+
+        if (methodBtn) {
+            methodBtn.style.display = "none";
+        }
+
+        document.getElementById('map').style.cursor = '';
+
+        if (typeof map !== 'undefined') {
+            map.dragging.enable();
+            map.boxZoom.enable();
+        }
+    }
+    
+   const oldToast =
+        document.getElementById("map-toast");
+
+    if (oldToast) {
+        oldToast.style.opacity = "0";
+    }
+
+    if (window.mapToastTimer) {
+        clearTimeout(window.mapToastTimer);
+        window.mapToastTimer = null;
+    }
+
+    window.currentMapToast = null;
+	
+    if (window.splitRoutePickMode) {
+        if (typeof window.cancelSplitRouteMode === "function") {
+            window.cancelSplitRouteMode();
+        }
+
+        if (typeof showMapToast === "function") {
+            showMapToast("已取消分割模式");
+        }
+
+        return;
+    }
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (!currentFile) {
+        alert("找不到要分割的路線");
+        return;
+    }
+
+    let route = null;
+
+    let realRouteIdx =
+        routeIdx;
+
+    
+    if (
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes[routeIdx]
+    ) {
+        route =
+            currentFile.routes[routeIdx];
+
+    
+    } else if (
+        currentFile &&
+        (
+            currentFile.isDrawTrack === true ||
+            currentFile.isHandDrawRoute === true
+        ) &&
+        Array.isArray(currentFile.points)
+    ) {
+        route =
+            currentFile;
+
+        realRouteIdx =
+            0;
+
+    
+    } else if (
+        Array.isArray(window.allTracks) &&
+        window.allTracks[routeIdx]
+    ) {
+        route =
+            window.allTracks[routeIdx];
+    }
+
+    if (!route) {
+        alert("找不到要分割的路線");
+        return;
+    }
+
+    if (route.isCombined === true) {
+        alert("結合路線不能直接分割，請選子路線");
+        return;
+    }
+
+    
+    if (
+        !Array.isArray(route.points) ||
+        route.points.length < 2
+    ) {
+        alert("此路線點數不足，無法分割");
+        return;
+    }
+
+    window.splitRoutePickMode = {
+        fileIdx: fileIdx,
+        routeIdx: realRouteIdx,
+        isFileRoute: route === currentFile
+    };
+    
+    const splitToolItem =
+        document.querySelector('.route-tool-item[data-action="split"]');
+
+    if (splitToolItem) {
+        splitToolItem.classList.add("active");
+        splitToolItem.dataset.active = "true";
+    }
+		
+    let splitHint =
+        document.getElementById("splitRouteModeHint");
+
+    if (!splitHint) {
+        splitHint =
+            document.createElement("div");
+
+        splitHint.id =
+            "splitRouteModeHint";
+
+        splitHint.style.cssText =
+            "position:absolute;" +
+            "left:50%;" +
+            "top:20px;" +
+            "transform:translateX(-50%);" +
+            "z-index:2147483647;" +
+            "background:rgba(0,0,0,0.78);" +
+            "color:white;" +
+            "padding:10px 20px;" +
+            "border-radius:20px;" +
+            "line-height:24px;" +
+            "font-size:14px;" +
+            "font-weight:600;" +
+            "box-shadow:0 4px 12px rgba(0,0,0,0.25);" +
+            "cursor:pointer;" +
+            "user-select:none;" +
+            "-webkit-user-select:none;";
+
+        splitHint.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (typeof window.cancelSplitRouteMode === "function") {
+                window.cancelSplitRouteMode();
+            }
+
+            if (typeof showMapToast === "function") {
+                showMapToast("已取消分割模式");
+            }
+        };
+    }
+
+    const fsParent =
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        (
+            document.body.classList.contains("iphone-fullscreen")
+                ? document.getElementById("map")
+                : null
+        ) ||
+        document.body;
+
+    if (splitHint.parentElement !== fsParent) {
+        fsParent.appendChild(splitHint);
+    }
+		
+    splitHint.innerHTML =
+        "分割模式中：請在路線上點選要分割的位置，點此取消";
+		
+    splitHint.style.display =
+        "block";
+
+    if (!document.getElementById("splitCursorStyle")) {
+        const style =
+            document.createElement("style");
+
+        style.id =
+            "splitCursorStyle";
+
+        style.innerHTML = `
+            #map.split-cursor-mode,
+            #map.split-cursor-mode *,
+            #map.split-cursor-mode .leaflet-interactive {
+                cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='translate(16 16) rotate(210) translate(-16 -16)'><text x='7' y='22' font-size='22' fill='black' stroke='white' stroke-width='3' paint-order='stroke fill'>✂</text></g></svg>") 8 8, crosshair !important;
+            }
+        `;
+
+        document.head.appendChild(style);
+    }
+
+    const mapEl =
+        document.getElementById("map");
+
+    if (mapEl) {
+        mapEl.classList.add("split-cursor-mode");
+        mapEl.style.cursor = "";
+    }
+
+};
+
+window.cancelSplitRouteMode = function() {
+
+    window.splitRoutePickMode =
+        null;
+
+    const mapEl =
+        document.getElementById("map");
+
+    if (mapEl) {
+        mapEl.classList.remove("split-cursor-mode");
+        mapEl.style.cursor = "";
+    }
+
+    const splitHint =
+        document.getElementById("splitRouteModeHint");
+
+    if (splitHint) {
+        splitHint.style.display = "none";
+    }
+
+    document
+        .querySelectorAll('.route-tool-item[data-action="split"]')
+        .forEach(function(item) {
+            item.classList.remove("active");
+            item.dataset.active = "false";
+        });
+
+    const routeToolControl =
+        document.getElementById("routeToolControl");
+
+    if (routeToolControl) {
+        routeToolControl.classList.remove("open");
+    }
+
+    const routeToolMainBtn =
+        document.getElementById("routeToolMainBtn");
+
+    if (routeToolMainBtn) {
+        routeToolMainBtn.classList.remove("active");
+    }
+};
+
+window.executeSplitRoutePick = function(latlng) {
+    if (!window.splitRoutePickMode) {
+        return false;
+    }
+
+    const splitInfo =
+        window.splitRoutePickMode;
+
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFile =
+        stack[splitInfo.fileIdx];
+
+    let route = null;
+
+    
+    if (
+        currentFile &&
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes[splitInfo.routeIdx]
+    ) {
+        route =
+            currentFile.routes[splitInfo.routeIdx];
+
+    
+    } else if (
+        currentFile &&
+        (
+            currentFile.isDrawTrack === true ||
+            currentFile.isHandDrawRoute === true ||
+            splitInfo.isFileRoute === true
+        ) &&
+        Array.isArray(currentFile.points)
+    ) {
+        route =
+            currentFile;
+
+    
+    } else if (
+        Array.isArray(window.allTracks) &&
+        window.allTracks[splitInfo.routeIdx]
+    ) {
+        route =
+            window.allTracks[splitInfo.routeIdx];
+    }
+
+    if (
+        !route ||
+        !Array.isArray(route.points) ||
+        route.points.length < 2
+    ) {
+        window.cancelSplitRouteMode();
+
+        if (typeof showMapToast === "function") {
+            showMapToast("找不到可以分割的路線，已取消分割模式");
+        }
+
+        return true;
+    }
+
+    if (
+        typeof map === "undefined" ||
+        !map ||
+        typeof map.latLngToContainerPoint !== "function"
+    ) {
+        window.cancelSplitRouteMode();
+
+        if (typeof showMapToast === "function") {
+            showMapToast("地圖尚未準備完成，已取消分割模式");
+        }
+
+        return true;
+    }
+
+    const clickPoint =
+        map.latLngToContainerPoint(latlng);
+
+    let nearestSegmentIdx =
+        -1;
+
+    let nearestPixelDistance =
+        Infinity;
+
+    let projectedPoint =
+        null;
+
+    
+    for (let i = 0; i < route.points.length - 1; i++) {
+        const p1 =
+            route.points[i];
+
+        const p2 =
+            route.points[i + 1];
+
+        if (!p1 || !p2) continue;
+
+        const p1Lat =
+            Number(p1.lat);
+
+        const p1Lon =
+            Number(p1.lon);
+
+        const p2Lat =
+            Number(p2.lat);
+
+        const p2Lon =
+            Number(p2.lon);
+
+        if (
+            !Number.isFinite(p1Lat) ||
+            !Number.isFinite(p1Lon) ||
+            !Number.isFinite(p2Lat) ||
+            !Number.isFinite(p2Lon)
+        ) {
+            continue;
+        }
+
+        const a =
+            map.latLngToContainerPoint(
+                L.latLng(p1Lat, p1Lon)
+            );
+
+        const b =
+            map.latLngToContainerPoint(
+                L.latLng(p2Lat, p2Lon)
+            );
+
+        const abx =
+            b.x - a.x;
+
+        const aby =
+            b.y - a.y;
+
+        const apx =
+            clickPoint.x - a.x;
+
+        const apy =
+            clickPoint.y - a.y;
+
+        const abLenSq =
+            abx * abx + aby * aby;
+
+        if (abLenSq === 0) continue;
+
+        let t =
+            (apx * abx + apy * aby) / abLenSq;
+
+        t =
+            Math.max(
+                0,
+                Math.min(1, t)
+            );
+
+        const projX =
+            a.x + abx * t;
+
+        const projY =
+            a.y + aby * t;
+
+        const dx =
+            clickPoint.x - projX;
+
+        const dy =
+            clickPoint.y - projY;
+
+        const pixelDist =
+            Math.sqrt(dx * dx + dy * dy);
+
+        if (pixelDist < nearestPixelDistance) {
+            nearestPixelDistance =
+                pixelDist;
+
+            nearestSegmentIdx =
+                i;
+
+            const projLat =
+                p1Lat + (p2Lat - p1Lat) * t;
+
+            const projLon =
+                p1Lon + (p2Lon - p1Lon) * t;
+
+            let projDistance =
+                undefined;
+
+            if (
+                Number.isFinite(Number(p1.distance)) &&
+                Number.isFinite(Number(p2.distance))
+            ) {
+                projDistance =
+                    Number(p1.distance) +
+                    (
+                        Number(p2.distance) -
+                        Number(p1.distance)
+                    ) * t;
+            }
+
+            projectedPoint = {
+                lat: projLat,
+                lon: projLon,
+                ele: Number.isFinite(Number(p1.ele))
+                    ? Number(p1.ele)
+                    : 0,
+                time: p1.time || null,
+                timeLocal: p1.timeLocal || null,
+                distance: projDistance
+            };
+        }
+    }
+
+    const isTouchDevice =
+        "ontouchstart" in window ||
+        navigator.maxTouchPoints > 0;
+
+    const maxPixelDistance =
+        isTouchDevice
+            ? 40
+            : 26;
+
+    if (
+        nearestSegmentIdx < 0 ||
+        !projectedPoint ||
+        nearestPixelDistance > maxPixelDistance
+    ) {
+        window.cancelSplitRouteMode();
+
+        if (typeof showMapToast === "function") {
+            showMapToast("未點到路線，已取消分割模式");
+        }
+
+        return true;
+    }
+
+    
+    const splitPointIndex =
+        nearestSegmentIdx + 1;
+
+    const routeIdxForSplit =
+        splitInfo.isFileRoute === true
+            ? 0
+            : splitInfo.routeIdx;
+
+    window.cancelSplitRouteMode();
+
+    if (typeof window.splitSubRoute === "function") {
+        window.splitSubRoute(
+            splitInfo.fileIdx,
+            routeIdxForSplit,
+            splitPointIndex,
+            {
+                source: "tool",
+                insertPoint: projectedPoint,
+                isFileRoute: splitInfo.isFileRoute === true
+            }
+        );
+    }
+
+    return true;
+};
+
+if (!window.splitModeAutoCancelInstalled) {
+    window.splitModeAutoCancelInstalled = true;
+
+    document.addEventListener(
+        "click",
+        function(e) {
+            if (!window.splitRoutePickMode) return;
+
+            const target =
+                e.target;
+
+            if (!target) return;
+
+            if (
+                target.closest &&
+                target.closest("#splitRouteModeHint")
+            ) {
+                return;
+            }
+
+            if (
+                target.closest &&
+                target.closest('.route-tool-item[data-action="split"]')
+            ) {
+                return;
+            }
+
+            const shouldCancelSplit =
+                target.closest("#drawModeBtn") ||
+                target.closest("#gpxManageBtn") ||
+                target.closest("#routeSelect") ||
+                target.closest("#searchBtn") ||
+                target.closest("#coordSearchBtn") ||
+                target.closest("#locateBtn") ||
+                target.closest("#side-toolbar") ||
+                target.closest(".leaflet-control") ||
+                target.closest("#multiGpxBtnBar");
+
+            if (shouldCancelSplit) {
+                if (typeof window.cancelSplitRouteMode === "function") {
+                    window.cancelSplitRouteMode();
+                }
+            }
+        },
+        true
+    );
+}
+
+window.findClickedRouteByPriority = function(latlng) {
+    const stack =
+        window.multiGpxStack ||
+        multiGpxStack ||
+        [];
+
+    const currentFileIdx =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const clickPoint =
+        map.latLngToContainerPoint(latlng);
+
+    const isTouchDevice =
+        "ontouchstart" in window ||
+        navigator.maxTouchPoints > 0;
+
+    const maxPixelDistance =
+        isTouchDevice
+            ? 36
+            : 22;
+
+    const findNearestInRouteList = function(fileIdx, routes, options = {}) {
+        if (!Array.isArray(routes)) {
+            return null;
+        }
+
+        let best =
+            null;
+
+        routes.forEach(function(route, routeIdx) {
+            if (!route) return;
+
+            
+            if (
+                options.skipCombined === true &&
+                route.isCombined === true
+            ) {
+                return;
+            }
+
+            const points =
+                Array.isArray(route.points)
+                    ? route.points
+                    : [];
+
+            if (points.length < 2) return;
+
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 =
+                    points[i];
+
+                const p2 =
+                    points[i + 1];
+
+                if (!p1 || !p2) continue;
+
+                const p1Lat =
+                    Number(p1.lat);
+
+                const p1Lon =
+                    Number(p1.lon);
+
+                const p2Lat =
+                    Number(p2.lat);
+
+                const p2Lon =
+                    Number(p2.lon);
+
+                if (
+                    !Number.isFinite(p1Lat) ||
+                    !Number.isFinite(p1Lon) ||
+                    !Number.isFinite(p2Lat) ||
+                    !Number.isFinite(p2Lon)
+                ) {
+                    continue;
+                }
+
+                const a =
+                    map.latLngToContainerPoint(
+                        L.latLng(p1Lat, p1Lon)
+                    );
+
+                const b =
+                    map.latLngToContainerPoint(
+                        L.latLng(p2Lat, p2Lon)
+                    );
+
+                const abx =
+                    b.x - a.x;
+
+                const aby =
+                    b.y - a.y;
+
+                const apx =
+                    clickPoint.x - a.x;
+
+                const apy =
+                    clickPoint.y - a.y;
+
+                const abLenSq =
+                    abx * abx + aby * aby;
+
+                if (abLenSq === 0) continue;
+
+                let t =
+                    (apx * abx + apy * aby) / abLenSq;
+
+                t =
+                    Math.max(
+                        0,
+                        Math.min(1, t)
+                    );
+
+                const projX =
+                    a.x + abx * t;
+
+                const projY =
+                    a.y + aby * t;
+
+                const dx =
+                    clickPoint.x - projX;
+
+                const dy =
+                    clickPoint.y - projY;
+
+                const pixelDistance =
+                    Math.sqrt(dx * dx + dy * dy);
+
+                if (
+                    pixelDistance <= maxPixelDistance &&
+                    (
+                        !best ||
+                        pixelDistance < best.pixelDistance
+                    )
+                ) {
+                    best = {
+                        fileIdx: fileIdx,
+                        routeIdx: routeIdx,
+                        route: route,
+                        pointIdx: i,
+                        pixelDistance: pixelDistance
+                    };
+                }
+            }
+        });
+
+        return best;
+    };
+
+    
+    const currentFile =
+        stack[currentFileIdx];
+
+    if (
+        currentFile &&
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes.length > 1
+    ) {
+        const currentChildHit =
+            findNearestInRouteList(
+                currentFileIdx,
+                currentFile.routes,
+                {
+                    skipCombined: true
+                }
+            );
+
+        if (currentChildHit) {
+            currentChildHit.priority =
+                "current-child-route";
+
+            return currentChildHit;
+        }
+    }
+
+    
+    for (let fileIdx = 0; fileIdx < stack.length; fileIdx++) {
+        if (fileIdx === currentFileIdx) continue;
+
+        const file =
+            stack[fileIdx];
+
+        if (!file) continue;
+
+        let routes = [];
+
+        if (
+            Array.isArray(file.routes) &&
+            file.routes.length > 0
+        ) {
+            routes =
+                file.routes;
+
+        } else if (
+            Array.isArray(file.points)
+        ) {
+            routes =
+                [file];
+        }
+
+        const otherHit =
+            findNearestInRouteList(
+                fileIdx,
+                routes,
+                {
+                    skipCombined: false
+                }
+            );
+
+        if (otherHit) {
+            otherHit.priority =
+                "other-route";
+
+            return otherHit;
+        }
+    }
+
+    return null;
+};
