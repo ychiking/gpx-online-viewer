@@ -653,13 +653,6 @@
 }
 }
 
-
-.leaflet-top.leaflet-right {
-    display: flex;
-    flex-direction: column;
-}
-
-
 #searchControlContainer {
     order: 99; 
     margin-top: 5px; 
@@ -686,6 +679,7 @@
 
 .leaflet-control {
     margin-right: 10px !important;
+
 }
 
 .sortable-ghost {
@@ -1092,12 +1086,27 @@
 }
 
 
+.leaflet-top.leaflet-right {
+    z-index: 30000 !important;
+}
+
+.leaflet-top.leaflet-right .leaflet-control-layers,
+.leaflet-top.leaflet-right .leaflet-control-layers-expanded {
+    z-index: 30001 !important;
+    position: relative !important;
+}
+
+.leaflet-control-layers-list {
+    z-index: 30002 !important;
+    position: relative !important;
+}
+
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605262</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605271</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />

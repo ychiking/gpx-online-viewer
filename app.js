@@ -7793,50 +7793,6 @@ window.resetGPS = function() {
     }
 };
 
-window.resetGPS = function() {
-    if (gpsInterval) {
-        clearInterval(gpsInterval);
-        gpsInterval = null;
-    }
-
-    if (gpsMarker) {
-        map.removeLayer(gpsMarker);
-        gpsMarker = null;
-    }
-
-    
-    if (window.gpsOrientationHandler) {
-        window.removeEventListener(
-            "deviceorientation",
-            window.gpsOrientationHandler,
-            true
-        );
-
-        window.removeEventListener(
-            "deviceorientationabsolute",
-            window.gpsOrientationHandler,
-            true
-        );
-    }
-
-    window.lastGpsLat = undefined;
-    window.lastGpsLon = undefined;
-    window.gpsHeading = null;
-    window.gpsHeadingBuffer = [];
-    window.lastGpsHeadingUpdateTime = null;
-    window.gpsOrientationStarted = false;
-    window.gpsOrientationHandler = null;
-    window.gpsStartedAt = null;
-
-    const locBtn =
-        document.querySelector('a[title="目前位置定位"]');
-
-    if (locBtn) {
-        locBtn.style.background =
-            "white";
-    }
-};
-
 const TWD97_DEF = "+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=GRS80 +units=m +no_defs";
 const TWD67_DEF = "+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=aust_SA +towgs84=-752,-358,-179,0,0,0,0 +units=m +no_defs";
 const WGS84_DEF = "EPSG:4326";
@@ -16107,7 +16063,7 @@ function handleFullscreenStateChange() {
 						        position: absolute !important;
 						        top: 15px !important;
 						        left: 55px !important;
-						        z-index: 2147483645 !important;
+						        z-index: 900 !important;
 						        background: white !important; 
 						        padding: 4px 12px !important;
 						        border-radius: 20px !important;
