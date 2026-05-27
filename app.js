@@ -19925,23 +19925,22 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
         targetRoute =
             currentFile.routes[routeIdx];
 
-		} else if (
-		    currentFile &&
-		    (
-		        currentFile.isDrawTrack === true ||
-		        currentFile.isHandDrawRoute === true ||
-		        options.isFileRoute === true
-		    ) &&
-		    Array.isArray(currentFile.points) &&
-		    currentFile.points.length >= 2
-		) {
-		    
-		    routeIdx =
-		        0;
-		
-		    targetRoute =
-		        currentFile;
-		}
+    } else if (
+        currentFile &&
+        (
+            currentFile.isDrawTrack === true ||
+            currentFile.isHandDrawRoute === true ||
+            options.isFileRoute === true
+        ) &&
+        Array.isArray(currentFile.points) &&
+        currentFile.points.length >= 2
+    ) {
+        routeIdx =
+            0;
+
+        targetRoute =
+            currentFile;
+    }
 
     if (!targetRoute) {
         alert("找不到要分割的路線");
@@ -19985,41 +19984,42 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
     }
 
     const fileStateBefore = {
-    routes: Array.isArray(currentFile.routes)
-        ? currentFile.routes.map(function(route) {
-            return cloneRouteForSplit(route);
-        })
-        : null,
+        routes: Array.isArray(currentFile.routes)
+            ? currentFile.routes.map(function(route) {
+                return cloneRouteForSplit(route);
+            })
+            : null,
 
-    points: Array.isArray(currentFile.points)
-        ? currentFile.points.map(function(p) {
-            return { ...p };
-        })
-        : [],
+        points: Array.isArray(currentFile.points)
+            ? currentFile.points.map(function(p) {
+                return { ...p };
+            })
+            : [],
 
-    segments: Array.isArray(currentFile.segments)
-        ? JSON.parse(JSON.stringify(currentFile.segments))
-        : [],
+        segments: Array.isArray(currentFile.segments)
+            ? JSON.parse(JSON.stringify(currentFile.segments))
+            : [],
 
-    waypoints: cloneWaypointsForSplit(currentFile.waypoints || []),
+        waypoints: cloneWaypointsForSplit(currentFile.waypoints || []),
 
-    isDrawTrack: currentFile.isDrawTrack === true,
-    isHandDrawRoute: currentFile.isHandDrawRoute === true,
-    isCombined: currentFile.isCombined === true,
-    customRouteNames: currentFile.customRouteNames
-        ? { ...currentFile.customRouteNames }
-        : {}
-		};
-		
-		const routesBefore =
-		    fileStateBefore.routes
-		        ? fileStateBefore.routes.map(function(route) {
-		            return cloneRouteForSplit(route);
-		        })
-		        : [];
-		
-		const waypointsBefore =
-		    cloneWaypointsForSplit(fileStateBefore.waypoints || []);
+        isDrawTrack: currentFile.isDrawTrack === true,
+        isHandDrawRoute: currentFile.isHandDrawRoute === true,
+        isCombined: currentFile.isCombined === true,
+
+        customRouteNames: currentFile.customRouteNames
+            ? { ...currentFile.customRouteNames }
+            : {}
+    };
+
+    const routesBefore =
+        fileStateBefore.routes
+            ? fileStateBefore.routes.map(function(route) {
+                return cloneRouteForSplit(route);
+            })
+            : [];
+
+    const waypointsBefore =
+        cloneWaypointsForSplit(fileStateBefore.waypoints || []);
 
     const activeFileBefore =
         typeof window.currentMultiIndex === "number"
@@ -20037,60 +20037,60 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
     const applySplit = function() {
 
         if (
-		    fileStateBefore.routes &&
-		    fileStateBefore.routes.length > 0
-		) {
-		    currentFile.routes =
-		        fileStateBefore.routes.map(function(route) {
-		            return cloneRouteForSplit(route);
-		        });
-		
-		} else {
-		    const firstRouteName =
-		        currentFile.routeDisplayName ||
-		        currentFile.displayName ||
-		        currentFile.name ||
-		        "自訂路線";
-		
-		    const firstRoute = {
-		        id: currentFile.id || ("draw_route_" + Date.now()),
-		        name: firstRouteName,
-		        displayName: firstRouteName,
-		        routeDisplayName: firstRouteName,
-		        fileName: currentFile.fileName || currentFile.name || "自訂路線",
-		        color: currentFile.color || "#0000FF",
-		        points: fileStateBefore.points.map(function(p) {
-		            return { ...p };
-		        }),
-		        segments: JSON.parse(JSON.stringify(fileStateBefore.segments || [])),
-		        waypoints: cloneWaypointsForSplit(fileStateBefore.waypoints || []),
-		        visible: true,
-		        isCombined: false,
-		        isDrawTrack: true,
-		        isHandDrawRoute: true
-		    };
-		
-		    currentFile.routes =
-		        [firstRoute];
-		
-		    routeIdx =
-		        0;
-		}
-		
-		currentFile.waypoints =
-		    cloneWaypointsForSplit(waypointsBefore);
-		
-		currentFile.isDrawTrack =
-		    false;
-		
-		currentFile.isHandDrawRoute =
-		    false;
-		
-		currentFile.isCombined =
-		    false;
-		
-		const routeToSplit =
-		    currentFile.routes[routeIdx];
+            fileStateBefore.routes &&
+            fileStateBefore.routes.length > 0
+        ) {
+            currentFile.routes =
+                fileStateBefore.routes.map(function(route) {
+                    return cloneRouteForSplit(route);
+                });
+
+        } else {
+            const firstRouteName =
+                currentFile.routeDisplayName ||
+                currentFile.displayName ||
+                currentFile.name ||
+                "自訂路線";
+
+            const firstRoute = {
+                id: currentFile.id || ("draw_route_" + Date.now()),
+                name: firstRouteName,
+                displayName: firstRouteName,
+                routeDisplayName: firstRouteName,
+                fileName: currentFile.fileName || currentFile.name || "自訂路線",
+                color: currentFile.color || "#0000FF",
+                points: fileStateBefore.points.map(function(p) {
+                    return { ...p };
+                }),
+                segments: JSON.parse(JSON.stringify(fileStateBefore.segments || [])),
+                waypoints: cloneWaypointsForSplit(fileStateBefore.waypoints || []),
+                visible: true,
+                isCombined: false,
+                isDrawTrack: true,
+                isHandDrawRoute: true
+            };
+
+            currentFile.routes =
+                [firstRoute];
+
+            routeIdx =
+                0;
+        }
+
+        currentFile.waypoints =
+            cloneWaypointsForSplit(waypointsBefore);
+
+        currentFile.isDrawTrack =
+            false;
+
+        currentFile.isHandDrawRoute =
+            false;
+
+        currentFile.isCombined =
+            false;
+
+        const routeToSplit =
+            currentFile.routes[routeIdx];
 
         let points =
             Array.isArray(routeToSplit.points)
@@ -20218,7 +20218,6 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
             });
         }
 
-        
         const combinedIdxBeforeNormalize =
             currentFile.routes.findIndex(function(route) {
                 return route && route.isCombined === true;
@@ -20283,7 +20282,6 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
             currentFile.routes =
                 [combinedRoute].concat(childRoutes);
 
-            
             newRouteIdxAfterSplit =
                 newRouteIdxAfterSplit + 1;
 
@@ -20328,7 +20326,6 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
             }
 
         } else {
-            
             const combinedIdx =
                 currentFile.routes.findIndex(function(route) {
                     return route && route.isCombined === true;
@@ -20377,7 +20374,6 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
             }
         });
 
-        
         currentFile.customRouteNames =
             {};
 
@@ -20394,7 +20390,6 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
                 routeName;
         });
 
-        
         if (
             currentFile.routes[0] &&
             currentFile.routes[0].isCombined === true
@@ -20418,124 +20413,125 @@ window.splitSubRoute = function(fileIdx, routeIdx, splitPointIndex, options = {}
             newRouteIdxAfterSplit
         );
     };
-    
 
-		const undoSplit = function() {
-		    
-		    if (
-		        fileStateBefore.routes &&
-		        fileStateBefore.routes.length > 0
-		    ) {
-		        currentFile.routes =
-		            fileStateBefore.routes.map(function(route) {
-		                return cloneRouteForSplit(route);
-		            });
-		
-		    } else {
-		        delete currentFile.routes;
-		    }
-		
-		    currentFile.points =
-		        fileStateBefore.points.map(function(p) {
-		            return { ...p };
-		        });
-		
-		    currentFile.segments =
-		        JSON.parse(JSON.stringify(fileStateBefore.segments || []));
-		
-		    currentFile.waypoints =
-		        cloneWaypointsForSplit(fileStateBefore.waypoints || []);
-		
-		    currentFile.isDrawTrack =
-		        fileStateBefore.isDrawTrack;
-		
-		    currentFile.isHandDrawRoute =
-		        fileStateBefore.isHandDrawRoute;
-		
-		    currentFile.isCombined =
-		        fileStateBefore.isCombined;
-		
-		    currentFile.customRouteNames =
-		        fileStateBefore.customRouteNames
-		            ? { ...fileStateBefore.customRouteNames }
-		            : {};
-		
-		    if (
-		        Array.isArray(currentFile.routes)
-		    ) {
-		        currentFile.routes.forEach(function(route) {
-		            if (route) {
-		                route.waypoints =
-		                    currentFile.waypoints || [];
-		            }
-		        });
-		    }
-		
-		    if (
-		        fileStateBefore.routes &&
-		        fileStateBefore.routes[routeIdx]
-		    ) {
-		        currentFile.points =
-		            fileStateBefore.routes[routeIdx].points || [];
-		
-		        currentFile.segments =
-		            fileStateBefore.routes[routeIdx].segments || [];
-		    }
-		
-		    allTracks =
-		        Array.isArray(currentFile.routes) && currentFile.routes.length > 0
-		            ? currentFile.routes
-		            : [currentFile];
-		
-		    window.allTracks =
-		        allTracks;
-		
-		    trackPoints =
-		        Array.isArray(currentFile.points)
-		            ? currentFile.points
-		            : [];
-		
-		    window.trackPoints =
-		        trackPoints;
-		
-		    window.currentMultiIndex =
-		        activeFileBefore;
-		
-		    window.currentActiveIndex =
-		        activeRouteBefore;
-		
-		    if (typeof updateRouteSelectDropdown === "function") {
-		        updateRouteSelectDropdown();
-		    }
-		
-		    
-		    if (
-		        typeof activeRouteLayer !== "undefined" &&
-		        activeRouteLayer &&
-		        map &&
-		        map.hasLayer(activeRouteLayer)
-		    ) {
-		        map.removeLayer(activeRouteLayer);
-		        activeRouteLayer = null;
-		    }
-		
-		    if (
-		        typeof window.activeRouteLayer !== "undefined" &&
-		        window.activeRouteLayer &&
-		        map &&
-		        map.hasLayer(window.activeRouteLayer)
-		    ) {
-		        map.removeLayer(window.activeRouteLayer);
-		        window.activeRouteLayer = null;
-		    }
-		
-		    refreshAfterSplit(
-		        fileIdx,
-		        activeRouteBefore
-		    );
-		};
+    const undoSplit = function() {
+
+        if (
+            fileStateBefore.routes &&
+            fileStateBefore.routes.length > 0
+        ) {
+            currentFile.routes =
+                fileStateBefore.routes.map(function(route) {
+                    return cloneRouteForSplit(route);
+                });
+
+        } else {
+            delete currentFile.routes;
+        }
+
+        currentFile.points =
+            fileStateBefore.points.map(function(p) {
+                return { ...p };
+            });
+
+        currentFile.segments =
+            JSON.parse(JSON.stringify(fileStateBefore.segments || []));
+
+        currentFile.waypoints =
+            cloneWaypointsForSplit(fileStateBefore.waypoints || []);
+
+        currentFile.isDrawTrack =
+            fileStateBefore.isDrawTrack;
+
+        currentFile.isHandDrawRoute =
+            fileStateBefore.isHandDrawRoute;
+
+        currentFile.isCombined =
+            fileStateBefore.isCombined;
+
+        currentFile.customRouteNames =
+            fileStateBefore.customRouteNames
+                ? { ...fileStateBefore.customRouteNames }
+                : {};
+
+        if (
+            Array.isArray(currentFile.routes)
+        ) {
+            currentFile.routes.forEach(function(route) {
+                if (route) {
+                    route.waypoints =
+                        currentFile.waypoints || [];
+                }
+            });
+        }
+
+        if (
+            fileStateBefore.routes &&
+            fileStateBefore.routes[routeIdx]
+        ) {
+            currentFile.points =
+                fileStateBefore.routes[routeIdx].points || [];
+
+            currentFile.segments =
+                fileStateBefore.routes[routeIdx].segments || [];
+        }
+
+        allTracks =
+            Array.isArray(currentFile.routes) && currentFile.routes.length > 0
+                ? currentFile.routes
+                : [currentFile];
+
+        window.allTracks =
+            allTracks;
+
+        trackPoints =
+            Array.isArray(currentFile.points)
+                ? currentFile.points
+                : [];
+
+        window.trackPoints =
+            trackPoints;
+
+        window.currentMultiIndex =
+            activeFileBefore;
+
+        window.currentActiveIndex =
+            activeRouteBefore;
+
+        if (typeof updateRouteSelectDropdown === "function") {
+            updateRouteSelectDropdown();
+        }
+
+        if (
+            typeof activeRouteLayer !== "undefined" &&
+            activeRouteLayer &&
+            map &&
+            map.hasLayer(activeRouteLayer)
+        ) {
+            map.removeLayer(activeRouteLayer);
+            activeRouteLayer = null;
+        }
+
+        if (
+            typeof window.activeRouteLayer !== "undefined" &&
+            window.activeRouteLayer &&
+            map &&
+            map.hasLayer(window.activeRouteLayer)
+        ) {
+            map.removeLayer(window.activeRouteLayer);
+            window.activeRouteLayer = null;
+        }
+
+        refreshAfterSplit(
+            fileIdx,
+            activeRouteBefore
+        );
+    };
 
     const command = {
+
+        fileIndex: fileIdx,
+
         managedFileIndex: fileIdx,
         routeIndex: routeIdx,
         skipAutoLoadRouteAfterUndo: true,
