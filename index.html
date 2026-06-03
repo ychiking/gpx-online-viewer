@@ -269,6 +269,7 @@
       background: #e0e0e0;
     }
 
+
     .iphone-fullscreen {
       position: fixed !important;
       top: 0 !important;
@@ -458,14 +459,14 @@
     .gpx-file-btn.export-btn:hover { background: rgba(76, 175, 80, 0.2); }
 
     body.has-gpx-bar .leaflet-bottom.leaflet-right {
-      margin-bottom: 46px !important;
+      margin-bottom: 51px !important;
     }
 
     body.has-gpx-bar .map-compass {
-      bottom: 50px;
+      bottom: 55px;
     }
 
-    body.has-gpx-bar.iphone-fullscreen #map .map-compass {
+    body.has-gpx-bar.iphone-fullscreen #map .map-compass  {
       bottom: 90px !important;
     }
 
@@ -1000,8 +1001,8 @@
 
 .route-tool-panel {
     position: absolute;
-    top: 35px;
-    left: 0;
+    top: -55px;
+    left: 35px;
     min-width: 145px;
     background: white;
     border: 1px solid rgba(0,0,0,0.14);
@@ -1101,12 +1102,405 @@
     position: relative !important;
 }
 
+@media screen and (max-height: 500px) and (orientation: landscape) {
+    .route-tool-panel {
+        max-height: 170px !important;
+    }
+
+    .route-tool-item {
+        padding: 7px 10px !important;
+        font-size: 13px !important;
+    }
+}
+
+.route-tool-copy-paste-row {
+    display: flex;
+    gap: 6px;
+    padding: 4px 4px 6px 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+.route-tool-icon-btn {
+    width: 32px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: #f1f3f4;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+}
+
+.route-tool-icon-btn:hover {
+    background: #e8f0fe;
+    color: #1a73e8;
+}
+
+.route-tool-icon-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.gpx-bar-add-btn {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    padding: 0 !important;
+    margin-left: 4px !important;
+
+    border: 1px solid rgba(255,255,255,0.55) !important;
+    border-radius: 999px !important;
+
+    background: rgba(0,0,0,0.42) !important;
+    color: white !important;
+
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    cursor: pointer !important;
+    flex: 0 0 auto !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35) !important;
+}
+
+.gpx-bar-add-btn:hover {
+    background: rgba(26,115,232,0.9) !important;
+    color: white !important;
+    border-color: rgba(255,255,255,0.85) !important;
+}
+
+.gpx-bar-add-btn .material-icons {
+    font-size: 18px !important;
+    line-height: 20px !important;
+    font-weight: bold !important;
+    align-items: center !important;
+}
+
+#gpxAddMenu {
+    position: fixed;
+    display: none;
+    min-width: 190px;
+    max-width: calc(100vw - 16px);
+    background: rgba(45, 45, 45, 0.82) !important;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 10px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.32);
+    padding: 6px;
+    z-index: 2147483646;
+    box-sizing: border-box;
+    backdrop-filter: blur(8px);
+}
+
+.gpx-add-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.gpx-add-menu-item:hover {
+    background: rgba(255,255,255,0.14);
+}
+
+.gpx-add-menu-item .material-icons {
+    font-size: 18px;
+    color: #fff;
+}
+
+    #multiGpxBtnBar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+
+    white-space: nowrap !important;
+    flex-wrap: nowrap !important;
+
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.gpx-bar-scroll-btn {
+    width: 28px;
+    height: 30px;
+    min-width: 28px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.42);
+    color: white;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    flex: 0 0 auto;
+}
+
+.gpx-bar-scroll-btn:hover {
+    background: rgba(26,115,232,0.9);
+}
+
+.gpx-bar-scroll-btn.disabled {
+    opacity: 0.28;
+    cursor: default;
+}
+
+#closeFileChoiceModal {
+    position: fixed !important;
+    inset: 0 !important;
+    display: none;
+    align-items: center !important;
+    justify-content: center !important;
+    background: rgba(0,0,0,0.42) !important;
+    z-index: 2147483647 !important;
+    box-sizing: border-box !important;
+    padding: 18px !important;
+    pointer-events: auto !important;
+}
+
+.close-file-choice-box {
+    width: min(380px, calc(100vw - 42px));
+    background: rgba(255,255,255,0.98);
+    border-radius: 18px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.32);
+    padding: 26px 28px 24px 28px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.close-file-choice-icon-wrap {
+    width: 70px;
+    height: 70px;
+    border-radius: 999px;
+    background: rgba(213, 79, 0, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px auto;
+}
+
+.close-file-choice-icon {
+    font-size: 42px !important;
+    color: #d94b00;
+}
+
+.close-file-choice-title {
+    font-size: 24px;
+    line-height: 1.25;
+    font-weight: 800;
+    color: #2d3f50;
+    margin-bottom: 18px;
+    letter-spacing: 0.02em;
+}
+
+.close-file-choice-message {
+    font-size: 15px;
+    line-height: 1.65;
+    color: #444;
+    margin-bottom: 22px;
+    font-weight: 500;
+}
+
+.close-file-warning-text {
+    color: #d94b00;
+    font-weight: 700;
+}
+
+.close-file-choice-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.close-choice-btn {
+    width: 100%;
+    min-height: 46px;
+    border-radius: 10px;
+    border: none;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.close-choice-btn.danger {
+    background: #d94b00;
+    color: #fff;
+}
+
+.close-choice-btn.danger:hover {
+    background: #c64400;
+}
+
+.close-choice-btn.primary {
+    background: #1a73e8;
+    color: #fff;
+}
+
+.close-choice-btn.primary:hover {
+    background: #1765cc;
+}
+
+.close-choice-btn.cancel {
+    background: #fff;
+    color: #333;
+    border: 1px solid #d6d6d6;
+}
+
+.close-choice-btn.cancel:hover {
+    background: #f6f6f6;
+}
+
+@media screen and (max-width: 480px) {
+    .close-file-choice-box {
+        width: min(360px, calc(100vw - 30px));
+        border-radius: 18px;
+        padding: 24px 22px 22px 22px;
+    }
+
+    .close-file-choice-icon-wrap {
+        width: 66px;
+        height: 66px;
+        margin-bottom: 14px;
+    }
+
+    .close-file-choice-icon {
+        font-size: 40px !important;
+    }
+
+    .close-file-choice-title {
+        font-size: 23px;
+        margin-bottom: 16px;
+    }
+
+    .close-file-choice-message {
+        font-size: 14px;
+        line-height: 1.6;
+        margin-bottom: 18px;
+    }
+
+    .close-choice-btn {
+        min-height: 44px;
+        font-size: 15px;
+        border-radius: 10px;
+    }
+}
+
+.route-tool-copy-paste-row {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 0;
+
+    border-bottom: 1px solid rgba(0,0,0,0.14);
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+}
+
+.route-tool-icon-text-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-right: 1px solid rgba(255,255,255,0.12);
+    background: transparent;
+    color: #5f6368;
+    cursor: pointer;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+
+    gap: 3px;
+    padding: 4px 0;
+}
+
+.route-tool-icon-text-btn:last-child {
+    border-right: none;
+}
+
+.route-tool-icon-text-btn:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+.route-tool-icon-text-btn.disabled,
+.route-tool-icon-text-btn[data-disabled="true"] {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.route-tool-top-icon {
+    font-size: 20px !important;
+    line-height: 1;
+}
+
+.route-tool-icon-label {
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.wpt-selected-row,
+.wpt-selected-row:hover,
+.wpt-selected-row td {
+    background: rgba(26, 115, 232, 0.10) !important;
+}
+
+.custom-wpt-icon {
+    background: transparent;
+    border: none;
+    pointer-events: auto;
+}
+
+.wpt-map-icon {
+    width: 32px;
+    height: 32px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    filter: none !important;
+}
+
+.wpt-map-icon.wpt-icon-place-dot::after {
+    content: "";
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: #ffffff;
+    border-radius: 50%;
+    left: 50%;
+    top: 36%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 3;
+}
+
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2605272</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2606031</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
