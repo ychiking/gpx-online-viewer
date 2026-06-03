@@ -284,7 +284,9 @@ map.on('click', (e) => {
                 clickedRoute.routeIdx,
                 null,
                 {
-                    skipAutoFitBounds: true
+                    skipAutoFitBounds: true,
+                    preserveChartState: true
+                    
                 }
             );
         }
@@ -5838,6 +5840,23 @@ function loadRoute(index, customColor = null, focusPos = null) {
     focusPos &&
     Number.isFinite(Number(focusPos.lat)) &&
     Number.isFinite(Number(focusPos.lng));
+    
+  const preserveChartState =
+    focusPos &&
+    focusPos.preserveChartState === true;
+
+	const chartContainerBeforeLoad =
+	    document.getElementById("chartContainer");
+	
+	const wasChartOpenBeforeLoad =
+	    focusPos &&
+	    focusPos.preserveChartState === true &&
+	    typeof window.userElevationChartExpanded === "boolean"
+	        ? window.userElevationChartExpanded
+	        : (
+	            chartContainerBeforeLoad &&
+	            window.getComputedStyle(chartContainerBeforeLoad).display !== "none"
+	        );
 	
 	if (typeof window.renderRouteToolControl === "function") {
     window.renderRouteToolControl();
@@ -6651,9 +6670,15 @@ function loadRoute(index, customColor = null, focusPos = null) {
 
         } catch (err) {}
 
-        if (typeof drawElevationChart === 'function') {
-            drawElevationChart();
-        }
+				if (
+				    typeof drawElevationChart === 'function' &&
+				    (
+				        !preserveChartState ||
+				        wasChartOpenBeforeLoad
+				    )
+				) {
+				    drawElevationChart();
+				}
     }
 
 	let visibleWaypointsForStart = [];
@@ -7101,7 +7126,8 @@ function loadRoute(index, customColor = null, focusPos = null) {
 								    {
 								        lat: endPos.lat,
 								        lng: endPos.lng,
-								        skipAutoFitBounds: true
+								        skipAutoFitBounds: true,
+								        preserveChartState: true
 								    }
 								);
 							
@@ -7159,7 +7185,8 @@ function loadRoute(index, customColor = null, focusPos = null) {
 								    {
 								        lat: startPos.lat,
 								        lng: startPos.lng,
-								        skipAutoFitBounds: true
+								        skipAutoFitBounds: true,
+								        preserveChartState: true
 								    }
 								);
 
@@ -7580,11 +7607,10 @@ function loadRoute(index, customColor = null, focusPos = null) {
     }
     
 		if (typeof applyElevationChartAutoState === "function") {
-		    applyElevationChartAutoState();
-		
-		    setTimeout(function() {
-		        applyElevationChartAutoState();
-		    }, 80);
+		    applyElevationChartAutoState({
+		        preserveUserChartState: preserveChartState,
+		        wasChartOpenBeforeLoad: wasChartOpenBeforeLoad
+		    });
 		}
 }
  
@@ -9968,6 +9994,7 @@ window.isWaypointVisibleOnCurrentRoute = function(wpt, routeIdx, route) {
 
 
 window.toggleWaypointDisplayForCurrentRoute = function(originalIdx, checked) {
+	
     const fileIdx =
         typeof window.currentMultiIndex === "number"
             ? window.currentMultiIndex
@@ -10084,12 +10111,16 @@ window.toggleWaypointDisplayForCurrentRoute = function(originalIdx, checked) {
         rebuildXmlFromWaypoints(currentFile);
     }
 
-
 		if (typeof loadRoute === "function") {
-		    loadRoute(routeIdx, null);
+		    loadRoute(
+		        routeIdx,
+		        null,
+		        {
+		            skipAutoFitBounds: true,
+		            preserveChartState: true
+		        }
+		    );
 		
-		} else if (typeof window.refreshWaypointMarkersOnly === "function") {
-		    window.refreshWaypointMarkersOnly(routeIdx, null);
 		}
 		
 		if (typeof updateWptIconStatus === "function") {
@@ -10225,7 +10256,14 @@ window.toggleAllWaypointsDisplayForCurrentRoute = function(checkbox) {
     }
 
 		if (typeof loadRoute === "function") {
-		    loadRoute(routeIdx, null);
+		    loadRoute(
+		        routeIdx,
+		        null,
+		        {
+		            skipAutoFitBounds: true,
+		            preserveChartState: true
+		        }
+		    );
 		
 		} else if (typeof window.refreshWaypointMarkersOnly === "function") {
 		    window.refreshWaypointMarkersOnly(routeIdx, null);
@@ -10520,15 +10558,16 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
 			        <td>${w.name}</td>
 			
 			        <td style="text-align:center;">
-			            <input
-			                type="checkbox"
-			                class="wpt-display-checkbox"
-			                data-idx="${w.originalIdx}"
-			                ${displayChecked}
-			                ${displayDisabled}
-			                onclick="event.stopPropagation()"
-			                onchange="toggleWaypointDisplayForCurrentRoute(${w.originalIdx}, this.checked)"
-			            >
+									<input
+									    type="checkbox"
+									    class="wpt-display-checkbox"
+									    data-idx="${w.originalIdx}"
+									    ${displayChecked}
+									    ${displayDisabled}
+									    onmousedown="event.stopPropagation()"
+									    ontouchstart="event.stopPropagation()"
+									    onclick="event.stopPropagation(); window.toggleWaypointDisplayForCurrentRoute(${w.originalIdx}, this.checked);"
+									>
 			        </td>
 			
 			        <td>
@@ -10567,8 +10606,8 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
     wptListContainer.style.display =
         isFS ? "none" : "block";
 
-    const toggleAllWptDisplay =
-        document.getElementById("toggleAllWptDisplay");
+		const toggleAllWptDisplay =
+		    document.getElementById("toggleAllWptDisplay");
 
     if (toggleAllWptDisplay) {
         if (route && route.isCombined === true) {
@@ -11393,6 +11432,7 @@ async function handleGpxFiles(files) {
     };
 
 		const clearDisplayedRouteAfterStackUndo = function() {
+							
 		    if (
 		        typeof polyline !== "undefined" &&
 		        polyline &&
@@ -11510,7 +11550,87 @@ async function handleGpxFiles(files) {
 		        trackPoints =
 		            [];
 		    } catch (err) {}
+		    
+		    const routeSummary2 =
+				    document.getElementById("routeSummary");
+				
+				if (routeSummary2) {
+				    routeSummary2.innerHTML = "";
+				}
+				
+				const chartContainer =
+				    document.getElementById("chartContainer");
+				
+				if (chartContainer) {
+				    chartContainer.style.setProperty(
+				        "display",
+				        "none",
+				        "important"
+				    );
+				}
+				
+				const toggleChartBtn =
+				    document.getElementById("toggleChartBtn");
+				
+				if (toggleChartBtn) {
+				    toggleChartBtn.style.setProperty(
+				        "display",
+				        "none",
+				        "important"
+				    );
+				
+				    toggleChartBtn.textContent =
+				        "展開高度表";
+				}
+				
+				const tipLabel =
+				    document.getElementById("chartTipToggleLabel");
+				
+				if (tipLabel) {
+				    tipLabel.style.setProperty(
+				        "display",
+				        "none",
+				        "important"
+				    );
+				}
+				
+				if (window.chart) {
+				    window.chart.destroy();
+				    window.chart =
+				        null;
+				}
+				
+				if (typeof clearRouteDirectionMarkers === "function") {
+				    clearRouteDirectionMarkers();
+				}
+				
+				const wptList =
+				    document.getElementById("wptList");
+				
+				if (wptList) {
+				    wptList.innerHTML = "";
+				}
+				
+				const navShortcuts =
+				    document.getElementById("navShortcuts");
+				
+				if (navShortcuts) {
+				    navShortcuts.innerHTML = "";
+				}
+				
+				if (typeof allTracks !== "undefined") {
+				    allTracks =
+				        [];
+				}
+				
+				window.allTracks =
+				    [];
+				
+				window.currentActiveIndex =
+				    0;
 		};
+		
+		
 
     const restoreGpxLayersForHistory = function(items) {
         items.forEach(function(gpx) {
@@ -11762,121 +11882,310 @@ if (
 		        this.redo();
 		    },
 		
-		   undo: function() {
-		    removeGpxLayersForHistory(
-		        appendedItems
-		    );
-		
-		    multiGpxStack.splice(
-		        appendedStartIndex,
-		        appendedItems.length
-		    );
-		
-		    window.multiGpxStack =
-		        multiGpxStack;
-		
-		    clearDisplayedRouteAfterStackUndo();
-		
-		    const nextFocusIdx =
-		        Math.min(
-		            appendedStartIndex,
-		            multiGpxStack.length - 1
+		    undo: function() {
+		        removeGpxLayersForHistory(
+		            appendedItems
 		        );
 		
-		    refreshWorkspaceAfterHistoryChange(
-		        Math.max(
-		            0,
-		            nextFocusIdx
-		        )
-		    );
-		
-		    
-		    if (typeof renderMultiGpxButtons === "function") {
-		        renderMultiGpxButtons();
-		    }
-		
-		    if (typeof window.updateLoadedGpxCountDisplay === "function") {
-		        window.updateLoadedGpxCountDisplay();
-		    }
-		
-		    if (typeof updateRouteSelectDropdown === "function") {
-		        updateRouteSelectDropdown();
-		    }
-		
-		    if (
-		        !Array.isArray(multiGpxStack) ||
-		        multiGpxStack.length === 0
-		    ) {
-		        const bar =
-		            document.getElementById("multiGpxBtnBar");
-		
-		        if (bar) {
-		            bar.innerHTML =
-		                "";
-		
-		            bar.style.display =
-		                "none";
-		        }
-		
-		        const routeSelect =
-		            document.getElementById("routeSelect");
-		
-		        if (routeSelect) {
-		            routeSelect.innerHTML =
-		                "";
-		
-		            routeSelect.value =
-		                "";
-		        }
-		
-		        const routeSelectContainer =
-		            document.getElementById("routeSelectContainer");
-		
-		        if (routeSelectContainer) {
-		            routeSelectContainer.style.display =
-		                "none";
-		        }
-		
-		        if (typeof renderRouteInfo === "function") {
-		            renderRouteInfo();
-		        }
-		    }
-		},
-
-		redo: function() {
-		    const alreadyExists =
-		        appendedItems.some(function(item) {
-		            return multiGpxStack.includes(item);
-		        });
-		
-		    if (!alreadyExists) {
 		        multiGpxStack.splice(
 		            appendedStartIndex,
-		            0,
-		            ...appendedItems
+		            appendedItems.length
 		        );
+		
+		        window.multiGpxStack =
+		            multiGpxStack;
+		
+		        clearDisplayedRouteAfterStackUndo();
+		
+		        
+		        if (
+		            !Array.isArray(multiGpxStack) ||
+		            multiGpxStack.length === 0
+		        ) {
+		            window.currentMultiIndex =
+		                0;
+		
+		            window.currentActiveIndex =
+		                0;
+		
+		            if (typeof allTracks !== "undefined") {
+		                allTracks =
+		                    [];
+		            }
+		
+		            window.allTracks =
+		                [];
+		
+		            
+		            window._cachedRoutes =
+		                {};
+		
+		            if (typeof trackPoints !== "undefined") {
+		                trackPoints =
+		                    [];
+		            }
+		
+		            window.trackPoints =
+		                [];
+		
+		            if (typeof clearRouteDirectionMarkers === "function") {
+		                clearRouteDirectionMarkers();
+		            }
+		
+		            const routeSummary =
+		                document.getElementById("routeSummary");
+		
+		            if (routeSummary) {
+		                routeSummary.innerHTML =
+		                    "";
+		            }
+		
+		            const wptList =
+		                document.getElementById("wptList");
+		
+		            if (wptList) {
+		                wptList.innerHTML =
+		                    "";
+		
+		                wptList.style.display =
+		                    "none";
+		            }
+		
+		            const navShortcuts =
+		                document.getElementById("navShortcuts");
+		
+		            if (navShortcuts) {
+		                navShortcuts.innerHTML =
+		                    "";
+		
+		                navShortcuts.style.display =
+		                    "none";
+		            }
+		
+		            const chartContainer =
+		                document.getElementById("chartContainer");
+		
+		            if (chartContainer) {
+		                chartContainer.style.setProperty(
+		                    "display",
+		                    "none",
+		                    "important"
+		                );
+		
+		                chartContainer.innerHTML =
+		                    '<canvas id="elevationChart"></canvas>';
+		            }
+		
+		            const tipLabel =
+		                document.getElementById("chartTipToggleLabel");
+		
+		            if (tipLabel) {
+		                tipLabel.style.setProperty(
+		                    "display",
+		                    "none",
+		                    "important"
+		                );
+		            }
+		
+		            const toggleChartBtn =
+		                document.getElementById("toggleChartBtn");
+		
+		            if (toggleChartBtn) {
+		                toggleChartBtn.style.setProperty(
+		                    "display",
+		                    "none",
+		                    "important"
+		                );
+		
+		                toggleChartBtn.textContent =
+		                    "展開高度表";
+		            }
+		
+		            if (window.chart) {
+		                window.chart.destroy();
+		                window.chart =
+		                    null;
+		            }
+		
+		            const progressBar =
+		                document.getElementById("gpxProgressBar");
+		
+		            if (progressBar) {
+		                progressBar.value =
+		                    0;
+		
+		                progressBar.max =
+		                    0;
+		            }
+		
+		            const progressBarInfo =
+		                document.getElementById("progressBarInfo");
+		
+		            if (progressBarInfo) {
+		                progressBarInfo.textContent =
+		                    "";
+		            }
+		
+		            const bar =
+		                document.getElementById("multiGpxBtnBar");
+		
+		            if (bar) {
+		                bar.innerHTML =
+		                    "";
+		
+		                bar.style.display =
+		                    "none";
+		            }
+		
+		            const routeSelect =
+		                document.getElementById("routeSelect");
+		
+		            if (routeSelect) {
+		                routeSelect.innerHTML =
+		                    "";
+		
+		                routeSelect.value =
+		                    "";
+		            }
+		
+		            const routeSelectContainer =
+		                document.getElementById("routeSelectContainer");
+		
+		            if (routeSelectContainer) {
+		                routeSelectContainer.style.display =
+		                    "none";
+		            }
+		
+		            if (typeof renderMultiGpxButtons === "function") {
+		                renderMultiGpxButtons();
+		            }
+		
+		            if (typeof window.updateLoadedGpxCountDisplay === "function") {
+		                window.updateLoadedGpxCountDisplay();
+		            }
+		
+		            if (typeof updateRouteSelectDropdown === "function") {
+		                updateRouteSelectDropdown();
+		            }
+		
+		            if (typeof updateWptIconStatus === "function") {
+		                updateWptIconStatus();
+		            }
+		
+		            if (typeof window.refreshGpxManagerIfOpen === "function") {
+		                window.refreshGpxManagerIfOpen();
+		            }
+		
+		            
+		            window._cachedRoutes =
+		                {};
+		
+		            const wptListFinal =
+		                document.getElementById("wptList");
+		
+		            if (wptListFinal) {
+		                wptListFinal.innerHTML =
+		                    "";
+		
+		                wptListFinal.style.display =
+		                    "none";
+		            }
+		
+		            const navShortcutsFinal =
+		                document.getElementById("navShortcuts");
+		
+		            if (navShortcutsFinal) {
+		                navShortcutsFinal.innerHTML =
+		                    "";
+		
+		                navShortcutsFinal.style.display =
+		                    "none";
+		            }
+		
+		            const routeSummaryFinal =
+		                document.getElementById("routeSummary");
+		
+		            if (routeSummaryFinal) {
+		                routeSummaryFinal.innerHTML =
+		                    "";
+		            }
+		
+		            return;
+		        }
+		
+		        
+		        const nextFocusIdx =
+		            Math.min(
+		                appendedStartIndex,
+		                multiGpxStack.length - 1
+		            );
+		
+		        refreshWorkspaceAfterHistoryChange(
+		            Math.max(
+		                0,
+		                nextFocusIdx
+		            )
+		        );
+		
+		        if (typeof renderMultiGpxButtons === "function") {
+		            renderMultiGpxButtons();
+		        }
+		
+		        if (typeof window.updateLoadedGpxCountDisplay === "function") {
+		            window.updateLoadedGpxCountDisplay();
+		        }
+		
+		        if (typeof updateRouteSelectDropdown === "function") {
+		            updateRouteSelectDropdown();
+		        }
+		
+		        if (typeof window.refreshGpxManagerIfOpen === "function") {
+		            window.refreshGpxManagerIfOpen();
+		        }
+		    },
+		
+		    redo: function() {
+		        const alreadyExists =
+		            appendedItems.some(function(item) {
+		                return multiGpxStack.includes(item);
+		            });
+		
+		        if (!alreadyExists) {
+		            multiGpxStack.splice(
+		                appendedStartIndex,
+		                0,
+		                ...appendedItems
+		            );
+		        }
+		
+		        window.multiGpxStack =
+		            multiGpxStack;
+		
+		        restoreGpxLayersForHistory(
+		            appendedItems
+		        );
+		
+		        refreshWorkspaceAfterHistoryChange(
+		            appendedStartIndex
+		        );
+		
+		        if (typeof renderMultiGpxButtons === "function") {
+		            renderMultiGpxButtons();
+		        }
+		
+		        if (typeof window.updateLoadedGpxCountDisplay === "function") {
+		            window.updateLoadedGpxCountDisplay();
+		        }
+		
+		        if (typeof updateRouteSelectDropdown === "function") {
+		            updateRouteSelectDropdown();
+		        }
+		
+		        if (typeof window.refreshGpxManagerIfOpen === "function") {
+		            window.refreshGpxManagerIfOpen();
+		        }
 		    }
-		
-		    window.multiGpxStack =
-		        multiGpxStack;
-		
-		    restoreGpxLayersForHistory(
-		        appendedItems
-		    );
-		
-		    refreshWorkspaceAfterHistoryChange(
-		        appendedStartIndex
-		    );
-		
-		    if (typeof renderMultiGpxButtons === "function") {
-		        renderMultiGpxButtons();
-		    }
-		
-		    if (typeof window.updateLoadedGpxCountDisplay === "function") {
-		        window.updateLoadedGpxCountDisplay();
-		    }
-		}
-	}
+		};
 
         historyManager.undoStack.push(
             appendCommand
@@ -12672,7 +12981,8 @@ window.createBlankGpxProject = function() {
                 0,
                 null,
                 {
-                    skipAutoFitBounds: true
+                    skipAutoFitBounds: true,
+                    preserveChartState: true
                 }
             );
         }
@@ -13642,6 +13952,44 @@ function toggleElevationChart() {
 
         return;
     }
+    
+    if (window.__preserveChartStateForWptAction === true) {
+		    const chartContainer =
+		        document.getElementById("chartContainer");
+		
+		    const btn =
+		        document.getElementById("toggleChartBtn");
+		
+		    const tipLabel =
+		        document.getElementById("chartTipToggleLabel");
+		
+		    const isChartOpen =
+		        chartContainer &&
+		        window.getComputedStyle(chartContainer).display !== "none";
+		
+		    if (btn) {
+		        btn.style.setProperty(
+		            "display",
+		            "block",
+		            "important"
+		        );
+		
+		        btn.textContent =
+		            isChartOpen
+		                ? "收合高度表"
+		                : "展開高度表";
+		    }
+		
+		    if (tipLabel) {
+		        tipLabel.style.setProperty(
+		            "display",
+		            isChartOpen ? "flex" : "none",
+		            "important"
+		        );
+		    }
+		
+		    return;
+		}
 
     if (
         chartContainer.style.display === "none" ||
@@ -13649,6 +13997,8 @@ function toggleElevationChart() {
     ) {
         chartContainer.style.display =
             "block";
+            
+        window.userElevationChartExpanded = true;
 
         if (btn) {
             btn.textContent =
@@ -13671,6 +14021,8 @@ function toggleElevationChart() {
     } else {
         chartContainer.style.display =
             "none";
+            
+        window.userElevationChartExpanded = false;
 
         if (btn) {
             btn.textContent =
@@ -13688,7 +14040,14 @@ function toggleElevationChart() {
     }
 }
 
-function applyElevationChartAutoState() {
+function applyElevationChartAutoState(options = {}) {
+
+    const preserveUserChartState =
+        options.preserveUserChartState === true;
+
+    const wasChartOpenBeforeLoad =
+        options.wasChartOpenBeforeLoad === true;
+
     const chartContainer =
         document.getElementById("chartContainer");
 
@@ -13742,7 +14101,6 @@ function applyElevationChartAutoState() {
         Array.isArray(currentPoints) &&
         currentPoints.length > 1;
 
-    
     window.trackPoints =
         currentPoints;
 
@@ -13803,6 +14161,81 @@ function applyElevationChartAutoState() {
         if (info) {
             info.textContent =
                 "";
+        }
+
+        return;
+    }
+
+    
+    if (preserveUserChartState) {
+        const isChartOpen =
+            wasChartOpenBeforeLoad === true;
+
+        if (btn) {
+            btn.style.setProperty(
+                "display",
+                "block",
+                "important"
+            );
+
+            btn.textContent =
+                isChartOpen
+                    ? "收合高度表"
+                    : "展開高度表";
+        }
+
+        if (chartContainer) {
+            chartContainer.style.setProperty(
+                "display",
+                isChartOpen ? "block" : "none",
+                "important"
+            );
+
+            if (
+                isChartOpen &&
+                !document.getElementById("elevationChart")
+            ) {
+                chartContainer.innerHTML =
+                    '<canvas id="elevationChart"></canvas>';
+            }
+        }
+
+        if (tipLabel) {
+            tipLabel.style.setProperty(
+                "display",
+                isChartOpen ? "flex" : "none",
+                "important"
+            );
+        }
+
+        const progressBar =
+            document.getElementById("gpxProgressBar");
+
+        if (progressBar) {
+            progressBar.max =
+                Math.max(
+                    0,
+                    currentPoints.length - 1
+                );
+
+            progressBar.value =
+                0;
+        }
+
+        if (
+            isChartOpen &&
+            typeof drawElevationChart === "function"
+        ) {
+            drawElevationChart();
+        }
+
+        if (
+            !isChartOpen &&
+            window.chart
+        ) {
+            window.chart.destroy();
+            window.chart =
+                null;
         }
 
         return;
@@ -17013,10 +17446,12 @@ function processSave(finalName, finalEle, extra = {}) {
                 focusPos
                     ? {
                         ...focusPos,
-                        skipAutoFitBounds: true
+                        skipAutoFitBounds: true,
+                        preserveChartState: true
                     }
                     : {
-                        skipAutoFitBounds: true
+                        skipAutoFitBounds: true,
+                        preserveChartState: true
                     }
             );
         }
@@ -17054,6 +17489,7 @@ function processSave(finalName, finalEle, extra = {}) {
     historyManager.execute({
         fileIdx: fileIdxAtSave,
         routeIdx: routeIdxAtSave,
+        skipAutoLoadRouteAfterUndo: true,
 
         do: () => {
             syncRouteSelectToSavedRoute();
@@ -17582,9 +18018,16 @@ window.deleteWaypointByIndex = function(idx) {
             }
         });
 
-        if (typeof loadRoute === 'function') {
-            loadRoute(routeIdxAtDelete);
-        }
+				if (typeof loadRoute === 'function') {
+				    loadRoute(
+				        routeIdxAtDelete,
+				        null,
+				        {
+				            skipAutoFitBounds: true,
+				            preserveChartState: true
+				        }
+				    );
+				}
 
         const routeForWpt =
             allTracks && allTracks[routeIdxAtDelete]
@@ -17617,6 +18060,7 @@ window.deleteWaypointByIndex = function(idx) {
 
             fileIdx: fileIdxAtDelete,
             routeIdx: routeIdxAtDelete,
+            skipAutoLoadRouteAfterUndo: true,
 
             do: () => {
 
@@ -19091,36 +19535,49 @@ function updateRawGpxContent(name, oldLatLng, newLat, newLon) {
 }
 
 window.focusWaypointWithLog = function(originalIdx, name) {
-	  window.currentToolTarget = {
-		    type: "waypoint",
-		    fileIdx:
-		        typeof window.currentMultiIndex === "number"
-		            ? window.currentMultiIndex
-		            : 0,
-		    routeIdx:
-		        typeof window.currentActiveIndex === "number"
-		            ? window.currentActiveIndex
-		            : 0,
-		    wptIdx: Number(originalIdx)
-		};
-		
-		document.querySelectorAll(".wpt-table tr").forEach(function(row) {
-    row.classList.remove("wpt-selected-row");
-		});
-		
-		const selectedRow =
-		    document.querySelector(
-		        '.wpt-table tr[data-idx="' + originalIdx + '"]'
-		    );
-		
-		if (selectedRow) {
-		    selectedRow.classList.add("wpt-selected-row");
-		}
-		
-		if (typeof window.renderRouteToolControl === "function") {
-		    window.renderRouteToolControl();
-		}
-		
+    const chartContainerBeforeFocus =
+        document.getElementById("chartContainer");
+
+    const tipLabelBeforeFocus =
+        document.getElementById("chartTipToggleLabel");
+
+    const btnBeforeFocus =
+        document.getElementById("toggleChartBtn");
+
+    const wasChartOpenBeforeFocus =
+        chartContainerBeforeFocus &&
+        window.getComputedStyle(chartContainerBeforeFocus).display !== "none";
+
+    window.currentToolTarget = {
+        type: "waypoint",
+        fileIdx:
+            typeof window.currentMultiIndex === "number"
+                ? window.currentMultiIndex
+                : 0,
+        routeIdx:
+            typeof window.currentActiveIndex === "number"
+                ? window.currentActiveIndex
+                : 0,
+        wptIdx: Number(originalIdx)
+    };
+
+    document.querySelectorAll(".wpt-table tr").forEach(function(row) {
+        row.classList.remove("wpt-selected-row");
+    });
+
+    const selectedRow =
+        document.querySelector(
+            '.wpt-table tr[data-idx="' + originalIdx + '"]'
+        );
+
+    if (selectedRow) {
+        selectedRow.classList.add("wpt-selected-row");
+    }
+
+    if (typeof window.renderRouteToolControl === "function") {
+        window.renderRouteToolControl();
+    }
+
     const stackIdx =
         window.currentMultiIndex !== undefined
             ? window.currentMultiIndex
@@ -19145,7 +19602,6 @@ window.focusWaypointWithLog = function(originalIdx, name) {
         wptIdx: Number(originalIdx)
     };
 
-
     if (wpt) {
         window.focusWaypoint(
             wpt.lat,
@@ -19155,6 +19611,69 @@ window.focusWaypointWithLog = function(originalIdx, name) {
             wpt.ele
         );
     }
+
+    
+    setTimeout(function() {
+        const chartContainer =
+            document.getElementById("chartContainer");
+
+        const tipLabel =
+            document.getElementById("chartTipToggleLabel");
+
+        const btn =
+            document.getElementById("toggleChartBtn");
+
+        if (!wasChartOpenBeforeFocus) {
+            if (chartContainer) {
+                chartContainer.style.setProperty(
+                    "display",
+                    "none",
+                    "important"
+                );
+            }
+
+            if (tipLabel) {
+                tipLabel.style.setProperty(
+                    "display",
+                    "none",
+                    "important"
+                );
+            }
+
+            if (btn) {
+                btn.textContent =
+                    "展開高度表";
+            }
+
+            if (window.chart) {
+                window.chart.destroy();
+                window.chart =
+                    null;
+            }
+
+        } else {
+            if (chartContainer) {
+                chartContainer.style.setProperty(
+                    "display",
+                    "block",
+                    "important"
+                );
+            }
+
+            if (tipLabel) {
+                tipLabel.style.setProperty(
+                    "display",
+                    "flex",
+                    "important"
+                );
+            }
+
+            if (btn) {
+                btn.textContent =
+                    "收合高度表";
+            }
+        }
+    }, 120);
 };
 
 window.handleWptEditByIndex = function(originalIdx) {
@@ -19199,17 +19718,23 @@ window.handleWptEditByIndex = function(originalIdx) {
         window.renderRouteToolControl();
     }
 
-    if (wpt) {
-        handleWptEdit(
-            originalIdx,
-            wpt.lat,
-            wpt.lon,
-            wpt.ele,
-            wpt.name,
-            wpt.localTime,
-            originalIdx
-        );
-    }
+		if (wpt) {
+		    window.__preserveChartStateForWptAction = true;
+		
+		    handleWptEdit(
+		        originalIdx,
+		        wpt.lat,
+		        wpt.lon,
+		        wpt.ele,
+		        wpt.name,
+		        wpt.localTime,
+		        originalIdx
+		    );
+		
+		    setTimeout(function() {
+		        window.__preserveChartStateForWptAction = false;
+		    }, 300);
+		}
 };
 
 window.deleteSelectedWaypoints = function() {
@@ -19432,9 +19957,16 @@ window.deleteSelectedWaypoints = function() {
                 }
             });
 
-            if (typeof loadRoute === 'function') {
-                loadRoute(routeIdxAtDelete);
-            }
+						if (typeof loadRoute === 'function') {
+						    loadRoute(
+						        routeIdxAtDelete,
+						        null,
+						        {
+						            skipAutoFitBounds: true,
+						            preserveChartState: true
+						        }
+						    );
+						}
 
             const routeForWpt =
                 allTracks && allTracks[routeIdxAtDelete]
@@ -24144,7 +24676,8 @@ window.reverseSubRoute = function(fileIdx, routeIdx, options = {}) {
                     liveIsFileRoute ? 0 : liveRouteIdx,
                     null,
                     {
-                        skipAutoFitBounds: true
+                        skipAutoFitBounds: true,
+                        preserveChartState: true
                     }
                 );
             }
@@ -24878,7 +25411,8 @@ window.renderRouteToolControl = function() {
 		                        routeIdx,
 		                        null,
 		                        {
-		                            skipAutoFitBounds: true
+		                            skipAutoFitBounds: true,
+		                            preserveChartState: true
 		                        }
 		                    );
 		                }
@@ -27663,7 +28197,8 @@ window.fillElevationForRoute = async function(fileIdx, routeIdx) {
                     routeIdx,
                     null,
                     {
-                        skipAutoFitBounds: true
+                        skipAutoFitBounds: true,
+                        preserveChartState: true
                     }
                 );
             }
@@ -28296,7 +28831,8 @@ window.refreshAfterCopyPasteRoute = function(fileIdx, routeIdx) {
             routeIdx,
             null,
             {
-                skipAutoFitBounds: true
+                skipAutoFitBounds: true,
+                preserveChartState: true
             }
         );
     }
@@ -28596,7 +29132,8 @@ window.pasteCopiedRouteToCurrentFile = function(targetFileIdx) {
                 routeIdx || 0,
                 null,
                 {
-                    skipAutoFitBounds: true
+                    skipAutoFitBounds: true,
+                    preserveChartState: true
                 }
             );
         }
@@ -29453,7 +29990,8 @@ window.closeCurrentGpxFileDirect = function() {
             0,
             null,
             {
-                skipAutoFitBounds: true
+                skipAutoFitBounds: true,
+                preserveChartState: true
             }
         );
     }
