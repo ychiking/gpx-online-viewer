@@ -1711,6 +1711,10 @@ function finishScribble() {
     };
 
     const syncAfterDrawChange = function(command, activeIdx) {
+    		if (typeof clearRouteDirectionMarkers === "function") {
+				    clearRouteDirectionMarkers();
+				}
+
         const nextRouteIndex =
             Number.isFinite(Number(activeIdx))
                 ? Number(activeIdx)
@@ -1804,15 +1808,23 @@ function finishScribble() {
                     command.currentFile.routes[safeRouteIdx];
             }
 
-            window.trackPoints =
-                Array.isArray(command.targetTrack.points)
-                    ? command.targetTrack.points
-                    : [];
-
-            try {
-                trackPoints =
-                    window.trackPoints;
-            } catch (err) {}
+						const activeRouteForTrackPoints =
+						    command.currentFile &&
+						    Array.isArray(command.currentFile.routes) &&
+						    command.currentFile.routes[window.currentActiveIndex]
+						        ? command.currentFile.routes[window.currentActiveIndex]
+						        : command.targetTrack;
+						
+						window.trackPoints =
+						    activeRouteForTrackPoints &&
+						    Array.isArray(activeRouteForTrackPoints.points)
+						        ? activeRouteForTrackPoints.points
+						        : [];
+						
+						try {
+						    trackPoints =
+						        window.trackPoints;
+						} catch (err) {}
 
             if (
                 command.currentFile.routes.length > 1 &&
@@ -2097,7 +2109,43 @@ function finishScribble() {
         do: function() {
             window.currentMultiIndex =
                 this.fileIndex;
-
+						
+						if (
+						    this.wasNewHandDrawRoute === true &&
+						    this.currentFile &&
+						    Array.isArray(this.currentFile.routes) &&
+						    this.targetTrack &&
+						    this.currentFile.routes.indexOf(this.targetTrack) === -1
+						) {
+						    let insertIdx =
+						        Number.isFinite(Number(this.routeIndex))
+						            ? Number(this.routeIndex)
+						            : this.currentFile.routes.length;
+						
+						    insertIdx =
+						        Math.max(
+						            0,
+						            Math.min(
+						                insertIdx,
+						                this.currentFile.routes.length
+						            )
+						        );
+						
+						    this.currentFile.routes.splice(
+						        insertIdx,
+						        0,
+						        this.targetTrack
+						    );
+						
+						    this.routeIndex =
+						        insertIdx;
+						
+						    this.targetRouteIndex =
+						        insertIdx;
+						
+						    window.currentActiveIndex =
+						        insertIdx;
+						}
 						 
 						if (
 						    this.targetTrack &&
@@ -2559,25 +2607,105 @@ function finishScribble() {
             let nextRouteIndex =
                 this.routeIndex;
 
-            if (
-                isEmpty &&
-                this.wasNewHandDrawRoute &&
-                this.currentFile &&
-                Array.isArray(this.currentFile.routes)
-            ) {
-                const idx =
-                    this.currentFile.routes.indexOf(this.targetTrack);
-
-                if (idx > -1) {
-                    this.currentFile.routes.splice(
-                        idx,
-                        1
-                    );
-                }
-
-                nextRouteIndex =
-                    0;
-            }
+						if (
+						    isEmpty &&
+						    this.wasNewHandDrawRoute &&
+						    this.currentFile &&
+						    Array.isArray(this.currentFile.routes)
+						) {
+						    const removedRoute =
+						        this.targetTrack;
+						
+						    const idx =
+						        this.currentFile.routes.indexOf(removedRoute);
+						
+						    if (idx > -1) {
+						        this.currentFile.routes.splice(
+						            idx,
+						            1
+						        );
+						    }
+						
+						    
+						    this.targetTrack =
+						        removedRoute;
+						
+						    if (
+						        this.currentFile.routes.length > 1 &&
+						        this.currentFile.routes[0] &&
+						        this.currentFile.routes[0].isCombined === true &&
+						        typeof rebuildCombinedRouteForFile === "function"
+						    ) {
+						        rebuildCombinedRouteForFile(
+						            this.currentFile
+						        );
+						    }
+						
+						    const firstRealRouteIdx =
+						        this.currentFile.routes.findIndex(function(route) {
+						            return route && route.isCombined !== true;
+						        });
+						
+						    nextRouteIndex =
+						        firstRealRouteIdx >= 0
+						            ? firstRealRouteIdx
+						            : 0;
+						
+						    window.currentMultiIndex =
+						        this.fileIndex;
+						
+						    window.currentActiveIndex =
+						        nextRouteIndex;
+						
+						    window.allTracks =
+						        this.currentFile.routes;
+						
+						    if (typeof allTracks !== "undefined") {
+						        allTracks =
+						            window.allTracks;
+						    }
+						
+						    if (typeof syncDrawingGlobals === "function") {
+						        syncDrawingGlobals(
+						            this.currentFile,
+						            nextRouteIndex
+						        );
+						    }
+						
+						    if (typeof updateRouteSelectDropdown === "function") {
+						        updateRouteSelectDropdown();
+						    }
+						
+						    const routeSelect =
+						        document.getElementById("routeSelect");
+						
+						    if (routeSelect) {
+						        routeSelect.value =
+						            String(nextRouteIndex);
+						    }
+						
+						    if (typeof renderMultiGpxButtons === "function") {
+						        renderMultiGpxButtons();
+						    }
+						
+						    if (typeof loadRoute === "function") {
+						        loadRoute(
+						            nextRouteIndex,
+						            null,
+						            {
+						                skipAutoFitBounds: true,
+						                preserveChartState: true
+						            }
+						        );
+						    }
+						
+						    if (typeof window.refreshGpxManagerIfOpen === "function") {
+						        window.refreshGpxManagerIfOpen();
+						    }
+						
+						    
+						    return;
+						}
 
             if (
                 isEmpty &&
@@ -4954,6 +5082,17 @@ routeSelect.addEventListener("change", (e) => {
     const selectedIndex =
         parseInt(e.target.value, 10) || 0;
 
+    if (
+        typeof isDrawingMode !== "undefined" &&
+        isDrawingMode === true
+    ) {
+        const drawModeBtn =
+            document.getElementById("drawModeBtn");
+
+        if (drawModeBtn) {
+            drawModeBtn.click();
+        }
+    }
     
     const chartBox =
         document.getElementById("elevationChartContainer") ||
@@ -20692,9 +20831,115 @@ class HistoryManager {
 		        updateRouteSelectDropdown();
 		    }
 		
-		    if (typeof renderRouteInfo === "function") {
-		        renderRouteInfo();
-		    }
+				const hasAnyTrackDataAfterUndo =
+				    Array.isArray(window.multiGpxStack) &&
+				    window.multiGpxStack.some(function(file) {
+				        if (!file) return false;
+				
+				        if (
+				            Array.isArray(file.points) &&
+				            file.points.length > 0
+				        ) {
+				            return true;
+				        }
+				
+				        if (
+				            Array.isArray(file.segments) &&
+				            file.segments.length > 0
+				        ) {
+				            return true;
+				        }
+				
+				        if (Array.isArray(file.routes)) {
+				            return file.routes.some(function(route) {
+				                if (!route || route.isCombined === true) {
+				                    return false;
+				                }
+				
+				                return (
+				                    (
+				                        Array.isArray(route.points) &&
+				                        route.points.length > 0
+				                    ) ||
+				                    (
+				                        Array.isArray(route.segments) &&
+				                        route.segments.length > 0
+				                    )
+				                );
+				            });
+				        }
+				
+				        return false;
+				    });
+				
+				if (hasAnyTrackDataAfterUndo) {
+				    if (typeof renderRouteInfo === "function") {
+				        renderRouteInfo();
+				    }
+				
+				} else {
+				    const routeSummary =
+				        document.getElementById("routeSummary");
+				
+				    if (routeSummary) {
+				        routeSummary.innerHTML =
+				            "";
+				    }
+				
+				    if (typeof clearRouteDirectionMarkers === "function") {
+				        clearRouteDirectionMarkers();
+				    }
+				
+				    if (window.chart) {
+				        window.chart.destroy();
+				        window.chart =
+				            null;
+				    }
+				
+				    const chartContainer =
+				        document.getElementById("chartContainer");
+				
+				    if (chartContainer) {
+				        chartContainer.style.setProperty(
+				            "display",
+				            "none",
+				            "important"
+				        );
+				    }
+				
+				    const tipLabel =
+				        document.getElementById("chartTipToggleLabel");
+				
+				    if (tipLabel) {
+				        tipLabel.style.setProperty(
+				            "display",
+				            "none",
+				            "important"
+				        );
+				    }
+				
+				    const toggleChartBtn =
+				        document.getElementById("toggleChartBtn");
+				
+				    if (toggleChartBtn) {
+				        toggleChartBtn.style.setProperty(
+				            "display",
+				            "none",
+				            "important"
+				        );
+				
+				        toggleChartBtn.textContent =
+				            "展開高度表";
+				    }
+				
+				    if (typeof trackPoints !== "undefined") {
+				        trackPoints =
+				            [];
+				    }
+				
+				    window.trackPoints =
+				        [];
+				}
 		
 		    if (typeof updateWptIconStatus === "function") {
 		        updateWptIconStatus();
@@ -30747,6 +30992,84 @@ function renderRouteDirectionMarkers(route) {
     if (latLngPairs.length < 2) {
         return;
     }
+    
+    const makeDirectionPointKey = function(lat, lng) {
+		    return (
+		        Number(lat).toFixed(7) +
+		        "," +
+		        Number(lng).toFixed(7)
+		    );
+		};
+		
+		const allowedDirectionSegmentKeys =
+		    new Set();
+		
+		if (
+		    targetRoute &&
+		    targetRoute.isCombined === true &&
+		    Array.isArray(targetRoute.segments) &&
+		    targetRoute.segments.length > 0
+		) {
+		    targetRoute.segments.forEach(function(seg) {
+		        if (
+		            !Array.isArray(seg) ||
+		            seg.length < 2
+		        ) {
+		            return;
+		        }
+		
+		        for (let i = 1; i < seg.length; i++) {
+		            const prevRaw =
+		                seg[i - 1];
+		
+		            const currRaw =
+		                seg[i];
+		
+		            const prevLat =
+		                Array.isArray(prevRaw)
+		                    ? Number(prevRaw[0])
+		                    : Number(prevRaw.lat);
+		
+		            const prevLng =
+		                Array.isArray(prevRaw)
+		                    ? Number(prevRaw[1])
+		                    : Number(
+		                        prevRaw.lon !== undefined
+		                            ? prevRaw.lon
+		                            : prevRaw.lng
+		                    );
+		
+		            const currLat =
+		                Array.isArray(currRaw)
+		                    ? Number(currRaw[0])
+		                    : Number(currRaw.lat);
+		
+		            const currLng =
+		                Array.isArray(currRaw)
+		                    ? Number(currRaw[1])
+		                    : Number(
+		                        currRaw.lon !== undefined
+		                            ? currRaw.lon
+		                            : currRaw.lng
+		                    );
+		
+		            if (
+		                !Number.isFinite(prevLat) ||
+		                !Number.isFinite(prevLng) ||
+		                !Number.isFinite(currLat) ||
+		                !Number.isFinite(currLng)
+		            ) {
+		                continue;
+		            }
+		
+		            allowedDirectionSegmentKeys.add(
+		                makeDirectionPointKey(prevLat, prevLng) +
+		                "->" +
+		                makeDirectionPointKey(currLat, currLng)
+		            );
+		        }
+		    });
+		}
 
     const spacingPx =
         getDirectionMarkerPixelSpacing();
@@ -30772,6 +31095,21 @@ function renderRouteDirectionMarkers(route) {
                 latLngPairs[i][0],
                 latLngPairs[i][1]
             );
+            
+            if (
+        targetRoute &&
+        targetRoute.isCombined === true &&
+        allowedDirectionSegmentKeys.size > 0
+    ) {
+        const segmentKey =
+            makeDirectionPointKey(prev.lat, prev.lng) +
+            "->" +
+            makeDirectionPointKey(curr.lat, curr.lng);
+
+        if (!allowedDirectionSegmentKeys.has(segmentKey)) {
+            continue;
+        }
+    }
 
         const p1 =
             map.latLngToLayerPoint(prev);
