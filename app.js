@@ -5440,13 +5440,13 @@ window.getWaypointIconInfo = function(typeOrWpt) {
 };
 
 window.getWaypointIconColor = function(wpt) {
-    if (
-        wpt &&
-        typeof wpt.iconColor === "string" &&
-        wpt.iconColor.trim() !== ""
-    ) {
-        return wpt.iconColor.trim();
-    }
+		if (
+		    wpt &&
+		    wpt.iconColor &&
+		    String(wpt.iconColor).trim() !== ""
+		) {
+		    return String(wpt.iconColor).trim();
+		}
 
     const typeKey =
         wpt && wpt.type
@@ -5627,25 +5627,66 @@ function parseGPX(text, fileName, shouldFit = true) {
     
     const wpts = xml.getElementsByTagName("wpt");
     let allWpts = [];
-    for (let w of wpts) {
-        const lat = parseFloat(w.getAttribute("lat")), lon = parseFloat(w.getAttribute("lon"));
-        const name = w.getElementsByTagName("name")[0]?.textContent || "未命名航點";
-        const time = w.getElementsByTagName("time")[0]?.textContent;
-        const ele = w.getElementsByTagName("ele")[0]?.textContent;
-        const symNode = w.getElementsByTagName("sym")[0];
-        const sym = symNode ? symNode.textContent.trim() : "Waypoint";
-        const type = typeof window.getWaypointTypeFromSym === "function"
-            ? window.getWaypointTypeFromSym(sym)
-            : "waypoint";
-        allWpts.push({ 
-            lat, lon, name, 
-            ele: ele ? parseFloat(ele) : 0,
-            time: time || null,
-            localTime: time ? formatDate(new Date(new Date(time).getTime() + 8*3600000)) : "無時間資訊",
-            sym: sym,
-            type: type
-        });
-    }
+		for (let w of wpts) {
+		    const lat =
+		        parseFloat(
+		            w.getAttribute("lat")
+		        );
+		
+		    const lon =
+		        parseFloat(
+		            w.getAttribute("lon")
+		        );
+		
+		    const name =
+		        w.getElementsByTagName("name")[0]?.textContent ||
+		        "未命名航點";
+		
+		    const time =
+		        w.getElementsByTagName("time")[0]?.textContent;
+		
+		    const ele =
+		        w.getElementsByTagName("ele")[0]?.textContent;
+		
+		    const symNode =
+		        w.getElementsByTagName("sym")[0];
+		
+		    const sym =
+		        symNode
+		            ? symNode.textContent.trim()
+		            : "Waypoint";
+		
+		    const type =
+		        typeof window.getWaypointTypeFromSym === "function"
+		            ? window.getWaypointTypeFromSym(sym)
+		            : "waypoint";
+		
+		    const iconColor =
+		        typeof getChildTextByLocalName === "function"
+		            ? getChildTextByLocalName(
+		                w,
+		                "iconColor"
+		            )
+		            : "";
+		
+		    allWpts.push({
+		        lat: lat,
+		        lon: lon,
+		        name: name,
+		        ele: ele ? parseFloat(ele) : 0,
+		        time: time || null,
+		        localTime: time
+		            ? formatDate(
+		                new Date(
+		                    new Date(time).getTime() + 8 * 3600000
+		                )
+		            )
+		            : "無時間資訊",
+		        sym: sym,
+		        type: type,
+		        iconColor: iconColor
+		    });
+		}
 
     
     const trks = xml.getElementsByTagName("trk");
@@ -18462,12 +18503,13 @@ window.exportGpx = function(index) {
             "Exported_Route"
         );
 
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.0" creator="YCHiking" 
-  xmlns="http://www.topografix.com/GPX/1/0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
-  <metadata><name>${trackName}</name></metadata>`;
+		let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+		<gpx version="1.0" creator="YCHiking" 
+		  xmlns="http://www.topografix.com/GPX/1/0"
+		  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		  xmlns:myapp="https://ychiking.github.io/gpx-online-viewer"
+		  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+		  <metadata><name>${trackName}</name></metadata>`;
 
     let finalWpts = [];
     const seenWpts = new Set();
@@ -18666,48 +18708,68 @@ window.exportGpx = function(index) {
 		    }
 		
 		    
-		    const visibleRouteIndexes =
-		        Array.isArray(w.visibleRouteIndexes)
-		            ? w.visibleRouteIndexes
-		                .map(Number)
-		                .filter(function(idx) {
-		                    return Number.isFinite(idx);
-		                })
-		            : [];
-		
-		    const hiddenRouteIndexes =
-		        Array.isArray(w.hiddenRouteIndexes)
-		            ? w.hiddenRouteIndexes
-		                .map(Number)
-		                .filter(function(idx) {
-		                    return Number.isFinite(idx);
-		                })
-		            : [];
-		
-		    const hasDisplayState =
-		        visibleRouteIndexes.length > 0 ||
-		        hiddenRouteIndexes.length > 0 ||
-		        w.belongsToRoute !== undefined;
-		
-		    if (hasDisplayState) {
-		        gpx += `\n    <extensions>`;
-		        gpx += `\n      <myapp:waypointDisplay`;
-		
-		        if (w.belongsToRoute !== undefined) {
-		            gpx += ` belongsToRoute="${Number(w.belongsToRoute)}"`;
-		        }
-		
-		        if (visibleRouteIndexes.length > 0) {
-		            gpx += ` visibleRouteIndexes="${visibleRouteIndexes.join(",")}"`;
-		        }
-		
-		        if (hiddenRouteIndexes.length > 0) {
-		            gpx += ` hiddenRouteIndexes="${hiddenRouteIndexes.join(",")}"`;
-		        }
-		
-		        gpx += ` />`;
-		        gpx += `\n    </extensions>`;
-		    }
+				const visibleRouteIndexes =
+				    Array.isArray(w.visibleRouteIndexes)
+				        ? w.visibleRouteIndexes
+				            .map(Number)
+				            .filter(function(idx) {
+				                return Number.isFinite(idx);
+				            })
+				        : [];
+				
+				const hiddenRouteIndexes =
+				    Array.isArray(w.hiddenRouteIndexes)
+				        ? w.hiddenRouteIndexes
+				            .map(Number)
+				            .filter(function(idx) {
+				                return Number.isFinite(idx);
+				            })
+				        : [];
+				
+				const hasDisplayState =
+				    visibleRouteIndexes.length > 0 ||
+				    hiddenRouteIndexes.length > 0 ||
+				    w.belongsToRoute !== undefined;
+				
+				const iconColor =
+				    w.iconColor !== undefined &&
+				    w.iconColor !== null
+				        ? String(w.iconColor).trim()
+				        : "";
+				
+				const hasIconColor =
+				    iconColor !== "";
+				
+				if (
+				    hasDisplayState ||
+				    hasIconColor
+				) {
+				    gpx += `\n    <extensions>`;
+				
+				    if (hasDisplayState) {
+				        gpx += `\n      <myapp:waypointDisplay`;
+				
+				        if (w.belongsToRoute !== undefined) {
+				            gpx += ` belongsToRoute="${Number(w.belongsToRoute)}"`;
+				        }
+				
+				        if (visibleRouteIndexes.length > 0) {
+				            gpx += ` visibleRouteIndexes="${visibleRouteIndexes.join(",")}"`;
+				        }
+				
+				        if (hiddenRouteIndexes.length > 0) {
+				            gpx += ` hiddenRouteIndexes="${hiddenRouteIndexes.join(",")}"`;
+				        }
+				
+				        gpx += ` />`;
+				    }
+				
+				    if (hasIconColor) {
+				        gpx += `\n      <iconColor>${escapeXml(iconColor)}</iconColor>`;
+				    }
+				
+				    gpx += `\n    </extensions>`;
+				}
 		
 		    gpx += `\n  </wpt>`;
 		});
@@ -33543,4 +33605,28 @@ function addGridLabelToLayer(layerGroup, latlng, text, options) {
     layerGroup.addLayer(
         label
     );
+}
+
+function getChildTextByLocalName(parent, localName) {
+    if (!parent) return "";
+
+    const nodes =
+        parent.getElementsByTagName("*");
+
+    for (let i = 0; i < nodes.length; i++) {
+        const node =
+            nodes[i];
+
+        if (
+            node.localName === localName ||
+            node.nodeName === localName ||
+            node.nodeName.endsWith(":" + localName)
+        ) {
+            return node.textContent
+                ? node.textContent.trim()
+                : "";
+        }
+    }
+
+    return "";
 }
