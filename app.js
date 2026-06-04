@@ -5477,9 +5477,20 @@ window.getWaypointIconColor = function(wpt) {
     ) {
         return "#188038";
     }
+    
+    if (
+        typeKey === "restaurant"
+    ) {
+        return "#EA3680";
+    }
+    
+    if (
+        typeKey === "hut"
+    ) {
+        return "#C74600";
+    }
 
     if (
-        typeKey === "hut" ||
         typeKey === "camp"
     ) {
         return "#8B5A2B";
@@ -32562,26 +32573,43 @@ function addWaypointsToExportMap(exportMap, options) {
 				        ).addTo(exportMap);
 				}
 
-			if (shouldShowWptDot) {
-        L.circleMarker(
-				    [
-				        lat,
-				        lon
-				    ],
-				    {
-				        radius: Math.max(
-				            3,
-				            3.5 * pdfIconScale
-				        ),
-				        color: "rgba(255, 255, 255, 1)",
-				        weight: 1,
-				        fillColor: "rgba(26, 115, 232, 1)",
-				        fillOpacity: 0.8,
-				        interactive: false,
-				        pane: "markerPane"
-				    }
-				).addTo(exportMap);
-			}
+				const wptDotColor =
+					    typeof window.getWaypointIconColor === "function"
+					        ? window.getWaypointIconColor(w)
+					        : (
+					            w.iconColor && String(w.iconColor).trim() !== ""
+					                ? String(w.iconColor).trim()
+					                : "#1a73e8"
+					        );
+				if (shouldShowWptDot) {
+				    const wptDotColor =
+				        typeof window.getWaypointIconColor === "function"
+				            ? window.getWaypointIconColor(w)
+				            : (
+				                w.iconColor && String(w.iconColor).trim() !== ""
+				                    ? String(w.iconColor).trim()
+				                    : "#1a73e8"
+				            );
+				
+				    L.circleMarker(
+				        [
+				            lat,
+				            lon
+				        ],
+				        {
+				            radius: Math.max(
+				                3,
+				                3.5 * pdfIconScale
+				            ),
+				            color: "rgba(255, 255, 255, 1)",
+				            weight: 1,
+				            fillColor: wptDotColor,
+				            fillOpacity: 0.85,
+				            interactive: false,
+				            pane: "markerPane"
+				        }
+				    ).addTo(exportMap);
+				}
 
 				if (
 				    typeof showWptNameAlways !== "undefined" &&
