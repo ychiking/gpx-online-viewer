@@ -652,7 +652,7 @@
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     position: relative; 
 }
-}
+
 
 #searchControlContainer {
     order: 99; 
@@ -1495,12 +1495,175 @@
     z-index: 3;
 }
 
+.pdf-export-selecting {
+    cursor: crosshair !important;
+}
+
+#pdfExportDialogOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+#pdfExportDialog {
+    width: 320px;
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+    font-size: 14px;
+}
+
+#pdfExportDialog h3 {
+    margin: 0 0 14px 0;
+    font-size: 18px;
+}
+
+.pdf-export-row {
+    margin-bottom: 12px;
+}
+
+.pdf-export-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.pdf-export-row select {
+    width: 100%;
+    padding: 7px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.pdf-export-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+.pdf-export-actions button {
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+}
+
+#pdfExportConfirmBtn {
+    background: #1a73e8;
+    color: white;
+}
+
+#pdfExportCancelBtn {
+    background: #e0e0e0;
+    color: #333;
+}
+
+#pdfExportMapWrapper {
+    position: fixed;
+    left: -99999px;
+    top: 0;
+    background: white;
+    z-index: -1;
+}
+
+#pdfExportMap {
+    background: white;
+}
+
+
+
+.pdf-wpt-name-label {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    padding: 0 !important;
+    font-weight: bold !important;
+    white-space: nowrap !important;
+}
+
+.pdf-wpt-name-label::before {
+    display: none !important;
+    border: none !important;
+}
+
+#pdfSelectHintBox {
+    position: fixed;
+    left: 50%;
+    top: 70px;
+    transform: translateX(-50%);
+    z-index: 2147483647;
+    display: none;
+    pointer-events: none;
+}
+
+.pdf-select-hint-content {
+    background: rgba(0, 0, 0, 0.78);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    white-space: nowrap;
+}
+
+.grid-coordinate-label {
+    background: transparent !important;
+    border: none !important;
+}
+
+.leaflet-tile {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    backface-visibility: hidden !important;
+    transform: translateZ(0);
+}
+
+#pdfExportMap .leaflet-tile {
+    width: 257px !important;
+    height: 257px !important;
+}
+
+#pdfExportMap .wpt-anchor-dot {
+    display: none !important;
+}
+
+.wpt-anchor-dot {
+    position: absolute !important;
+    left: 16px !important;
+    top: 30px !important;
+    width: 6px !important;
+    height: 6px !important;
+    transform: translate(-50%, -50%) !important;
+    border-radius: 50% !important;
+    background: rgba(26, 115, 232, 1) !important;
+    border: 1px solid rgba(255, 255, 255, 1) !important;
+    pointer-events: none !important;
+}
+
+.wpt-map-icon {
+    position: relative !important;
+    overflow: visible !important;
+}
+
+.wpt-map-icon .material-icons {
+    position: relative !important;
+    z-index: 1 !important;
+}
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2606041</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2606045</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
@@ -1726,9 +1889,81 @@
         </p>
 
         <button id="searchConfirmBtn" style="width: 100%; background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">立即搜尋</button>
+    </div>      
+</div>
+<div id="pdfSelectHintBox">
+    <div class="pdf-select-hint-content">
+        請在地圖上拖曳框選要輸出的範圍
     </div>
 </div>
-  <script src="app.js"></script>
+<div id="pdfExportDialogOverlay">
+    <div id="pdfExportDialog">
+        <h3>匯出 PDF 地圖</h3>
+
+        <div class="pdf-export-row">
+            <label for="pdfPaperSize">紙張尺寸</label>
+            <select id="pdfPaperSize">
+                <option value="A4">A4</option>
+                <option value="A3">A3</option>
+            </select>
+        </div>
+
+        <div class="pdf-export-row">
+            <label for="pdfOrientation">方向</label>
+            <select id="pdfOrientation">
+                <option value="landscape">橫式</option>
+                <option value="portrait">直式</option>
+            </select>
+        </div>
+
+
+        <div class="pdf-export-row">
+            <label for="pdfDpiMode">解析度</label>
+            <select id="pdfDpiMode">
+                <option value="150">標準 150 DPI</option>
+                <option value="300">高解析 300 DPI</option>
+            </select>
+        </div>
+        
+				<div class="pdf-export-row">
+				    <label for="pdfWptDisplayMode">航點顯示方式</label>
+				    <select id="pdfWptDisplayMode">
+				        <option value="iconAndDot" selected>顯示航點圖示與定位點</option>
+				        <option value="dotOnly">僅顯示航點定位點</option>
+				        <option value="iconOnly">僅顯示航點圖示</option>
+				    </select>
+				</div>
+        
+        <div class="pdf-export-row">
+				    <label for="pdfWptIconSize">航點圖示大小</label>
+				    <select id="pdfWptIconSize">
+				        <option value="small">小</option>
+				        <option value="medium" selected>中</option>
+				        <option value="large">大</option>
+				    </select>
+				</div>
+				
+				<div class="pdf-export-row">
+				    <label for="pdfWptLabelSize">航點名稱大小</label>
+				    <select id="pdfWptLabelSize">
+				        <option value="small">小</option>
+				        <option value="medium" selected>中</option>
+				        <option value="large">大</option>
+				    </select>
+				</div>
+
+        <div class="pdf-export-actions">
+            <button type="button" id="pdfExportCancelBtn">取消</button>
+            <button type="button" id="pdfExportConfirmBtn">匯出</button>
+        </div>
+    </div>
+</div>
+<div id="pdfExportMapWrapper">
+    <div id="pdfExportMap"></div>
+</div>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+	<script src="app.js"></script>
 </body>
 
 </html>

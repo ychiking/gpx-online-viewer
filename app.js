@@ -144,6 +144,14 @@ let isCtrlPanningInDrawMode = false;
 let ignoreMapClickUntil = 0;
 
 map.on('click', (e) => {
+	
+		if (
+		    window.pdfSuppressMapClickUntil &&
+		    Date.now() < window.pdfSuppressMapClickUntil
+		) {
+		    return;
+		}
+
     if (!e || !e.latlng) return;
 
     if (window.splitRoutePickMode) {
@@ -5130,12 +5138,12 @@ routeSelect.addEventListener("change", (e) => {
 const startIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+  iconSize: [18, 30], iconAnchor: [9, 30], popupAnchor: [1, -25], shadowSize: [30, 30]
 });
 const endIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+  iconSize: [18, 30], iconAnchor: [9, 30], popupAnchor: [1, -25], shadowSize: [30, 30]
 });
 const wptIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
@@ -5515,12 +5523,14 @@ window.createWaypointDivIcon = function(wpt) {
         className: "",
         html:
             '<div class="wpt-map-icon' + extraClass + '" style="--wpt-icon-color:' + iconColor + '; --wpt-icon-border-color:' + (window.defaultWaypointIconBorderColor || "#ffffff") + ';">' +
-            '<span class="material-icons">' +
-            (iconInfo.icon || "place") +
-            '</span></div>',
+                '<span class="material-icons">' +
+                    (iconInfo.icon || "place") +
+                '</span>' +
+                '<span class="wpt-anchor-dot"></span>' +
+            '</div>',
         iconSize: [32, 32],
-        iconAnchor: [16, 26],
-        popupAnchor: [0, -26]
+        iconAnchor: [16, 30],
+        popupAnchor: [0, -30]
     });
 };
 
@@ -21559,6 +21569,10 @@ function renderSideToolbar() {
     if (isFirstRender) {
         sideToolbar.innerHTML = `
             <div id="side-tool-container" style="display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 5px;">
+                <button type="button" id="exportPdfMapBtn" class="side-tool-btn" title="匯出 PDF 地圖">
+								    <span class="material-icons">picture_as_pdf</span>
+								</button>
+                
                 <button type="button" id="drawModeBtn" class="side-tool-btn" title="開啟繪製模式">
                     <span class="material-icons">draw</span>
                 </button>
@@ -21935,7 +21949,17 @@ function renderSideToolbar() {
 				    ) {
 				        historyManager.updateUI();
 				    }
-				};
+				    
+				    if (typeof installPdfExportFeature === "function") {
+						    installPdfExportFeature();
+						}
+						
+						if (typeof installPdfAreaSelectMapEvents === "function") {
+						    installPdfAreaSelectMapEvents();
+						}
+						
+						};
+				
 
         methodBtn.onclick = function(e) {
             L.DomEvent.stopPropagation(e);
@@ -21961,6 +21985,7 @@ function renderSideToolbar() {
                 }
             }
         };
+        
 
         document.getElementById('sideWptNameBtn').onclick = (e) => toggleWptNames();
         document.getElementById('undoBtn').onclick = (e) => historyManager.undo();
@@ -31212,6 +31237,12 @@ function renderRouteDirectionMarkers(route) {
                 );
             }
         });
+        
+    const placedArrowLayerPoints =
+ 		   [];
+
+		const minArrowClusterDistancePx =
+		    70; // 同一區域 70px 內只保留一個箭頭，可調 50 / 70 / 90    
 
     uniqueDistances.forEach(function(distancePx) {
         let targetSegment =
@@ -31261,6 +31292,31 @@ function renderRouteDirectionMarkers(route) {
                 targetSegment.curr.lng -
                 targetSegment.prev.lng
             ) * safeT;
+            
+        const arrowLayerPoint =
+				    map.latLngToLayerPoint(
+				        L.latLng(
+				            markerLat,
+				            markerLng
+				        )
+				    );
+				
+				const hasNearbyArrow =
+				    placedArrowLayerPoints.some(function(existingPoint) {
+				        return (
+				            existingPoint &&
+				            arrowLayerPoint.distanceTo(existingPoint) <
+				                minArrowClusterDistancePx
+				        );
+				    });
+				
+				if (hasNearbyArrow) {
+				    return;
+				}
+				
+				placedArrowLayerPoints.push(
+				    arrowLayerPoint
+				);
 
         const angle =
             getDirectionAngleByLayerPoint(
@@ -31304,4 +31360,2159 @@ function renderRouteDirectionMarkers(route) {
             map
         );
     }
+}
+
+// ======================================================
+// PDF 地圖匯出模組：框選範圍 → A4/A3 → 匯出 PDF
+// 請貼在 app.js 最後
+// ======================================================
+
+let pdfSelectMode = false;
+let pdfSelectStartLatLng = null;
+let pdfSelectRect = null;
+let pdfSelectedBounds = null;
+let pdfExportMap = null;
+    
+window.pdfSuppressMapClickUntil = 0;
+
+const PDF_PAPER_SIZES = {
+    150: {
+        A4: {
+            portrait: {
+                width: 1240,
+                height: 1754
+            },
+            landscape: {
+                width: 1754,
+                height: 1240
+            }
+        },
+        A3: {
+            portrait: {
+                width: 1754,
+                height: 2480
+            },
+            landscape: {
+                width: 2480,
+                height: 1754
+            }
+        }
+    },
+    300: {
+        A4: {
+            portrait: {
+                width: 2480,
+                height: 3508
+            },
+            landscape: {
+                width: 3508,
+                height: 2480
+            }
+        },
+        A3: {
+            portrait: {
+                width: 3508,
+                height: 4961
+            },
+            landscape: {
+                width: 4961,
+                height: 3508
+            }
+        }
+    }
+};
+
+function installPdfExportFeature() {
+    const btn =
+        document.getElementById("exportPdfMapBtn");
+
+    if (btn) {
+				btn.onclick = function() {
+				    if (pdfSelectMode === true) {
+				        cancelPdfAreaSelect();
+				    } else {
+				        startPdfAreaSelect();
+				    }
+				};
+    }
+
+    const cancelBtn =
+        document.getElementById("pdfExportCancelBtn");
+
+    if (cancelBtn) {
+        cancelBtn.onclick = function() {
+            hidePdfExportDialog();
+        };
+    }
+
+    const confirmBtn =
+        document.getElementById("pdfExportConfirmBtn");
+
+    if (confirmBtn) {
+        confirmBtn.onclick = function() {
+            const paper =
+                document.getElementById("pdfPaperSize").value || "A4";
+
+            const orientation =
+                document.getElementById("pdfOrientation").value || "landscape";
+
+            const fitMode =
+                "contain";
+
+            const dpi =
+                document.getElementById("pdfDpiMode").value || "150";
+                
+            const wptIconSize =
+						    document.getElementById("pdfWptIconSize").value || "medium";
+						
+						const wptLabelSize =
+						    document.getElementById("pdfWptLabelSize").value || "medium";
+						    
+						const wptDisplayModeEl =
+						    document.getElementById("pdfWptDisplayMode");
+						
+						const wptDisplayMode =
+						    wptDisplayModeEl
+						        ? wptDisplayModeEl.value
+						        : "iconAndDot";
+
+						exportSelectedMapToPdf({
+						    paper: paper,
+						    orientation: orientation,
+						    fitMode: fitMode,
+						    dpi: dpi,
+						    wptIconSize: wptIconSize,
+						    wptLabelSize: wptLabelSize,
+						    wptDisplayMode: wptDisplayMode
+						});
+        };
+    }
+}
+
+function showPdfSelectHint() {
+	
+    const hint =
+        document.getElementById("pdfSelectHintBox");
+
+    if (!hint) return;
+
+    const fullscreenEl =
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        null;
+
+    if (
+        fullscreenEl &&
+        hint.parentElement !== fullscreenEl
+    ) {
+        fullscreenEl.appendChild(
+            hint
+        );
+    }
+
+    hint.style.display =
+        "block";
+}
+
+function hidePdfSelectHint() {
+    const hint =
+        document.getElementById("pdfSelectHintBox");
+
+    if (hint) {
+        hint.style.display =
+            "none";
+    }
+}
+
+function startPdfAreaSelect() {
+    if (
+        typeof map === "undefined" ||
+        !map
+    ) {
+        alert("地圖尚未初始化");
+        return;
+    }
+
+    pdfSelectMode =
+        true;
+        
+    const pdfBtn =
+		    document.getElementById("exportPdfMapBtn");
+		
+		if (pdfBtn) {
+		    pdfBtn.style.setProperty(
+		        "background",
+		        "#1a73e8",
+		        "important"
+		    );
+		
+		    pdfBtn.style.setProperty(
+		        "color",
+		        "white",
+		        "important"
+		    );
+		
+		    pdfBtn.title =
+		        "取消匯出 PDF 範圍選取";
+		}
+
+    pdfSelectStartLatLng =
+        null;
+
+    pdfSelectedBounds =
+        null;
+
+    if (
+        pdfSelectRect &&
+        map.hasLayer(pdfSelectRect)
+    ) {
+        map.removeLayer(pdfSelectRect);
+    }
+
+    pdfSelectRect =
+        null;
+
+    const mapEl =
+        document.getElementById("map");
+
+    if (mapEl) {
+        mapEl.classList.add("pdf-export-selecting");
+    }
+
+    if (map.dragging) {
+        map.dragging.disable();
+    }
+
+    showPdfSelectHint();
+}
+
+function finishPdfAreaSelect() {
+		hidePdfSelectHint();
+	
+    pdfSelectMode =
+        false;
+
+    pdfSelectStartLatLng =
+        null;
+
+    const mapEl =
+        document.getElementById("map");
+
+    if (mapEl) {
+        mapEl.classList.remove("pdf-export-selecting");
+    }
+
+    if (
+        typeof map !== "undefined" &&
+        map &&
+        map.dragging
+    ) {
+        map.dragging.enable();
+    }
+}
+
+
+function cancelPdfAreaSelect() {
+	
+		const pdfBtn =
+		    document.getElementById("exportPdfMapBtn");
+		
+		if (pdfBtn) {
+		    pdfBtn.style.removeProperty("background");
+		    pdfBtn.style.removeProperty("color");
+		
+		    pdfBtn.title =
+		        "匯出 PDF 地圖";
+		}
+    window.pdfSuppressMapClickUntil =
+        Date.now() + 1000;
+
+    pdfSelectMode =
+        false;
+
+    pdfSelectStartLatLng =
+        null;
+
+    pdfSelectedBounds =
+        null;
+
+    hidePdfSelectHint();
+
+    if (
+        pdfSelectRect &&
+        typeof map !== "undefined" &&
+        map &&
+        map.hasLayer(pdfSelectRect)
+    ) {
+        map.removeLayer(pdfSelectRect);
+    }
+
+    pdfSelectRect =
+        null;
+
+    const mapEl =
+        document.getElementById("map");
+
+    if (mapEl) {
+        mapEl.classList.remove("pdf-export-selecting");
+    }
+
+    if (
+        typeof map !== "undefined" &&
+        map &&
+        map.dragging
+    ) {
+        map.dragging.enable();
+    }
+}
+
+function showPdfExportDialog(bounds) {
+    pdfSelectedBounds =
+        bounds;
+
+    window.pdfDialogOpen =
+        true;
+
+    window.pdfSuppressMapClickUntil =
+        Date.now() + 1000;
+
+    const overlay =
+        document.getElementById("pdfExportDialogOverlay");
+
+    if (!overlay) return;
+
+    const fullscreenEl =
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        null;
+
+    if (
+        fullscreenEl &&
+        overlay.parentElement !== fullscreenEl
+    ) {
+        fullscreenEl.appendChild(
+            overlay
+        );
+    }
+
+    overlay.style.display =
+        "flex";
+}
+
+function hidePdfExportDialog() {
+		window.pdfDialogOpen = false;
+		
+		window.pdfSuppressMapClickUntil =
+        Date.now() + 1000;
+		
+		const pdfBtn =
+		    document.getElementById("exportPdfMapBtn");
+		
+		if (pdfBtn) {
+		    pdfBtn.style.removeProperty("background");
+		    pdfBtn.style.removeProperty("color");
+		
+		    pdfBtn.title =
+		        "匯出 PDF 地圖";
+		}
+    window.pdfSuppressMapClickUntil =
+        Date.now() + 1000;
+
+    const overlay =
+        document.getElementById("pdfExportDialogOverlay");
+
+    if (overlay) {
+        overlay.style.display =
+            "none";
+    }
+
+    if (
+        pdfSelectRect &&
+        typeof map !== "undefined" &&
+        map &&
+        map.hasLayer(pdfSelectRect)
+    ) {
+        map.removeLayer(pdfSelectRect);
+    }
+
+    pdfSelectRect =
+        null;
+
+    pdfSelectMode =
+        false;
+
+    pdfSelectStartLatLng =
+        null;
+
+    if (
+        typeof map !== "undefined" &&
+        map &&
+        map.dragging
+    ) {
+        map.dragging.enable();
+    }
+}
+
+function getLatLngFromTouchEvent(touchEvent, useChangedTouch) {
+    if (
+        typeof map === "undefined" ||
+        !map ||
+        !touchEvent
+    ) {
+        return null;
+    }
+
+    let touch =
+        null;
+
+    if (
+        useChangedTouch === true &&
+        touchEvent.changedTouches &&
+        touchEvent.changedTouches.length > 0
+    ) {
+        touch =
+            touchEvent.changedTouches[0];
+
+    } else if (
+        touchEvent.touches &&
+        touchEvent.touches.length > 0
+    ) {
+        touch =
+            touchEvent.touches[0];
+    }
+
+    if (!touch) {
+        return null;
+    }
+
+    const container =
+        map.getContainer();
+
+    const rect =
+        container.getBoundingClientRect();
+
+    const x =
+        touch.clientX - rect.left;
+
+    const y =
+        touch.clientY - rect.top;
+
+    const point =
+        L.point(
+            x,
+            y
+        );
+
+    return map.containerPointToLatLng(
+        point
+    );
+}
+
+function installPdfAreaSelectMapEvents() {
+    if (
+        typeof map === "undefined" ||
+        !map ||
+        window.pdfAreaSelectMapEventsInstalled
+    ) {
+        return;
+    }
+
+    window.pdfAreaSelectMapEventsInstalled =
+        true;
+
+		map.on("mousedown", function(e) {
+		    if (!pdfSelectMode) return;
+		    if (!e || !e.latlng) return;
+		
+		    window.pdfSuppressMapClickUntil =
+		        Date.now() + 800;
+		
+		    if (e.originalEvent) {
+		        L.DomEvent.stop(e.originalEvent);
+		    }
+
+        pdfSelectStartLatLng =
+            e.latlng;
+
+        if (
+            pdfSelectRect &&
+            map.hasLayer(pdfSelectRect)
+        ) {
+            map.removeLayer(pdfSelectRect);
+        }
+
+        pdfSelectRect =
+            L.rectangle(
+                L.latLngBounds(
+                    pdfSelectStartLatLng,
+                    pdfSelectStartLatLng
+                ),
+                {
+                    color: "#1a73e8",
+                    weight: 2,
+                    fillColor: "#1a73e8",
+                    fillOpacity: 0.12,
+                    dashArray: "6,4"
+                }
+            ).addTo(map);
+    });
+
+				map.on("mousemove", function(e) {
+				    if (!pdfSelectMode) return;
+				    if (!pdfSelectStartLatLng) return;
+				    if (!e || !e.latlng) return;
+				
+				    window.pdfSuppressMapClickUntil =
+				        Date.now() + 800;
+				
+				    if (e.originalEvent) {
+				        L.DomEvent.stop(e.originalEvent);
+				    }
+
+        const bounds =
+            L.latLngBounds(
+                pdfSelectStartLatLng,
+                e.latlng
+            );
+
+        if (pdfSelectRect) {
+            pdfSelectRect.setBounds(
+                bounds
+            );
+        }
+    });
+
+				map.on("mouseup", function(e) {
+				    if (!pdfSelectMode) return;
+				    if (!pdfSelectStartLatLng) return;
+				    if (!e || !e.latlng) return;
+				
+				    window.pdfSuppressMapClickUntil =
+				        Date.now() + 1000;
+				
+				    if (e.originalEvent) {
+				        L.DomEvent.stop(e.originalEvent);
+				    }
+
+        const bounds =
+            L.latLngBounds(
+                pdfSelectStartLatLng,
+                e.latlng
+            );
+
+        finishPdfAreaSelect();
+
+        if (
+            !bounds ||
+            !bounds.isValid()
+        ) {
+            alert("框選範圍無效");
+            return;
+        }
+
+        showPdfExportDialog(
+            bounds
+        );
+    });
+    
+    const mapContainer =
+		    map.getContainer();
+		
+		if (mapContainer && !window.pdfTouchAreaSelectInstalled) {
+		    window.pdfTouchAreaSelectInstalled =
+		        true;
+		
+		    mapContainer.addEventListener(
+		        "touchstart",
+		        function(e) {
+		            if (!pdfSelectMode) return;
+		
+		            window.pdfSuppressMapClickUntil =
+		                Date.now() + 1000;
+		
+		            if (e.cancelable) {
+		                e.preventDefault();
+		            }
+		
+		            e.stopPropagation();
+		
+								const latlng =
+								    getLatLngFromTouchEvent(
+								        e,
+								        false
+								    );
+		
+		            if (!latlng) return;
+		
+		            pdfSelectStartLatLng =
+		                latlng;
+		
+		            if (
+		                pdfSelectRect &&
+		                map.hasLayer(pdfSelectRect)
+		            ) {
+		                map.removeLayer(pdfSelectRect);
+		            }
+		
+		            pdfSelectRect =
+		                L.rectangle(
+		                    L.latLngBounds(
+		                        pdfSelectStartLatLng,
+		                        pdfSelectStartLatLng
+		                    ),
+		                    {
+		                        color: "#1a73e8",
+		                        weight: 2,
+		                        fillColor: "#1a73e8",
+		                        fillOpacity: 0.12,
+		                        dashArray: "6,4"
+		                    }
+		                ).addTo(map);
+		        },
+		        {
+		            passive: false
+		        }
+		    );
+		
+		    mapContainer.addEventListener(
+		        "touchmove",
+		        function(e) {
+		            if (!pdfSelectMode) return;
+		            if (!pdfSelectStartLatLng) return;
+		
+		            window.pdfSuppressMapClickUntil =
+		                Date.now() + 1000;
+		
+		            if (e.cancelable) {
+		                e.preventDefault();
+		            }
+		
+		            e.stopPropagation();
+		
+								const latlng =
+								    getLatLngFromTouchEvent(
+								        e,
+								        false
+								    );
+		
+		            if (!latlng) return;
+		
+		            const bounds =
+		                L.latLngBounds(
+		                    pdfSelectStartLatLng,
+		                    latlng
+		                );
+		
+		            if (pdfSelectRect) {
+		                pdfSelectRect.setBounds(
+		                    bounds
+		                );
+		            }
+		        },
+		        {
+		            passive: false
+		        }
+		    );
+		
+		    mapContainer.addEventListener(
+		        "touchend",
+		        function(e) {
+		            if (!pdfSelectMode) return;
+		            if (!pdfSelectStartLatLng) return;
+		
+		            window.pdfSuppressMapClickUntil =
+		                Date.now() + 1200;
+		
+		            if (e.cancelable) {
+		                e.preventDefault();
+		            }
+		
+		            e.stopPropagation();
+		
+		            const endLatLng =
+							    getLatLngFromTouchEvent(
+							        e,
+							        true
+							    );
+		
+		            if (!endLatLng) {
+		                cancelPdfAreaSelect();
+		                return;
+		            }
+		
+		            const bounds =
+		                L.latLngBounds(
+		                    pdfSelectStartLatLng,
+		                    endLatLng
+		                );
+		
+		            finishPdfAreaSelect();
+		
+		            if (
+		                !bounds ||
+		                !bounds.isValid()
+		            ) {
+		                alert("框選範圍無效");
+		                return;
+		            }
+		
+		            showPdfExportDialog(
+		                bounds
+		            );
+		        },
+		        {
+		            passive: false
+		        }
+		    );
+		}
+}
+
+function getPdfPaperPixelSize(options) {
+    const dpi =
+        String(options.dpi || "150");
+
+    const paper =
+        options.paper || "A4";
+
+    const orientation =
+        options.orientation || "landscape";
+
+    return PDF_PAPER_SIZES[dpi][paper][orientation];
+}
+
+function createPdfExportMapContainer(size) {
+    const wrapper =
+        document.getElementById("pdfExportMapWrapper");
+
+    const mapDiv =
+        document.getElementById("pdfExportMap");
+
+    if (!wrapper || !mapDiv) {
+        throw new Error("找不到 pdfExportMapWrapper / pdfExportMap");
+    }
+
+    mapDiv.style.width =
+        size.width + "px";
+
+    mapDiv.style.height =
+        size.height + "px";
+
+    wrapper.style.width =
+        size.width + "px";
+
+    wrapper.style.height =
+        size.height + "px";
+
+    if (pdfExportMap) {
+        pdfExportMap.remove();
+        pdfExportMap =
+            null;
+    }
+
+		pdfExportMap =
+		    L.map(
+		        "pdfExportMap",
+		        {
+		            zoomControl: false,
+		            attributionControl: false,
+		            preferCanvas: true,
+		            fadeAnimation: false,
+		            zoomAnimation: false,
+		            markerZoomAnimation: false,
+		
+		            // 重要：讓 fitBounds 可以用小數 zoom，
+		            // 避免因為整數 zoom 導致匯出範圍被放大太多。
+		            zoomSnap: 0,
+		            zoomDelta: 0.25
+		        }
+		    );
+
+    return pdfExportMap;
+}
+
+function copyVisibleTileLayersToExportMap(exportMap) {
+    let copied =
+        false;
+
+    if (
+        typeof map !== "undefined" &&
+        map &&
+        typeof map.eachLayer === "function"
+    ) {
+        map.eachLayer(function(layer) {
+            if (!(layer instanceof L.TileLayer)) {
+                return;
+            }
+
+            if (!layer._url) {
+                return;
+            }
+
+            const options =
+                Object.assign(
+                    {},
+                    layer.options || {}
+                );
+
+            options.crossOrigin =
+                true;
+
+            const newLayer =
+                L.tileLayer(
+                    layer._url,
+                    options
+                );
+
+            newLayer.addTo(
+                exportMap
+            );
+
+            copied =
+                true;
+        });
+    }
+
+    if (!copied) {
+        L.tileLayer(
+            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            {
+                maxZoom: 19,
+                crossOrigin: true
+            }
+        ).addTo(exportMap);
+    }
+}
+
+function getCurrentExportFileAndRoutes() {
+    const stack =
+        window.multiGpxStack ||
+        [];
+
+    const fileIdx =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const currentFile =
+        stack[fileIdx];
+
+    if (!currentFile) {
+        return {
+            currentFile: null,
+            routes: []
+        };
+    }
+
+    let routes =
+        [];
+
+    if (
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes.length > 0
+    ) {
+        routes =
+            currentFile.routes.filter(function(route) {
+                return (
+                    route &&
+                    route.visible !== false
+                );
+            });
+
+    } else {
+        routes =
+            [currentFile];
+    }
+
+    return {
+        currentFile: currentFile,
+        routes: routes
+    };
+}
+
+function normalizeSegmentLatLngs(seg) {
+    if (!Array.isArray(seg)) {
+        return [];
+    }
+
+    return seg
+        .map(function(pt) {
+            if (Array.isArray(pt)) {
+                return [
+                    Number(pt[0]),
+                    Number(pt[1])
+                ];
+            }
+
+            return [
+                Number(pt.lat),
+                Number(
+                    pt.lon !== undefined
+                        ? pt.lon
+                        : pt.lng
+                )
+            ];
+        })
+        .filter(function(pt) {
+            return (
+                Number.isFinite(pt[0]) &&
+                Number.isFinite(pt[1])
+            );
+        });
+}
+
+function addRoutesToExportMap(exportMap) {
+    const result =
+        getCurrentExportFileAndRoutes();
+
+    const currentFile =
+        result.currentFile;
+
+    const routes =
+        result.routes;
+
+    routes.forEach(function(route) {
+        if (!route) return;
+
+        const color =
+            route.color ||
+            (
+                currentFile &&
+                currentFile.color
+            ) ||
+            "#0000FF";
+
+        if (
+            Array.isArray(route.segments) &&
+            route.segments.length > 0
+        ) {
+            route.segments.forEach(function(seg) {
+                const latLngs =
+                    normalizeSegmentLatLngs(seg);
+
+                if (latLngs.length >= 2) {
+                    L.polyline(
+                        latLngs,
+                        {
+                            color: color,
+                            weight: 5,
+                            opacity: 1
+                        }
+                    ).addTo(exportMap);
+                }
+            });
+
+            return;
+        }
+
+        if (
+            Array.isArray(route.points) &&
+            route.points.length >= 2
+        ) {
+            const latLngs =
+                route.points
+                    .map(function(p) {
+                        return [
+                            Number(p.lat),
+                            Number(
+                                p.lon !== undefined
+                                    ? p.lon
+                                    : p.lng
+                            )
+                        ];
+                    })
+                    .filter(function(pt) {
+                        return (
+                            Number.isFinite(pt[0]) &&
+                            Number.isFinite(pt[1])
+                        );
+                    });
+
+            if (latLngs.length >= 2) {
+                L.polyline(
+                    latLngs,
+                    {
+                        color: color,
+                        weight: 5,
+                        opacity: 1
+                    }
+                ).addTo(exportMap);
+            }
+        }
+    });
+}
+
+function createScaledPdfWaypointIcon(w, scale) {
+    if (
+        typeof window.createWaypointDivIcon !== "function"
+    ) {
+        return null;
+    }
+
+    const baseIcon =
+        window.createWaypointDivIcon(w);
+
+    if (!baseIcon || !baseIcon.options) {
+        return baseIcon;
+    }
+
+    const baseSize =
+        baseIcon.options.iconSize || [32, 32];
+
+    const baseAnchor =
+        baseIcon.options.iconAnchor || [16, 26];
+
+    const width =
+        Array.isArray(baseSize)
+            ? Number(baseSize[0])
+            : (
+                typeof baseSize.x === "number"
+                    ? Number(baseSize.x)
+                    : 32
+            );
+
+    const height =
+        Array.isArray(baseSize)
+            ? Number(baseSize[1])
+            : (
+                typeof baseSize.y === "number"
+                    ? Number(baseSize.y)
+                    : 32
+            );
+
+    const anchorX =
+        Array.isArray(baseAnchor)
+            ? Number(baseAnchor[0])
+            : (
+                typeof baseAnchor.x === "number"
+                    ? Number(baseAnchor.x)
+                    : 16
+            );
+
+    const anchorY =
+        Array.isArray(baseAnchor)
+            ? Number(baseAnchor[1])
+            : (
+                typeof baseAnchor.y === "number"
+                    ? Number(baseAnchor.y)
+                    : 30
+            );
+
+    const safeScale =
+        Number.isFinite(Number(scale))
+            ? Number(scale)
+            : 1;
+
+    return L.divIcon({
+        className:
+            (baseIcon.options.className || "") +
+            " pdf-scaled-wpt-icon",
+
+        iconSize: [
+            width * safeScale,
+            height * safeScale
+        ],
+
+        iconAnchor: [
+            anchorX * safeScale,
+            anchorY * safeScale
+        ],
+
+        popupAnchor: [
+            0,
+            -anchorY * safeScale
+        ],
+
+        html:
+            '<div style="' +
+                'position:relative;' +
+                'width:' + width + 'px;' +
+                'height:' + height + 'px;' +
+                'transform: scale(' + safeScale + ');' +
+                'transform-origin: 0 0;' +
+            '">' +
+                (baseIcon.options.html || "") +
+            '</div>'
+    });
+}
+
+function addWaypointsToExportMap(exportMap, options) {
+    const result =
+        getCurrentExportFileAndRoutes();
+
+    const currentFile =
+        result.currentFile;
+
+    if (!currentFile) return;
+
+    options =
+        options || {};
+
+    const waypoints =
+        Array.isArray(currentFile.waypoints)
+            ? currentFile.waypoints
+            : [];
+
+    const activeIdx =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    const activeRoute =
+        currentFile &&
+        Array.isArray(currentFile.routes) &&
+        currentFile.routes[activeIdx]
+            ? currentFile.routes[activeIdx]
+            : currentFile;
+
+    
+    const iconScaleMap = {
+        small: 1,
+        medium: 1.4,
+        large: 1.8
+    };
+
+    const labelSizeMap = {
+        small: 12,
+        medium: 16,
+        large: 22
+    };
+
+    const pdfIconScale =
+        iconScaleMap[
+            options.wptIconSize || "medium"
+        ] || 1.4;
+
+    const pdfLabelSize =
+        labelSizeMap[
+            options.wptLabelSize || "medium"
+        ] || 16;
+
+    waypoints.forEach(function(w) {
+        if (!w) return;
+
+        const lat =
+            Number(w.lat);
+
+        const lon =
+            Number(
+                w.lon !== undefined
+                    ? w.lon
+                    : w.lng
+            );
+
+        if (
+            !Number.isFinite(lat) ||
+            !Number.isFinite(lon)
+        ) {
+            return;
+        }
+
+        let visible =
+            true;
+
+        if (
+            typeof window.isWaypointVisibleOnCurrentRoute === "function"
+        ) {
+            visible =
+                window.isWaypointVisibleOnCurrentRoute(
+                    w,
+                    activeIdx,
+                    activeRoute
+                );
+        }
+
+        if (!visible) {
+            return;
+        }
+
+				const wptDisplayMode =
+				    options && options.wptDisplayMode
+				        ? options.wptDisplayMode
+				        : "iconAndDot";
+				
+				const shouldShowWptIcon =
+				    wptDisplayMode === "iconAndDot" ||
+				    wptDisplayMode === "iconOnly";
+				
+				const shouldShowWptDot =
+				    wptDisplayMode === "iconAndDot" ||
+				    wptDisplayMode === "dotOnly";
+				
+				let marker =
+				    null;
+				
+				if (shouldShowWptIcon) {
+				    const icon =
+				        createScaledPdfWaypointIcon(
+				            w,
+				            pdfIconScale
+				        );
+				
+				    marker =
+				        L.marker(
+				            [
+				                lat,
+				                lon
+				            ],
+				            icon
+				                ? {
+				                    icon: icon
+				                }
+				                : {}
+				        ).addTo(exportMap);
+				}
+
+			if (shouldShowWptDot) {
+        L.circleMarker(
+				    [
+				        lat,
+				        lon
+				    ],
+				    {
+				        radius: Math.max(
+				            3,
+				            3.5 * pdfIconScale
+				        ),
+				        color: "rgba(255, 255, 255, 1)",
+				        weight: 1,
+				        fillColor: "rgba(26, 115, 232, 1)",
+				        fillOpacity: 0.8,
+				        interactive: false,
+				        pane: "markerPane"
+				    }
+				).addTo(exportMap);
+			}
+
+				if (
+				    typeof showWptNameAlways !== "undefined" &&
+				    showWptNameAlways === true &&
+				    w.name
+				) {
+				    const labelTarget =
+				        marker ||
+				        L.marker(
+				            [
+				                lat,
+				                lon
+				            ],
+				            {
+				                interactive: false,
+				                opacity: 0,
+				                icon: L.divIcon({
+				                    className: "pdf-wpt-label-anchor",
+				                    html: "",
+				                    iconSize: [1, 1],
+				                    iconAnchor: [0, 0]
+				                })
+				            }
+				        ).addTo(exportMap);
+				
+				    labelTarget.bindTooltip(
+				        '<span style="font-size:' + pdfLabelSize + 'px; font-weight:bold;">' +
+				            String(w.name) +
+				        '</span>',
+				        {
+				            permanent: true,
+				            direction: "right",
+				            offset: [
+				                10 * pdfIconScale,
+				                0
+				            ],
+				            className: "pdf-wpt-name-label"
+				        }
+				    ).openTooltip();
+				}
+    });
+}
+
+function cloneLeafletLayerForExport(layer) {
+    if (!layer) {
+        return null;
+    }
+
+    if (layer instanceof L.LayerGroup) {
+        const group =
+            L.layerGroup();
+
+        layer.eachLayer(function(childLayer) {
+            const clonedChild =
+                cloneLeafletLayerForExport(childLayer);
+
+            if (clonedChild) {
+                group.addLayer(
+                    clonedChild
+                );
+            }
+        });
+
+        return group;
+    }
+
+    if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+        return L.polyline(
+            layer.getLatLngs(),
+            Object.assign(
+                {},
+                layer.options || {}
+            )
+        );
+    }
+
+    if (layer instanceof L.Polygon) {
+        return L.polygon(
+            layer.getLatLngs(),
+            Object.assign(
+                {},
+                layer.options || {}
+            )
+        );
+    }
+
+    if (layer instanceof L.Rectangle) {
+        return L.rectangle(
+            layer.getBounds(),
+            Object.assign(
+                {},
+                layer.options || {}
+            )
+        );
+    }
+
+    if (layer instanceof L.CircleMarker) {
+        return L.circleMarker(
+            layer.getLatLng(),
+            Object.assign(
+                {},
+                layer.options || {}
+            )
+        );
+    }
+
+    if (layer instanceof L.Marker) {
+        return L.marker(
+            layer.getLatLng(),
+            Object.assign(
+                {},
+                layer.options || {}
+            )
+        );
+    }
+
+    return null;
+}
+
+function addGridLabelsAndLinesToExportMap(exportMap, options) {
+		options =
+		    options || {};
+		
+		const gridLabelFontSize =
+		    options.paper === "A3"
+		        ? 22
+		        : 18;
+    if (
+        typeof gridLayers === "undefined" ||
+        !gridLayers ||
+        typeof map === "undefined" ||
+        !map ||
+        typeof proj4 === "undefined"
+    ) {
+        return;
+    }
+
+    const bounds =
+        exportMap.getBounds();
+
+    const zoom =
+        exportMap.getZoom();
+
+    const exportGridLayers = {
+        WGS84: L.layerGroup(),
+        TWD97: L.layerGroup(),
+        TWD67: L.layerGroup(),
+        SubGrid: L.layerGroup()
+    };
+
+    const createLabel = function(lat, lon, text, color, anchor) {
+        anchor =
+            anchor || [0, 0];
+
+        return L.marker(
+            [
+                lat,
+                lon
+            ],
+            {
+                icon: L.divIcon({
+                    className: "grid-label",
+                    html:
+                        '<div style="' +
+                            'color:' + color + ';' +
+                            'font-size:' + gridLabelFontSize + 'px;' +
+                            'font-weight:bold;' +
+                            'text-shadow:' +
+                                '-1px -1px 0 #fff,' +
+                                '1px -1px 0 #fff,' +
+                                '-1px 1px 0 #fff,' +
+                                '1px 1px 0 #fff;' +
+                            'white-space:nowrap;' +
+                            'background:transparent;' +
+                            'padding:0;' +
+                        '">' +
+                            text +
+                        '</div>',
+                    iconSize: [0, 0],
+                    iconAnchor: anchor
+                }),
+                interactive: false
+            }
+        );
+    };
+
+    const stepMeter =
+        zoom > 13
+            ? 1000
+            : 5000;
+
+    const subStepMeter =
+        100;
+
+    const drawTWDGrid = function(layer, def, color, sourceLayer) {
+        if (!map.hasLayer(sourceLayer)) {
+            return;
+        }
+
+        const sw =
+            proj4(
+                WGS84_DEF,
+                def,
+                [
+                    bounds.getWest(),
+                    bounds.getSouth()
+                ]
+            );
+
+        const ne =
+            proj4(
+                WGS84_DEF,
+                def,
+                [
+                    bounds.getEast(),
+                    bounds.getNorth()
+                ]
+            );
+
+        for (
+            let x = Math.floor(sw[0] / stepMeter) * stepMeter;
+            x <= ne[0];
+            x += stepMeter
+        ) {
+            const pTop =
+                proj4(
+                    def,
+                    WGS84_DEF,
+                    [
+                        x,
+                        ne[1]
+                    ]
+                );
+
+            const pBot =
+                proj4(
+                    def,
+                    WGS84_DEF,
+                    [
+                        x,
+                        sw[1]
+                    ]
+                );
+
+            L.polyline(
+                [
+                    [
+                        pTop[1],
+                        pTop[0]
+                    ],
+                    [
+                        pBot[1],
+                        pBot[0]
+                    ]
+                ],
+                {
+                    color: color,
+                    weight: 1.2,
+                    opacity: 0.75,
+                    interactive: false
+                }
+            ).addTo(layer);
+
+            createLabel(
+                pTop[1],
+                pTop[0],
+                "X " + Math.round(x),
+                color,
+                [0, 0]
+            ).addTo(layer);
+
+            createLabel(
+                pBot[1],
+                pBot[0],
+                "X " + Math.round(x),
+                color,
+                [0, 20]
+            ).addTo(layer);
+        }
+
+        for (
+            let y = Math.floor(sw[1] / stepMeter) * stepMeter;
+            y <= ne[1];
+            y += stepMeter
+        ) {
+            const pLeft =
+                proj4(
+                    def,
+                    WGS84_DEF,
+                    [
+                        sw[0],
+                        y
+                    ]
+                );
+
+            const pRight =
+                proj4(
+                    def,
+                    WGS84_DEF,
+                    [
+                        ne[0],
+                        y
+                    ]
+                );
+
+            L.polyline(
+                [
+                    [
+                        pLeft[1],
+                        pLeft[0]
+                    ],
+                    [
+                        pRight[1],
+                        pRight[0]
+                    ]
+                ],
+                {
+                    color: color,
+                    weight: 1.2,
+                    opacity: 0.75,
+                    interactive: false
+                }
+            ).addTo(layer);
+
+            createLabel(
+                pLeft[1],
+                pLeft[0],
+                "Y " + Math.round(y),
+                color,
+                [-5, 12]
+            ).addTo(layer);
+
+            createLabel(
+                pRight[1],
+                pRight[0],
+                "Y " + Math.round(y),
+                color,
+                [70, 12]
+            ).addTo(layer);
+        }
+
+        if (
+            map.hasLayer(gridLayers.SubGrid) &&
+            zoom >= 13
+        ) {
+            for (
+                let x = Math.floor(sw[0] / subStepMeter) * subStepMeter;
+                x <= ne[0];
+                x += subStepMeter
+            ) {
+                if (x % 1000 === 0) {
+                    continue;
+                }
+
+                const pTop =
+                    proj4(
+                        def,
+                        WGS84_DEF,
+                        [
+                            x,
+                            ne[1]
+                        ]
+                    );
+
+                const pBot =
+                    proj4(
+                        def,
+                        WGS84_DEF,
+                        [
+                            x,
+                            sw[1]
+                        ]
+                    );
+
+                L.polyline(
+                    [
+                        [
+                            pTop[1],
+                            pTop[0]
+                        ],
+                        [
+                            pBot[1],
+                            pBot[0]
+                        ]
+                    ],
+                    {
+                        color: color,
+                        weight: 0.8,
+                        opacity: 0.65,
+                        dashArray: "2, 4",
+                        interactive: false
+                    }
+                ).addTo(exportGridLayers.SubGrid);
+            }
+
+            for (
+                let y = Math.floor(sw[1] / subStepMeter) * subStepMeter;
+                y <= ne[1];
+                y += subStepMeter
+            ) {
+                if (y % 1000 === 0) {
+                    continue;
+                }
+
+                const pLeft =
+                    proj4(
+                        def,
+                        WGS84_DEF,
+                        [
+                            sw[0],
+                            y
+                        ]
+                    );
+
+                const pRight =
+                    proj4(
+                        def,
+                        WGS84_DEF,
+                        [
+                            ne[0],
+                            y
+                        ]
+                    );
+
+                L.polyline(
+                    [
+                        [
+                            pLeft[1],
+                            pLeft[0]
+                        ],
+                        [
+                            pRight[1],
+                            pRight[0]
+                        ]
+                    ],
+                    {
+                        color: color,
+                        weight: 0.8,
+                        opacity: 0.65,
+                        dashArray: "2, 4",
+                        interactive: false
+                    }
+                ).addTo(exportGridLayers.SubGrid);
+            }
+        }
+    };
+
+    drawTWDGrid(
+        exportGridLayers.TWD97,
+        TWD97_DEF,
+        "#4a90e2",
+        gridLayers.TWD97
+    );
+
+    drawTWDGrid(
+        exportGridLayers.TWD67,
+        TWD67_DEF,
+        "#e67e22",
+        gridLayers.TWD67
+    );
+
+    if (map.hasLayer(gridLayers.WGS84)) {
+        const stepDeg =
+            zoom > 14
+                ? 0.005
+                : (
+                    zoom > 12
+                        ? 0.01
+                        : 0.05
+                );
+
+        const wgsColor =
+            "#666";
+
+        for (
+            let lo = Math.floor(bounds.getWest() / stepDeg) * stepDeg;
+            lo <= bounds.getEast();
+            lo += stepDeg
+        ) {
+            L.polyline(
+                [
+                    [
+                        bounds.getSouth(),
+                        lo
+                    ],
+                    [
+                        bounds.getNorth(),
+                        lo
+                    ]
+                ],
+                {
+                    color: wgsColor,
+                    weight: 1,
+                    opacity: 0.6,
+                    dashArray: "5,10",
+                    interactive: false
+                }
+            ).addTo(exportGridLayers.WGS84);
+
+            createLabel(
+                bounds.getNorth(),
+                lo,
+                lo.toFixed(3) + "°E",
+                wgsColor,
+                [0, 0]
+            ).addTo(exportGridLayers.WGS84);
+
+            createLabel(
+                bounds.getSouth(),
+                lo,
+                lo.toFixed(3) + "°E",
+                wgsColor,
+                [0, 20]
+            ).addTo(exportGridLayers.WGS84);
+        }
+
+        for (
+            let la = Math.floor(bounds.getSouth() / stepDeg) * stepDeg;
+            la <= bounds.getNorth();
+            la += stepDeg
+        ) {
+            L.polyline(
+                [
+                    [
+                        la,
+                        bounds.getWest()
+                    ],
+                    [
+                        la,
+                        bounds.getEast()
+                    ]
+                ],
+                {
+                    color: wgsColor,
+                    weight: 1,
+                    opacity: 0.6,
+                    dashArray: "5,10",
+                    interactive: false
+                }
+            ).addTo(exportGridLayers.WGS84);
+
+            createLabel(
+                la,
+                bounds.getWest(),
+                la.toFixed(3) + "°N",
+                wgsColor,
+                [-5, 12]
+            ).addTo(exportGridLayers.WGS84);
+
+            createLabel(
+                la,
+                bounds.getEast(),
+                la.toFixed(3) + "°N",
+                wgsColor,
+                [70, 12]
+            ).addTo(exportGridLayers.WGS84);
+        }
+    }
+
+    if (map.hasLayer(gridLayers.WGS84)) {
+        exportGridLayers.WGS84.addTo(
+            exportMap
+        );
+    }
+
+    if (map.hasLayer(gridLayers.TWD97)) {
+        exportGridLayers.TWD97.addTo(
+            exportMap
+        );
+    }
+
+    if (map.hasLayer(gridLayers.TWD67)) {
+        exportGridLayers.TWD67.addTo(
+            exportMap
+        );
+    }
+
+    if (map.hasLayer(gridLayers.SubGrid)) {
+        exportGridLayers.SubGrid.addTo(
+            exportMap
+        );
+    }
+}
+
+function addGridToExportMapIfEnabled(exportMap, options) {
+    addGridLabelsAndLinesToExportMap(
+        exportMap,
+        options
+    );
+}
+
+function fitExportMapToBounds(exportMap, bounds, options, size) {
+    if (!bounds || !bounds.isValid()) {
+        return;
+    }
+
+    exportMap.fitBounds(
+        bounds,
+        {
+            padding: [0, 0],
+            animate: false
+        }
+    );
+}
+
+function getCoverBoundsForPaper(bounds, pixelWidth, pixelHeight) {
+    
+    return bounds;
+}
+
+function waitForMapTilesLoaded(targetMap) {
+    return new Promise(function(resolve) {
+        let pending =
+            0;
+
+        let finished =
+            false;
+
+        const done =
+            function() {
+                if (finished) return;
+
+                finished =
+                    true;
+
+                setTimeout(
+                    resolve,
+                    500
+                );
+            };
+
+        targetMap.eachLayer(function(layer) {
+            if (layer instanceof L.TileLayer) {
+                pending++;
+
+                layer.once(
+                    "load",
+                    function() {
+                        pending--;
+
+                        if (pending <= 0) {
+                            done();
+                        }
+                    }
+                );
+            }
+        });
+
+        setTimeout(function() {
+            done();
+        }, 3000);
+
+        if (pending === 0) {
+            done();
+        }
+    });
+}
+
+async function exportSelectedMapToPdf(options) {
+    if (!pdfSelectedBounds) {
+        alert("尚未選擇輸出範圍");
+        return;
+    }
+
+    if (
+        typeof html2canvas === "undefined"
+    ) {
+        alert("html2canvas 尚未載入");
+        return;
+    }
+
+    if (
+        !window.jspdf ||
+        !window.jspdf.jsPDF
+    ) {
+        alert("jsPDF 尚未載入");
+        return;
+    }
+
+    const confirmBtn =
+        document.getElementById("pdfExportConfirmBtn");
+
+    if (confirmBtn) {
+        confirmBtn.disabled =
+            true;
+
+        confirmBtn.textContent =
+            "產生中...";
+    }
+
+    try {
+        const size =
+            getPdfPaperPixelSize(options);
+
+        const exportMap =
+            createPdfExportMapContainer(size);
+
+				copyVisibleTileLayersToExportMap(
+				    exportMap
+				);
+				
+				fitExportMapToBounds(
+				    exportMap,
+				    pdfSelectedBounds,
+				    options,
+				    size
+				);
+				
+				exportMap.invalidateSize(
+				    true
+				);
+				
+				
+				addGridToExportMapIfEnabled(
+				    exportMap,
+				    options
+				);
+				
+				addRoutesToExportMap(
+				    exportMap
+				);
+				
+				addWaypointsToExportMap(
+				    exportMap,
+				    options
+				);
+
+        await waitForMapTilesLoaded(
+            exportMap
+        );
+
+        const exportEl =
+            document.getElementById("pdfExportMap");
+
+				const html2canvasScale =
+				    options.dpi === "300"
+				        ? 1
+				        : 2;
+				
+				const canvas =
+				    await html2canvas(
+				        exportEl,
+				        {
+				            useCORS: true,
+				            allowTaint: false,
+				            scale: html2canvasScale,
+				            backgroundColor: "#ffffff",
+				            logging: false
+				        }
+				    );
+
+        const imgData =
+            canvas.toDataURL(
+                "image/png",
+                0.95
+            );
+
+        const jsPDF =
+            window.jspdf.jsPDF;
+
+        const pdf =
+            new jsPDF({
+                orientation: options.orientation,
+                unit: "mm",
+                format: options.paper.toLowerCase()
+            });
+
+        const pageWidth =
+            pdf.internal.pageSize.getWidth();
+
+        const pageHeight =
+            pdf.internal.pageSize.getHeight();
+
+        pdf.addImage(
+            imgData,
+            "PNG",
+            0,
+            0,
+            pageWidth,
+            pageHeight
+        );
+
+        const fileName =
+            "map-export-" +
+            options.paper +
+            "-" +
+            options.orientation +
+            ".pdf";
+
+        pdf.save(
+            fileName
+        );
+
+        hidePdfExportDialog();
+
+    } catch (err) {
+        console.error(err);
+        alert("匯出 PDF 失敗：" + err.message);
+
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled =
+                false;
+
+            confirmBtn.textContent =
+                "匯出";
+        }
+
+        if (pdfExportMap) {
+            pdfExportMap.remove();
+            pdfExportMap =
+                null;
+        }
+    }
+}
+
+// 如果 app.js 載入時 toolbar 已經存在，就先初始化一次。
+// 如果 toolbar 是 renderSideToolbar() 動態產生，
+// 你前面已經在 renderSideToolbar() 最後呼叫 installPdfExportFeature()，就會再次綁定。
+document.addEventListener("DOMContentLoaded", function() {
+    installPdfExportFeature();
+    installPdfAreaSelectMapEvents();
+    installPdfDialogEventBlocker();
+});
+
+function createPdfWaypointIcon(w, size) {
+    const safeName =
+        w && w.name
+            ? String(w.name)
+            : "";
+
+    return L.divIcon({
+        className: "custom-wpt-icon pdf-custom-wpt-icon",
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        html:
+            '<div class="wpt-map-icon" style="' +
+                'width:' + size + 'px;' +
+                'height:' + size + 'px;' +
+                'font-size:' + Math.round(size * 0.7) + 'px;' +
+            '">' +
+                '<span class="material-icons" style="font-size:' + Math.round(size * 0.72) + 'px;">place</span>' +
+            '</div>'
+    });
+}
+
+function installPdfDialogEventBlocker() {
+    const overlay =
+        document.getElementById("pdfExportDialogOverlay");
+
+    const dialog =
+        document.getElementById("pdfExportDialog");
+
+    if (!overlay || !dialog) return;
+
+    
+    overlay.addEventListener("click", function(e) {
+        window.pdfSuppressMapClickUntil =
+            Date.now() + 1000;
+
+        if (e.target === overlay) {
+            e.stopPropagation();
+        }
+    });
+
+    
+    [
+        "click",
+        "mousedown",
+        "mouseup",
+        "touchstart",
+        "touchend",
+        "pointerdown",
+        "pointerup"
+    ].forEach(function(evtName) {
+        dialog.addEventListener(
+            evtName,
+            function(e) {
+                window.pdfSuppressMapClickUntil =
+                    Date.now() + 1000;
+
+                e.stopPropagation();
+            },
+            false
+        );
+    });
+}
+
+function addGridLabelToLayer(layerGroup, latlng, text, options) {
+    if (!layerGroup || !latlng || !text) return;
+
+    options =
+        options || {};
+
+    const fontSize =
+        options.fontSize || 11;
+
+    const color =
+        options.color || "#333";
+
+    const background =
+        options.background || "rgba(255,255,255,0.75)";
+
+    const label =
+        L.marker(
+            latlng,
+            {
+                interactive: false,
+                icon: L.divIcon({
+                    className: "grid-coordinate-label",
+                    iconSize: null,
+                    iconAnchor: [0, 0],
+                    html:
+                        '<div style="' +
+                            'font-size:' + fontSize + 'px;' +
+                            'font-weight:bold;' +
+                            'color:' + color + ';' +
+                            'background:' + background + ';' +
+                            'border:1px solid rgba(0,0,0,0.2);' +
+                            'border-radius:3px;' +
+                            'padding:1px 4px;' +
+                            'white-space:nowrap;' +
+                            'box-shadow:0 1px 2px rgba(0,0,0,0.2);' +
+                        '">' +
+                            text +
+                        '</div>'
+                })
+            }
+        );
+
+    layerGroup.addLayer(
+        label
+    );
 }
