@@ -4942,8 +4942,45 @@ function showFreeClickPopup(latlng, searchTitle = null, searchAddr = null) {
         });
     }
 
-    const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
-    const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);   
+		const shouldShowTaiwanGrid =
+		    isLatLngInTaiwanArea(
+		        lat,
+		        lon
+		    );
+		
+		let twd97 =
+		    null;
+		
+		let twd67 =
+		    null;
+		
+		if (
+		    shouldShowTaiwanGrid &&
+		    typeof proj4 !== "undefined" &&
+		    typeof WGS84_DEF !== "undefined" &&
+		    typeof TWD97_DEF !== "undefined" &&
+		    typeof TWD67_DEF !== "undefined"
+		) {
+		    twd97 =
+		        proj4(
+		            WGS84_DEF,
+		            TWD97_DEF,
+		            [
+		                lon,
+		                lat
+		            ]
+		        );
+		
+		    twd67 =
+		        proj4(
+		            WGS84_DEF,
+		            TWD67_DEF,
+		            [
+		                lon,
+		                lat
+		            ]
+		        );
+		}
     const addressHtml = searchAddr ? 
         `<div style="color: #666; font-size: 12px; line-height: 1.4; margin-bottom: 5px; word-break: break-all;">${searchAddr}</div>` : "";
     
@@ -4953,6 +4990,20 @@ function showFreeClickPopup(latlng, searchTitle = null, searchAddr = null) {
         onclick="event.stopPropagation(); handleWptEdit(-1, ${lat}, ${lon}, ${eleParam}, '${title}', null, null)">add_location</span>`;
     const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
     const gMapIconBtn = `<a href="${gUrl}" target="_blank" style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); vertical-align: middle;"><img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px; display:block;"></a>`;
+    
+    let taiwanGridHtml =
+		    "";
+		
+		if (
+		    shouldShowTaiwanGrid &&
+		    twd97 &&
+		    twd67
+		) {
+		    taiwanGridHtml =
+		        `<b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>` +
+		        `<b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}`;
+		}
+    
     const content = `
         <div style="min-width:180px; font-size:13px; line-height:1.6;">
             <div style="display:flex; align-items:center; margin-bottom:5px;">
@@ -4962,9 +5013,8 @@ function showFreeClickPopup(latlng, searchTitle = null, searchAddr = null) {
             ${addressHtml}
             <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
             ${eleDisplay}
-            <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-            <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
-            <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
+						<b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+						${taiwanGridHtml}
             <div style="display:flex; margin-top:10px; gap:8px;">
                 <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
                 <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
@@ -9153,8 +9203,45 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
     const editIcon = `<span class="material-icons" style="font-size:16px; cursor:pointer; vertical-align:middle; margin-left:4px; color:${iconColor};" 
         onclick="event.stopPropagation(); handleWptEdit(${waypointIdx !== -1 ? waypointIdx : 'null'}, ${lat}, ${lon}, ${eleValue}, '${safeTitle}', '${displayTime}', ${idx})">${iconName}</span>`;
     
-    const twd97 = proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
-    const twd67 = proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
+		const shouldShowTaiwanGrid =
+		    isLatLngInTaiwanArea(
+		        lat,
+		        lon
+		    );
+		
+		let twd97 =
+		    null;
+		
+		let twd67 =
+		    null;
+		
+		if (
+		    shouldShowTaiwanGrid &&
+		    typeof proj4 !== "undefined" &&
+		    typeof WGS84_DEF !== "undefined" &&
+		    typeof TWD97_DEF !== "undefined" &&
+		    typeof TWD67_DEF !== "undefined"
+		) {
+		    twd97 =
+		        proj4(
+		            WGS84_DEF,
+		            TWD97_DEF,
+		            [
+		                lon,
+		                lat
+		            ]
+		        );
+		
+		    twd67 =
+		        proj4(
+		            WGS84_DEF,
+		            TWD67_DEF,
+		            [
+		                lon,
+		                lat
+		            ]
+		        );
+		}
     
     const gUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
     const gMapIconBtn = `<a href="${gUrl}" target="_blank" style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; vertical-align: middle;"><img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px;"></a>`;
@@ -9172,6 +9259,19 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
     const isExpanded = (window.popupDetailExpanded !== false); 
     const detailDisplayStyle = isExpanded ? 'block' : 'none';
     const detailBtnText = isExpanded ? '收合資訊' : '顯示資訊';
+    
+    let taiwanGridHtml =
+		    "";
+		
+		if (
+		    shouldShowTaiwanGrid &&
+		    twd97 &&
+		    twd67
+		) {
+		    taiwanGridHtml =
+		        `TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>` +
+		        `TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}`;
+		}
 
     let content = `
       <div style="min-width:180px; font-size:13px; line-height:1.6;">
@@ -9192,9 +9292,8 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
             ${eleHtml}
             ${distHtml}
             時間: ${displayTime}<br>
-            WGS84: ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>
-            TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
-            TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
+						WGS84: ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>
+						${taiwanGridHtml}
             ${(!matchedPoint) ? '<div style="color:#d35400; font-weight:bold; margin-top:2px;">📍 非路徑位置</div>' : ''}
           </div>
         </div>
@@ -33629,4 +33728,30 @@ function getChildTextByLocalName(parent, localName) {
     }
 
     return "";
+}
+
+function isLatLngInTaiwanArea(lat, lon) {
+    lat =
+        Number(lat);
+
+    lon =
+        Number(lon);
+
+    if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lon)
+    ) {
+        return false;
+    }
+
+    /*
+     * 寬鬆台灣範圍：
+     * 包含台灣本島、澎湖、金門、馬祖、綠島、蘭嶼附近。
+     */
+    return (
+        lat >= 21.5 &&
+        lat <= 26.5 &&
+        lon >= 118.0 &&
+        lon <= 123.5
+    );
 }
