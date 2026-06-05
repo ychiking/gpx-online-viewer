@@ -1885,12 +1885,32 @@
     font-size: 14px;
     line-height: 1;
 }
+
+.weather-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.weather-windy-text-link {
+    font-size: 13px;
+    font-weight: bold;
+    color: #d32f2f;
+    text-decoration: none;
+    white-space: nowrap;
+    margin-left: 8px;
+}
+
+.weather-windy-text-link:hover {
+    text-decoration: underline;
+}
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2606052</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2606053</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />

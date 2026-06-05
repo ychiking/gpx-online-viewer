@@ -33785,6 +33785,12 @@ function isLatLngInTaiwanArea(lat, lon) {
 }
 
 window.openWeatherModal = async function(lat, lon, title) {
+		window.currentWeatherLat =
+    		Number(lat);
+
+		window.currentWeatherLon =
+		    Number(lon);
+	
     const modal =
         document.getElementById("weatherModal");
 
@@ -33818,10 +33824,6 @@ window.openWeatherModal = async function(lat, lon, title) {
 		        '</div>' +
 		        '<div class="weather-title-source">' +
 		            '<span>資料來源：Open-Meteo</span>' +
-								'<a href="' + windyUrl + '" target="_blank" class="weather-windy-link" title="在 Windy 查看風雨圖">' +
-								    '<span class="weather-windy-icon">≋</span>' +
-								    '<span>前往Windy查看</span>' +
-								'</a>'
 		        '</div>';
 		}
 
@@ -33957,10 +33959,30 @@ function buildWeatherForecastModalHtml(data) {
     let html =
         "";
 
-    html +=
-        '<div class="weather-section">' +
-            '<div class="weather-section-title">未來 3 天｜每 3 小時</div>' +
-            '<div class="weather-scroll-row">';
+		const windyUrl =
+		    window.currentWeatherLat !== undefined &&
+		    window.currentWeatherLon !== undefined &&
+		    typeof buildWindyUrl === "function"
+		        ? buildWindyUrl(
+		            window.currentWeatherLat,
+		            window.currentWeatherLon,
+		            "rain",
+		            14
+		        )
+		        : "https://www.windy.com/";
+		
+		const windyLinkHtml =
+		    '<a href="' + windyUrl + '" target="_blank" class="weather-windy-text-link" title="前往 Windy 查看風雨圖">' +
+		        '≋ 前往 Windy 查看' +
+		    '</a>';
+		
+		html +=
+		    '<div class="weather-section">' +
+		        '<div class="weather-section-title">' +
+		            '<span>未來 3 天｜每 3 小時</span>' +
+		            windyLinkHtml +
+		        '</div>' +
+		        '<div class="weather-scroll-row">';
 
     first3Dates.forEach(function(date) {
         rows
