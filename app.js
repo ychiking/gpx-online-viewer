@@ -33587,9 +33587,6 @@ async function exportSelectedMapToPdf(options) {
     }
 }
 
-// 如果 app.js 載入時 toolbar 已經存在，就先初始化一次。
-// 如果 toolbar 是 renderSideToolbar() 動態產生，
-// 你前面已經在 renderSideToolbar() 最後呼叫 installPdfExportFeature()，就會再次綁定。
 document.addEventListener("DOMContentLoaded", function() {
     installPdfExportFeature();
     installPdfAreaSelectMapEvents();
@@ -33744,10 +33741,6 @@ function isLatLngInTaiwanArea(lat, lon) {
         return false;
     }
 
-    /*
-     * 寬鬆台灣範圍：
-     * 包含台灣本島、澎湖、金門、馬祖、綠島、蘭嶼附近。
-     */
     return (
         lat >= 21.5 &&
         lat <= 26.5 &&
