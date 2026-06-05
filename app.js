@@ -33799,13 +33799,31 @@ window.openWeatherModal = async function(lat, lon, title) {
         return;
     }
 
-	if (titleEl) {
-	    titleEl.innerHTML =
-	        '<div class="weather-title-main">天氣預報｜' +
-	            (title || "此位置") +
-	        '</div>' +
-	        '<div class="weather-title-source">資料來源：Open-Meteo</div>';
-	}
+		if (titleEl) {
+		    const windyUrl =
+		        typeof buildWindyUrl === "function"
+		            ? buildWindyUrl(
+		                lat,
+		                lon,
+		                "rain",
+		                14
+		            )
+		            : "https://www.windy.com/";
+		
+		    titleEl.innerHTML =
+				    '<div class="weather-title-main">' +
+				        '<span>天氣預報｜</span>' +
+				        '<span class="weather-title-location">' +
+				            (title || "此位置") +
+		        '</div>' +
+		        '<div class="weather-title-source">' +
+		            '<span>資料來源：Open-Meteo</span>' +
+								'<a href="' + windyUrl + '" target="_blank" class="weather-windy-link" title="在 Windy 查看風雨圖">' +
+								    '<span class="weather-windy-icon">≋</span>' +
+								    '<span>前往Windy查看</span>' +
+								'</a>'
+		        '</div>';
+		}
 
     bodyEl.innerHTML =
         '<div class="weather-loading">讀取天氣中...</div>';
@@ -34435,4 +34453,34 @@ function getMostSevereWeatherCode(codes) {
     });
 
     return selectedCode;
+}
+
+function buildWindyUrl(lat, lon, overlay = "rain", zoom = 14) {
+    lat =
+        Number(lat);
+
+    lon =
+        Number(lon);
+
+    if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lon)
+    ) {
+        return "https://www.windy.com/";
+    }
+
+    return (
+        "https://www.windy.com/" +
+        lat.toFixed(5) +
+        "/" +
+        lon.toFixed(5) +
+        "?" +
+        overlay +
+        "," +
+        lat.toFixed(5) +
+        "," +
+        lon.toFixed(5) +
+        "," +
+        zoom 
+    );
 }
