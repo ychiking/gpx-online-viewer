@@ -5003,7 +5003,18 @@ function showFreeClickPopup(latlng, searchTitle = null, searchAddr = null) {
 		        `<b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>` +
 		        `<b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}`;
 		}
-    
+		
+		const weatherTitle =
+    		String(title || "自選位置").replace(/'/g, "\\'");
+
+		const weatherButtonHtml =
+		    `<div style="margin-top:8px;">
+		        <button onclick="event.stopPropagation(); openWeatherModal(${lat}, ${lon}, '${weatherTitle}')"
+		            style="width:100%; background:#0FB9FD; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">
+		            🌤 查此位置天氣
+		        </button>
+		    </div>`;
+//"    
     const content = `
         <div style="min-width:180px; font-size:13px; line-height:1.6;">
             <div style="display:flex; align-items:center; margin-bottom:5px;">
@@ -5015,7 +5026,8 @@ function showFreeClickPopup(latlng, searchTitle = null, searchAddr = null) {
             ${eleDisplay}
 						<b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
 						${taiwanGridHtml}
-            <div style="display:flex; margin-top:10px; gap:8px;">
+						${weatherButtonHtml}
+						<div style="display:flex; margin-top:10px; gap:8px;">
                 <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
                 <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
             </div>
@@ -9249,6 +9261,17 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
     const eleHtml = (eleDisplay !== "---") ? `高度: ${eleDisplay} m<br>` : "";
     const distHtml = (dist !== null) ? `距離: ${dist} km<br>` : "";
 
+		const weatherTitle =
+    String(finalTitle || "位置資訊").replace(/'/g, "\\'");
+
+		const weatherButtonHtml =
+		    `<div style="margin-top:8px;">
+		        <button onclick="event.stopPropagation(); openWeatherModal(${lat}, ${lon}, '${weatherTitle}')"
+		            style="width:100%; background:#0FB9FD; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">
+		            🌤 查此位置天氣
+		        </button>
+		    </div>`;
+//"
     const effectiveIdxForAB = (matchedPoint) ? idx : 999999;
     const abButtons = `
       <div style="display:flex; margin-top:10px; gap:5px;">
@@ -9297,7 +9320,7 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
             ${(!matchedPoint) ? '<div style="color:#d35400; font-weight:bold; margin-top:2px;">📍 非路徑位置</div>' : ''}
           </div>
         </div>
-
+				${weatherButtonHtml}
         ${abButtons}
       </div>`;
 
@@ -11191,6 +11214,17 @@ window.jumpToLocation = function(lat, lon) {
     const editIcon = `<span class="material-icons" style="font-size:16px; cursor:pointer; vertical-align:middle; margin-left:4px; color:#1a73e8;" 
         onclick="event.stopPropagation(); window.removeJumpMarkers(); handleWptEdit(-1, ${lat}, ${lon}, ${eleParam}, '定位點資訊', null, null)">add_location</span>`;
 
+		const weatherTitle =
+		    "定位點資訊";
+		
+		const weatherButtonHtml =
+		    `<div style="margin-top:8px;">
+		        <button onclick="event.stopPropagation(); openWeatherModal(${lat}, ${lon}, '${weatherTitle}')"
+		            style="width:100%; background:#0FB9FD; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">
+		            🌤 查此位置天氣
+		        </button>
+		    </div>`;
+
     const content = `
         <div style="font-size:14px; line-height:1.5; min-width:180px;">
             <div style="display:flex; align-items:center;">
@@ -11203,6 +11237,7 @@ window.jumpToLocation = function(lat, lon) {
                 TWD97: ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
                 TWD67: ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
             </div>
+            ${weatherButtonHtml}
             <div style="display:flex; margin-top:10px; gap:5px;">
                 <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
                 <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
@@ -33747,4 +33782,657 @@ function isLatLngInTaiwanArea(lat, lon) {
         lon >= 118.0 &&
         lon <= 123.5
     );
+}
+
+window.openWeatherModal = async function(lat, lon, title) {
+    const modal =
+        document.getElementById("weatherModal");
+
+    const titleEl =
+        document.getElementById("weatherModalTitle");
+
+    const bodyEl =
+        document.getElementById("weatherModalBody");
+
+    if (!modal || !bodyEl) {
+        alert("找不到天氣視窗元素 weatherModal");
+        return;
+    }
+
+	if (titleEl) {
+	    titleEl.innerHTML =
+	        '<div class="weather-title-main">天氣預報｜' +
+	            (title || "此位置") +
+	        '</div>' +
+	        '<div class="weather-title-source">資料來源：Open-Meteo</div>';
+	}
+
+    bodyEl.innerHTML =
+        '<div class="weather-loading">讀取天氣中...</div>';
+
+    modal.style.display =
+        "block";
+
+    await loadWeatherForecastToModal(
+        lat,
+        lon
+    );
+};
+
+window.closeWeatherModal = function() {
+    const modal =
+        document.getElementById("weatherModal");
+
+    if (modal) {
+        modal.style.display =
+            "none";
+    }
+};
+
+async function loadWeatherForecastToModal(lat, lon) {
+    const bodyEl =
+        document.getElementById("weatherModalBody");
+
+    lat =
+        Number(lat);
+
+    lon =
+        Number(lon);
+
+    if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lon)
+    ) {
+        if (bodyEl) {
+            bodyEl.innerHTML =
+                '<div class="weather-error">座標無效，無法查詢天氣。</div>';
+        }
+
+        return;
+    }
+
+    const url =
+        "https://api.open-meteo.com/v1/forecast" +
+        "?latitude=" + encodeURIComponent(lat) +
+        "&longitude=" + encodeURIComponent(lon) +
+        "&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m" +
+        "&forecast_days=7" +
+        "&timezone=auto";
+
+    try {
+        const response =
+            await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(
+                "Weather API failed: " + response.status
+            );
+        }
+
+        const data =
+            await response.json();
+
+        const html =
+            buildWeatherForecastModalHtml(
+                data
+            );
+
+        if (bodyEl) {
+            bodyEl.innerHTML =
+                html;
+        }
+
+    } catch (error) {
+        console.error(
+            "loadWeatherForecastToModal failed:",
+            error
+        );
+
+        if (bodyEl) {
+            bodyEl.innerHTML =
+                '<div class="weather-error">天氣讀取失敗，請稍後再試。</div>';
+        }
+    }
+}
+
+function buildWeatherForecastModalHtml(data) {
+    if (
+        !data ||
+        !data.hourly ||
+        !Array.isArray(data.hourly.time)
+    ) {
+        return '<div class="weather-error">沒有天氣資料。</div>';
+    }
+
+    const h =
+        data.hourly;
+
+    const rows =
+        h.time.map(function(time, i) {
+            return {
+                time: time,
+                date: String(time).slice(0, 10),
+                hour: Number(String(time).slice(11, 13)),
+                temp: h.temperature_2m ? h.temperature_2m[i] : null,
+                pop: h.precipitation_probability ? h.precipitation_probability[i] : null,
+                rain: h.precipitation ? h.precipitation[i] : null,
+                code: h.weather_code ? h.weather_code[i] : null,
+                wind: h.wind_speed_10m ? h.wind_speed_10m[i] : null
+            };
+        });
+
+    const dates =
+        Array.from(
+            new Set(
+                rows.map(function(r) {
+                    return r.date;
+                })
+            )
+        );
+
+    const first3Dates =
+        dates.slice(0, 3);
+
+    const laterDates =
+        dates.slice(3, 7);
+
+    let html =
+        "";
+
+    html +=
+        '<div class="weather-section">' +
+            '<div class="weather-section-title">未來 3 天｜每 3 小時</div>' +
+            '<div class="weather-scroll-row">';
+
+    first3Dates.forEach(function(date) {
+        rows
+            .filter(function(r) {
+                return (
+                    r.date === date &&
+                    r.hour % 3 === 0
+                );
+            })
+            .forEach(function(r) {
+                html +=
+                    buildHourlyWeatherCard(
+                        r
+                    );
+            });
+    });
+
+    html +=
+            '</div>' +
+        '</div>';
+
+    html +=
+        '<div class="weather-section">' +
+            '<div class="weather-section-title">第 4～7 天｜白天 / 晚上摘要</div>' +
+            '<div class="weather-scroll-row">';
+
+    laterDates.forEach(function(date) {
+        const dayRows =
+            rows.filter(function(r) {
+                return (
+                    r.date === date &&
+                    r.hour >= 6 &&
+                    r.hour < 18
+                );
+            });
+
+        const nightRows =
+            rows.filter(function(r) {
+                return (
+                    r.date === date &&
+                    (
+                        r.hour >= 18 ||
+                        r.hour < 6
+                    )
+                );
+            });
+
+        html +=
+            buildDayNightWeatherCard(
+                date,
+                dayRows,
+                nightRows
+            );
+    });
+
+    html +=
+            '</div>' +
+        '</div>';
+
+    return html;
+}
+
+function buildHourlyWeatherCard(r) {
+    const rainValue =
+        r && Number.isFinite(Number(r.rain))
+            ? Number(r.rain)
+            : null;
+
+    let rainWarningIcon =
+        "";
+
+    
+    if (
+        rainValue !== null &&
+        rainValue >= 5
+    ) {
+        rainWarningIcon =
+            " ⚠️";
+    }
+
+    return (
+        '<div class="weather-card">' +
+            '<div class="weather-card-date">' +
+                formatWeatherDateShort(r.date) +
+            '</div>' +
+            '<div class="weather-card-time">' +
+                String(r.time).slice(11, 16) +
+            '</div>' +
+            '<div class="weather-emoji-icon">' +
+                getWeatherEmoji(r.code) +
+            '</div>' +
+            '<div class="weather-temp">' +
+                formatWeatherValue(r.temp, "°C") +
+            '</div>' +
+            '<div>' +
+                getWeatherCodeText(r.code) +
+            '</div>' +
+            '<div class="weather-rain">雨 ' +
+                formatWeatherValue(r.pop, "%") +
+            '</div>' +
+            '<div class="weather-rain">量 ' +
+                (
+                    rainValue === null
+                        ? "--"
+                        : rainValue.toFixed(1) + "mm"
+                ) +
+                rainWarningIcon +
+            '</div>' +
+            '<div class="weather-wind">風 ' +
+                formatWeatherValue(r.wind, "km/h") +
+            '</div>' +
+        '</div>'
+    );
+}
+
+function buildDayNightWeatherCard(date, dayRows, nightRows) {
+    return (
+        '<div class="weather-day-card">' +
+            '<div class="weather-day-title">' +
+                formatWeatherDateShort(date) +
+            '</div>' +
+            buildDayNightWeatherLine(
+                "白天",
+                dayRows
+            ) +
+            buildDayNightWeatherLine(
+                "晚上",
+                nightRows
+            ) +
+        '</div>'
+    );
+}
+
+function buildDayNightWeatherLine(label, rows) {
+    if (
+        !Array.isArray(rows) ||
+        rows.length === 0
+    ) {
+        return (
+            '<div class="weather-day-line">' +
+                label +
+                "：--" +
+            '</div>'
+        );
+    }
+
+    const temps =
+        rows
+            .map(function(r) {
+                return Number(r.temp);
+            })
+            .filter(Number.isFinite);
+
+    const pops =
+        rows
+            .map(function(r) {
+                return Number(r.pop);
+            })
+            .filter(Number.isFinite);
+
+    const rains =
+        rows
+            .map(function(r) {
+                return Number(r.rain);
+            })
+            .filter(Number.isFinite);
+
+    const winds =
+        rows
+            .map(function(r) {
+                return Number(r.wind);
+            })
+            .filter(Number.isFinite);
+
+    const codes =
+        rows
+            .map(function(r) {
+                return Number(r.code);
+            })
+            .filter(Number.isFinite);
+
+    const minTemp =
+        temps.length
+            ? Math.round(Math.min.apply(null, temps))
+            : "--";
+
+    const maxTemp =
+        temps.length
+            ? Math.round(Math.max.apply(null, temps))
+            : "--";
+
+    const maxPop =
+        pops.length
+            ? Math.round(Math.max.apply(null, pops))
+            : "--";
+
+    const rainSum =
+        rains.length
+            ? rains.reduce(function(sum, value) {
+                return sum + value;
+            }, 0)
+            : null;
+
+    const maxWind =
+        winds.length
+            ? Math.round(Math.max.apply(null, winds))
+            : "--";
+
+    const mainCode =
+        typeof getMostSevereWeatherCode === "function"
+            ? getMostSevereWeatherCode(codes)
+            : getMostFrequentWeatherCode(codes);
+
+    let rainWarningIcon =
+        "";
+
+    if (
+        rainSum !== null &&
+        rainSum >= 15
+    ) {
+        rainWarningIcon =
+            " ⚠️";
+    }
+
+    return (
+        '<div class="weather-day-line">' +
+            '<b>' + label + '</b> ' +
+            '<span class="weather-emoji-inline">' +
+                getWeatherEmoji(mainCode) +
+            '</span><br>' +
+						minTemp + "~" + maxTemp + "°C　" + "<br>" +
+						"降雨 " + maxPop + "%<br>" +
+						"雨量 " + (
+						    rainSum === null
+						        ? "--"
+						        : rainSum.toFixed(1)
+						) + "mm" + rainWarningIcon + "<br>" +
+						"風 " + maxWind + "km/h" +
+        '</div>'
+    );
+}
+
+function getMostFrequentWeatherCode(codes) {
+    if (
+        !Array.isArray(codes) ||
+        codes.length === 0
+    ) {
+        return null;
+    }
+
+    const counter =
+        {};
+
+    codes.forEach(function(code) {
+        counter[code] =
+            (counter[code] || 0) + 1;
+    });
+
+    return Number(
+        Object.keys(counter).sort(function(a, b) {
+            return counter[b] - counter[a];
+        })[0]
+    );
+}
+
+function getWeatherEmoji(code) {
+    code =
+        Number(code);
+
+    if (code === 0) return "☀️";
+    if (code === 1) return "🌤️";
+    if (code === 2) return "⛅";
+    if (code === 3) return "☁️";
+
+    if (code === 45 || code === 48) return "🌫️";
+
+    // 毛毛雨 / 凍毛毛雨
+    if (code === 51) return "🌧️️";
+    if (code === 53) return "🌧️️";
+    if (code === 55) return "🌧️";
+    if (code === 56 || code === 57) return "🌧️";
+
+    // 雨
+    if (code === 61) return "🌧️"; // 小雨
+    if (code === 63) return "🌧️"; // 中雨
+    if (code === 65) return "☔";  // 大雨
+    if (code === 66 || code === 67) return "🌧️";
+
+    // 雪
+    if (code === 71) return "🌨️";
+    if (code === 73) return "❄️";
+    if (code === 75) return "❄️";
+    if (code === 77) return "❄️";
+
+    // 陣雨
+    if (code === 80) return "🌧️"; // 輕陣雨
+    if (code === 81) return "🌧️"; // 中陣雨
+    if (code === 82) return "☔";  // 強陣雨
+
+    // 陣雪
+    if (code === 85) return "🌨️";
+    if (code === 86) return "❄️";
+
+    // 雷雨
+    if (code === 95) return "⛈️";
+    if (code === 96 || code === 99) return "⛈️";
+
+    return "☁️";
+}
+
+function getWeatherCodeText(code) {
+    code =
+        Number(code);
+
+		const map = {
+		    0: "晴朗",
+		    1: "大致晴朗",
+		    2: "局部多雲",
+		    3: "陰天",
+		
+		    45: "霧",
+		    48: "霧凇",
+		
+		    51: "輕微毛毛雨",
+		    53: "中等毛毛雨",
+		    55: "濃密毛毛雨",
+		
+		    56: "輕微凍毛毛雨",
+		    57: "濃密凍毛毛雨",
+		
+		    61: "小雨",
+		    63: "中雨",
+		    65: "大雨",
+		
+		    66: "輕微凍雨",
+		    67: "強凍雨",
+		
+		    71: "小雪",
+		    73: "中雪",
+		    75: "大雪",
+		    77: "雪粒",
+		
+		    80: "輕微陣雨",
+		    81: "中等陣雨",
+		    82: "強烈陣雨",
+		
+		    85: "輕微陣雪",
+		    86: "強烈陣雪",
+		
+		    95: "雷雨",
+		    96: "雷雨伴輕微冰雹",
+		    99: "雷雨伴強烈冰雹"
+		};
+
+    return map[code] || "未知";
+}
+
+function formatWeatherDateShort(dateStr) {
+    const parts =
+        String(dateStr).split("-");
+
+    if (parts.length !== 3) {
+        return dateStr;
+    }
+
+    return (
+        Number(parts[1]) +
+        "/" +
+        Number(parts[2]) +
+        " " +
+        getWeatherWeekday(dateStr)
+    );
+}
+
+function formatWeatherValue(value, unit) {
+    if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(Number(value))
+    ) {
+        return "--";
+    }
+
+    return Math.round(Number(value)) + unit;
+}
+
+function formatWeatherValueOneDecimal(value, unit) {
+    if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(Number(value))
+    ) {
+        return "--";
+    }
+
+    return Number(value).toFixed(1) + unit;
+}
+
+function getWeatherWeekday(dateStr) {
+    const d =
+        new Date(dateStr + "T00:00:00");
+
+    if (isNaN(d.getTime())) {
+        return "";
+    }
+
+    const weekdays =
+        [
+            "日",
+            "一",
+            "二",
+            "三",
+            "四",
+            "五",
+            "六"
+        ];
+
+    return "週" + weekdays[d.getDay()];
+}
+
+function getMostSevereWeatherCode(codes) {
+    if (
+        !Array.isArray(codes) ||
+        codes.length === 0
+    ) {
+        return null;
+    }
+
+    const severityMap = {
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3,
+
+        45: 4,
+        48: 5,
+
+        51: 6,
+        53: 7,
+        55: 8,
+        56: 8,
+        57: 9,
+
+        61: 10,
+        63: 12,
+        65: 15,
+
+        66: 13,
+        67: 16,
+
+        71: 10,
+        73: 12,
+        75: 15,
+        77: 11,
+
+        80: 10,
+        81: 12,
+        82: 16,
+
+        85: 12,
+        86: 16,
+
+        95: 18,
+        96: 19,
+        99: 20
+    };
+
+    let selectedCode =
+        null;
+
+    let selectedSeverity =
+        -1;
+
+    codes.forEach(function(code) {
+        code =
+            Number(code);
+
+        const severity =
+            severityMap[code] !== undefined
+                ? severityMap[code]
+                : 0;
+
+        if (severity > selectedSeverity) {
+            selectedSeverity =
+                severity;
+
+            selectedCode =
+                code;
+        }
+    });
+
+    return selectedCode;
 }
