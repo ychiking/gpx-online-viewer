@@ -8663,11 +8663,46 @@ window.toggleGPS = function(btn) {
             const lon =
                 pos.coords.longitude;
 
-            const twd97 =
-                proj4(WGS84_DEF, TWD97_DEF, [lon, lat]);
-
-            const twd67 =
-                proj4(WGS84_DEF, TWD67_DEF, [lon, lat]);
+		const shouldShowTaiwanGrid =
+		    typeof isLatLngInTaiwanArea === "function" &&
+		    isLatLngInTaiwanArea(
+		        lat,
+		        lon
+		    );
+		
+		let twd97 =
+		    null;
+		
+		let twd67 =
+		    null;
+		
+		if (
+		    shouldShowTaiwanGrid &&
+		    typeof proj4 !== "undefined" &&
+		    typeof WGS84_DEF !== "undefined" &&
+		    typeof TWD97_DEF !== "undefined" &&
+		    typeof TWD67_DEF !== "undefined"
+		) {
+		    twd97 =
+		        proj4(
+		            WGS84_DEF,
+		            TWD97_DEF,
+		            [
+		                lon,
+		                lat
+		            ]
+		        );
+		
+		    twd67 =
+		        proj4(
+		            WGS84_DEF,
+		            TWD67_DEF,
+		            [
+		                lon,
+		                lat
+		            ]
+		        );
+		}
 
             if (isFirstTime) {
                 const isMobile =
@@ -8909,6 +8944,30 @@ window.toggleGPS = function(btn) {
                    style="text-decoration:none; margin-right:8px; display:inline-flex; align-items:center; justify-content:center; width: 28px; height: 28px; background: #fff; border: 1px solid #ccc; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); vertical-align: middle;">
                     <img src="https://ychiking.github.io/gpx-online-viewer/GoogleMaps.png" style="width:18px; height:18px; display:block;" alt="GMap">
                 </a>`;
+                
+            let taiwanGridHtml =
+						    "";
+						
+						if (
+						    shouldShowTaiwanGrid &&
+						    twd97 &&
+						    twd67
+						) {
+						    taiwanGridHtml =
+						        `<b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>` +
+						        `<b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}`;
+						}
+						
+						const weatherTitle =
+						    "目前位置";
+						
+						const weatherButtonHtml =
+						    `<div style="margin-top:8px;">
+						        <button onclick="event.stopPropagation(); openWeatherModal(${lat}, ${lon}, '${weatherTitle}')"
+						            style="width:100%; background:#2e7d32; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">
+						            🌤 查此位置天氣
+						        </button>
+						    </div>`;    
 
             const tipText = `
                 <div style="font-size:13px; line-height:1.6; min-width:200px;">
@@ -8917,11 +8976,12 @@ window.toggleGPS = function(btn) {
                         <b style="color:#d35400; font-size:14px;">目前位置 (自動追蹤中)</b>
                     </div>
                     <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
-                    <b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-                    <b>TWD97:</b> ${Math.round(twd97[0])}, ${Math.round(twd97[1])}<br>
-                    <b>TWD67:</b> ${Math.round(twd67[0])}, ${Math.round(twd67[1])}
-                    
-                    <div style="display:flex; margin-top:10px; gap:8px;">
+										<b>WGS84:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
+										${taiwanGridHtml}
+										
+										${weatherButtonHtml}
+										
+										<div style="display:flex; margin-top:10px; gap:8px;">
                         <button onclick="setFreeAB('A', ${lat}, ${lon})" style="flex:1; background:#007bff; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 A</button>
                         <button onclick="setFreeAB('B', ${lat}, ${lon})" style="flex:1; background:#e83e8c; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">設定 B</button>
                     </div>
