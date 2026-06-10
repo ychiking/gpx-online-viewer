@@ -151,6 +151,9 @@ window.ENABLE_ROUTE_PLANNING = false;
 
 let abViaPoints = [];
 let abViaMarkers = [];
+let lastProjectedRoutePointForAB = null;
+let lastABPopupContext = null;
+let isRefreshingABPopup = false;
 
 function updateRoutePlanningToggleButtons() {
     const isOn = window.ENABLE_ROUTE_PLANNING === true;
@@ -229,6 +232,10 @@ function setRoutePlanningEnabled(enabled) {
         updateABUI();
     }
 
+    if (typeof refreshCurrentABPopupAfterRoutePlanningToggle === "function") {
+        refreshCurrentABPopupAfterRoutePlanningToggle();
+    }
+
     const msg = "測試自動繪製路線：" + (window.ENABLE_ROUTE_PLANNING ? "ON" : "OFF");
     
 
@@ -253,6 +260,41 @@ function getABViaPointButtonHtml(lat, lon) {
                 style="width:100%; background:#6f42c1; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">＋ 加入經由點</button>
         </div>`;
 }
+
+function refreshCurrentABPopupAfterRoutePlanningToggle() {
+    if (isRefreshingABPopup) return;
+
+    if (
+        !lastABPopupContext ||
+        !currentPopup ||
+        typeof map === "undefined" ||
+        !map ||
+        typeof map.hasLayer !== "function" ||
+        !map.hasLayer(currentPopup)
+    ) {
+        return;
+    }
+
+    isRefreshingABPopup = true;
+
+    try {
+        if (
+            lastABPopupContext.type === "custom" &&
+            typeof showCustomPopup === "function"
+        ) {
+            showCustomPopup.apply(null, lastABPopupContext.args);
+        } else if (
+            lastABPopupContext.type === "freeclick" &&
+            typeof showFreeClickPopup === "function"
+        ) {
+            showFreeClickPopup.apply(null, lastABPopupContext.args);
+        }
+    } finally {
+        isRefreshingABPopup = false;
+    }
+}
+
+window.refreshCurrentABPopupAfterRoutePlanningToggle = refreshCurrentABPopupAfterRoutePlanningToggle;
 
 document.addEventListener("keydown", function(e) {
     const key = (e.key || "").toLowerCase();
@@ -528,6 +570,94 @@ map.on('dblclick', function(e) {
         { toast: true }
     );
 });
+
+(function installMobileRouteDoubleTapSelect() {
+    if (window.mobileRouteDoubleTapSelectInstalled) return;
+    window.mobileRouteDoubleTapSelectInstalled = true;
+
+    let lastTap = {
+        time: 0,
+        x: 0,
+        y: 0
+    };
+
+    const mapEl = map && typeof map.getContainer === "function"
+        ? map.getContainer()
+        : document.getElementById("map");
+
+    if (!mapEl) return;
+
+    mapEl.addEventListener("touchend", function(ev) {
+        if (!ev || !ev.changedTouches || ev.changedTouches.length !== 1) return;
+
+        if (
+            window.splitRoutePickMode ||
+            (
+                typeof isDrawingMode !== "undefined" &&
+                isDrawingMode
+            ) ||
+            (
+                typeof isScribbling !== "undefined" &&
+                isScribbling
+            )
+        ) {
+            return;
+        }
+
+        const touch = ev.changedTouches[0];
+        const now = Date.now();
+        const dx = touch.clientX - lastTap.x;
+        const dy = touch.clientY - lastTap.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        const isDoubleTap =
+            now - lastTap.time < 360 &&
+            dist < 28;
+
+        lastTap = {
+            time: now,
+            x: touch.clientX,
+            y: touch.clientY
+        };
+
+        if (!isDoubleTap) return;
+
+        const rect = mapEl.getBoundingClientRect();
+        const containerPoint = L.point(
+            touch.clientX - rect.left,
+            touch.clientY - rect.top
+        );
+        const latlng = map.containerPointToLatLng(containerPoint);
+
+        const clickedRoute =
+            typeof window.findClickedRouteByPriority === "function"
+                ? window.findClickedRouteByPriority(latlng)
+                : null;
+
+        if (!clickedRoute) return;
+
+        if (clickTimeout) {
+            clearTimeout(clickTimeout);
+            clickTimeout = null;
+        }
+
+        window.lastRouteDblClickAt = Date.now();
+
+        if (ev.cancelable) {
+            ev.preventDefault();
+        }
+        ev.stopPropagation();
+
+        if (typeof window.selectRouteFromMapByIndex === "function") {
+            window.selectRouteFromMapByIndex(
+                clickedRoute.fileIdx,
+                clickedRoute.routeIdx,
+                { toast: true }
+            );
+        }
+    }, { passive: false });
+})();
+
 
 map.on('click', (e) => {
 	
@@ -972,28 +1102,21 @@ map.on('click', (e) => {
                 const basePoint =
                     routeForDrawClick.points[nearestSegmentIdx];
 
-                const popupPoint = {
+                const projectedIdx =
+                    Math.max(0, nearestSegmentIdx);
+
+                lastProjectedRoutePointForAB = {
+                    idx: projectedIdx,
                     lat: nearestProjectedLatLng.lat,
                     lon: nearestProjectedLatLng.lon,
                     ele: basePoint && basePoint.ele !== undefined
                         ? basePoint.ele
                         : 0,
                     time: basePoint ? basePoint.time : null,
-                    timeLocal: basePoint ? basePoint.timeLocal : null,
+                    timeLocal: basePoint ? (basePoint.timeLocal || "") : "",
+                    timeUTC: basePoint ? basePoint.timeUTC : null,
                     distance: nearestProjectedDistance
                 };
-
-                let tempIdx =
-                    -1;
-
-                if (
-                    typeof trackPoints !== "undefined" &&
-                    Array.isArray(trackPoints)
-                ) {
-                    trackPoints.push(popupPoint);
-                    tempIdx =
-                        trackPoints.length - 1;
-                }
 
                 if (typeof window.selectRouteWithHalo === "function") {
                     window.selectRouteWithHalo(
@@ -1029,19 +1152,12 @@ map.on('click', (e) => {
                 
                 if (typeof showCustomPopup === "function") {
                     showCustomPopup(
-                        tempIdx,
+                        projectedIdx,
                         "位置資訊",
                         null,
                         nearestProjectedLatLng.lat,
                         nearestProjectedLatLng.lon
                     );
-                }
-
-                if (
-                    tempIdx > -1 &&
-                    Array.isArray(trackPoints)
-                ) {
-                    trackPoints.splice(tempIdx, 1);
                 }
 
                 if (hoverMarker) {
@@ -2030,28 +2146,21 @@ function finishScribble() {
                 const basePoint =
                     latestPoints[nearestSegmentIdx];
 
-                const popupPoint = {
+                const projectedIdx =
+                    Math.max(0, nearestSegmentIdx);
+
+                lastProjectedRoutePointForAB = {
+                    idx: projectedIdx,
                     lat: nearestProjectedLatLng.lat,
                     lon: nearestProjectedLatLng.lon,
                     ele: basePoint && basePoint.ele !== undefined
                         ? basePoint.ele
                         : 0,
                     time: basePoint ? basePoint.time : null,
-                    timeLocal: basePoint ? basePoint.timeLocal : null,
+                    timeLocal: basePoint ? (basePoint.timeLocal || "") : "",
+                    timeUTC: basePoint ? basePoint.timeUTC : null,
                     distance: nearestProjectedDistance
                 };
-
-                let tempIdx =
-                    -1;
-
-                if (
-                    typeof trackPoints !== "undefined" &&
-                    Array.isArray(trackPoints)
-                ) {
-                    trackPoints.push(popupPoint);
-                    tempIdx =
-                        trackPoints.length - 1;
-                }
 
 								if (typeof window.selectRouteWithHalo === "function") {
 								    window.selectRouteWithHalo(
@@ -2066,7 +2175,7 @@ function finishScribble() {
 								}
 								
 								showCustomPopup(
-								    tempIdx,
+								    projectedIdx,
 								    drawRouteForHit.routeDisplayName ||
 								    drawRouteForHit.displayName ||
 								    drawRouteForHit.name ||
@@ -2075,13 +2184,6 @@ function finishScribble() {
 								    nearestProjectedLatLng.lat,
 								    nearestProjectedLatLng.lon
 								);
-
-                if (
-                    tempIdx > -1 &&
-                    Array.isArray(trackPoints)
-                ) {
-                    trackPoints.splice(tempIdx, 1);
-                }
 
                 if (typeof hoverMarker !== "undefined" && hoverMarker) {
                     hoverMarker
@@ -3638,6 +3740,10 @@ map.on('touchmove', (e) => {
 });
 
 map.on('touchend', (e) => {
+    if (!isDrawingMode && !isScribbling) {
+        return;
+    }
+
     if (e && e.originalEvent) {
         e.originalEvent.preventDefault();
     }
@@ -5391,6 +5497,13 @@ function showFreeClickPopup(latlng, searchTitle = null, searchAddr = null) {
     const lon = latlng.lng;
     const title = searchTitle || "自選位置";
 
+    if (!isRefreshingABPopup) {
+        lastABPopupContext = {
+            type: "freeclick",
+            args: [latlng, searchTitle, searchAddr]
+        };
+    }
+
     if (searchTitle && !["軌跡點", "位置資訊", "自選位置"].includes(title)) {
         let potentialSources = [];
         if (window.allTracks) potentialSources = [...window.allTracks];
@@ -5613,7 +5726,7 @@ window.setFreeAB = function(type, lat, lon) {
 
     const p = { lat, lon, ele: 0, distance: 0, timeLocal: "無時間資訊", timeUTC: 0, idx: -1 };
     
-    if (type === 'A') {
+  if (type === 'A') {
         pointA = p;
         if (markerA) map.removeLayer(markerA);
         markerA = L.marker([lat, lon], { 
@@ -5664,19 +5777,39 @@ window.addABViaPoint = function(lat, lon) {
 };
 
 window.removeABViaPoint = function(index) {
+    index = Number(index);
+
     if (!Array.isArray(abViaPoints)) return;
 
-    if (index < 0 || index >= abViaPoints.length) return;
+    if (!Number.isInteger(index) || index < 0 || index >= abViaPoints.length) return;
 
     abViaPoints.splice(index, 1);
     renderABViaMarkers();
-    updateABUI();
+
+    if (typeof updateABUI === "function") {
+        updateABUI();
+    }
+
+    if (typeof refreshCurrentABPopupAfterRoutePlanningToggle === "function") {
+        refreshCurrentABPopupAfterRoutePlanningToggle();
+    }
+
+    if (typeof showMapToast === "function") {
+        showMapToast("已刪除經由點");
+    }
 };
 
 window.clearABViaPoints = function() {
     abViaPoints = [];
     clearABViaMarkers();
-    updateABUI();
+
+    if (typeof updateABUI === "function") {
+        updateABUI();
+    }
+
+    if (typeof refreshCurrentABPopupAfterRoutePlanningToggle === "function") {
+        refreshCurrentABPopupAfterRoutePlanningToggle();
+    }
 };
 
 function clearABViaMarkers() {
@@ -5748,19 +5881,48 @@ function getABViaPointsHtml(compact = false) {
         return "";
     }
 
-    const listHtml = abViaPoints.map(function(p, index) {
-        return `V${index + 1}: ${Number(p.lat).toFixed(5)}, ${Number(p.lon).toFixed(5)}`;
-    }).join(compact ? "<br>" : "　");
+    const wrapStyle = compact
+        ? "margin-top:0px; padding-top:6px; font-size:11px; line-height:1.4; color:#6f42c1;"
+        : "margin-top:8px; padding:8px; border:1px solid #eee; border-radius:8px; background:#fafafa; font-size:12px; line-height:1.4; color:#6f42c1;";
 
-    const clearBtn = compact
-        ? ""
-        : ` <a href="javascript:void(0);" onclick="event.stopPropagation(); clearABViaPoints();" style="color:#d35400; text-decoration:none; font-weight:bold;">清除經由點</a>`;
+    const rowStyle = compact
+        ? "display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:4px;"
+        : "display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px;";
 
-    return `
-        <div style="margin-top:6px; font-size:${compact ? '11px' : '12px'}; line-height:1.4; color:#6f42c1;">
-            <b>經由點：</b>${abViaPoints.length} 個<br>
-            <span style="color:#666;">${listHtml}</span>${clearBtn}
-        </div>`;
+    const btnStyle = compact
+        ? "border:1px solid #ddd; background:#fff; color:#d35400; border-radius:999px; padding:1px 7px; font-size:11px; cursor:pointer; white-space:nowrap;"
+        : "border:1px solid #ddd; background:#fff; color:#d35400; border-radius:999px; padding:2px 8px; font-size:12px; cursor:pointer; white-space:nowrap;";
+
+    let html = '<div class="ab-route-planning-ui" style="' + wrapStyle + '">';
+    html += '<div style="font-weight:bold; margin-bottom:4px;">經由點：' + abViaPoints.length + ' 個</div>';
+
+    abViaPoints.forEach(function(p, index) {
+        const lat = Number(p && p.lat);
+        const lon = Number(p && p.lon);
+        const coordText =
+            Number.isFinite(lat) && Number.isFinite(lon)
+                ? lat.toFixed(5) + ', ' + lon.toFixed(5)
+                : '';
+
+        html +=
+            '<div style="' + rowStyle + '">' +
+                '<span style="color:#666; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' +
+                    '<b style="color:#6f42c1;">V' + (index + 1) + '</b>' +
+                    (compact ? '' : '　' + coordText) +
+                '</span>' +
+                '<button type="button" onclick="event.preventDefault(); event.stopPropagation(); removeABViaPoint(' + index + ');" style="' + btnStyle + '">刪除</button>' +
+            '</div>';
+    });
+
+    if (!compact) {
+        html +=
+            '<div style="margin-top:6px; text-align:right;">' +
+                '<a href="javascript:void(0);" onclick="event.preventDefault(); event.stopPropagation(); clearABViaPoints();" style="color:#d35400; text-decoration:none; font-weight:bold;">清除全部經由點</a>' +
+            '</div>';
+    }
+
+    html += '</div>';
+    return html;
 }
 
 function getABPlanningCoordinates() {
@@ -9864,6 +10026,13 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
 
     if (lat === null || lon === null) return;
 
+    if (!isRefreshingABPopup) {
+        lastABPopupContext = {
+            type: "custom",
+            args: [idx, title, typeOrEle, realLat, realLon]
+        };
+    }
+
     map.eachLayer(layer => {
         if (layer instanceof L.CircleMarker && layer.options.radius === 7) {
             map.removeLayer(layer);
@@ -9891,6 +10060,16 @@ function showCustomPopup(idx, title, typeOrEle = null, realLat = null, realLon =
             matchedPoint = trackPoints[foundIdx];
             idx = foundIdx; 
         }
+    }
+
+    if (
+        lastProjectedRoutePointForAB &&
+        Number(lastProjectedRoutePointForAB.idx) === Number(idx) &&
+        Math.abs(Number(lastProjectedRoutePointForAB.lat) - Number(lat)) < 0.000001 &&
+        Math.abs(Number(lastProjectedRoutePointForAB.lon) - Number(lon)) < 0.000001
+    ) {
+        matchedPoint = { ...lastProjectedRoutePointForAB };
+        idx = lastProjectedRoutePointForAB.idx;
     }
 
     let waypointIdx = -1;
@@ -10406,6 +10585,27 @@ window.setAB = function(type, idx, forcedLat = null, forcedLon = null) {
     return;
   }
 
+  if (
+    forcedLat !== null &&
+    forcedLon !== null &&
+    lastProjectedRoutePointForAB &&
+    Number(lastProjectedRoutePointForAB.idx) === Number(idx) &&
+    Math.abs(Number(lastProjectedRoutePointForAB.lat) - Number(lat)) < 0.000001 &&
+    Math.abs(Number(lastProjectedRoutePointForAB.lon) - Number(lon)) < 0.000001
+  ) {
+    targetPoint = {
+      ...targetPoint,
+      lat,
+      lon,
+      idx,
+      ele: lastProjectedRoutePointForAB.ele,
+      distance: lastProjectedRoutePointForAB.distance,
+      time: lastProjectedRoutePointForAB.time,
+      timeLocal: lastProjectedRoutePointForAB.timeLocal,
+      timeUTC: lastProjectedRoutePointForAB.timeUTC
+    };
+  }
+
   if (type === 'A') {
     pointA = targetPoint;
     if (markerA) map.removeLayer(markerA);
@@ -10437,6 +10637,22 @@ function updateABUI() {
           boxRes = document.getElementById("boxRes"), 
           infoRes = document.getElementById("infoRes");
     
+    const isValidNumber = (v) => Number.isFinite(Number(v));
+
+    const getTimeMs = (v) => {
+        if (v === null || v === undefined || v === "") return null;
+        if (v instanceof Date) {
+            const t = v.getTime();
+            return Number.isFinite(t) ? t : null;
+        }
+        if (typeof v === "number") {
+            return Number.isFinite(v) && v > 0 ? v : null;
+        }
+        const d = new Date(v);
+        const t = d.getTime();
+        return Number.isFinite(t) ? t : null;
+    };
+
     const formatDateTime = (date) => {
         if (!date) return "";
         const d = new Date(date);
@@ -10459,10 +10675,10 @@ function updateABUI() {
         const isRealOnPathA = (pointA.idx !== -1 && pointA.idx !== 999999);
         const timeStr = pointA.timeUTC ? formatDateTime(pointA.timeUTC) : (pointA.timeLocal || "");
 
-        if (isRealOnPathA && pointA.ele !== undefined && pointA.distance !== undefined) {
-            html += `<br><span style="color:#666;">高度: ${pointA.ele.toFixed(0)}m, 里程: ${pointA.distance.toFixed(2)}km, ${timeStr}</span>`;
+        if (isRealOnPathA && pointA.ele !== undefined && isValidNumber(pointA.distance)) {
+            html += `<br><span style="color:#666;">高度: ${Number(pointA.ele).toFixed(0)}m, 里程: ${Number(pointA.distance).toFixed(2)}km, ${timeStr}</span>`;
         } else if (pointA.ele !== undefined) {
-            html += `<br><span style="color:#666;">高度: ${pointA.ele.toFixed(0)}m, ${timeStr}</span>`;
+            html += `<br><span style="color:#666;">高度: ${Number(pointA.ele).toFixed(0)}m, ${timeStr}</span>`;
         }
         infoA.innerHTML = html;
     } else { infoA.innerHTML = "尚未設定"; }
@@ -10472,10 +10688,10 @@ function updateABUI() {
         const isRealOnPathB = (pointB.idx !== -1 && pointB.idx !== 999999);
         const timeStr = pointB.timeUTC ? formatDateTime(pointB.timeUTC) : (pointB.timeLocal || "");
 
-        if (isRealOnPathB && pointB.ele !== undefined && pointB.distance !== undefined) {
-            html += `<br><span style="color:#666;">高度: ${pointB.ele.toFixed(0)}m, 里程: ${pointB.distance.toFixed(2)}km, ${timeStr}</span>`;
+        if (isRealOnPathB && pointB.ele !== undefined && isValidNumber(pointB.distance)) {
+            html += `<br><span style="color:#666;">高度: ${Number(pointB.ele).toFixed(0)}m, 里程: ${Number(pointB.distance).toFixed(2)}km, ${timeStr}</span>`;
         } else if (pointB.ele !== undefined) {
-            html += `<br><span style="color:#666;">高度: ${pointB.ele.toFixed(0)}m, ${timeStr}</span>`;
+            html += `<br><span style="color:#666;">高度: ${Number(pointB.ele).toFixed(0)}m, ${timeStr}</span>`;
         }
         infoB.innerHTML = html;
     } else { infoB.innerHTML = "尚未設定"; }
@@ -10497,11 +10713,13 @@ function updateABUI() {
         let slopeText = "";
 
         const isBothRealOnPath = (pointA.idx !== -1 && pointA.idx !== 999999 && 
-                                  pointB.idx !== -1 && pointB.idx !== 999999);
+                                  pointB.idx !== -1 && pointB.idx !== 999999 &&
+                                  isValidNumber(pointA.distance) &&
+                                  isValidNumber(pointB.distance));
 
         if (isBothRealOnPath) {
-            const hDiff = pointB.ele - pointA.ele;
-            const dDiff = Math.abs(pointB.distance - pointA.distance) * 1000;
+            const hDiff = Number(pointB.ele) - Number(pointA.ele);
+            const dDiff = Math.abs(Number(pointB.distance) - Number(pointA.distance)) * 1000;
             if (dDiff > 0) {
                 const slope = (hDiff / dDiff) * 100;
                 const angle = Math.atan(hDiff / dDiff) * (180 / Math.PI);
@@ -10521,16 +10739,22 @@ function updateABUI() {
                 移動方位：<span style="color:#007bff; font-weight:bold;">往 ${bearing.name} (${bearing.deg}°)</span>`;
         } else {
             
-            const start = Math.min(pointA.idx, pointB.idx), end = Math.max(pointA.idx, pointB.idx);
+            const start = Math.min(Number(pointA.idx), Number(pointB.idx)), end = Math.max(Number(pointA.idx), Number(pointB.idx));
             const section = trackPoints.slice(start, end + 1);
             const { gain, loss } = calculateElevationGainFiltered(section);
-            const timeDiff = Math.abs(pointA.timeUTC - pointB.timeUTC);
+            const routeDistanceKm = Math.abs(Number(pointA.distance) - Number(pointB.distance));
+            const timeA = getTimeMs(pointA.timeUTC);
+            const timeB = getTimeMs(pointB.timeUTC);
+            const timeDiff = (timeA !== null && timeB !== null) ? Math.abs(timeA - timeB) : null;
+            const timeText = timeDiff !== null
+                ? `${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘`
+                : "無時間資訊";
             
             analysisContent = `
                 區間爬升：<b>${gain.toFixed(0)} m</b> / 下降：<b>${loss.toFixed(0)} m</b>${slopeText}<br>
-                沿路距離：<b>${Math.abs(pointA.distance - pointB.distance).toFixed(2)} km</b><br>
+                沿路距離：<b>${routeDistanceKm.toFixed(2)} km</b><br>
                 直線距離：<b>${directDist.toFixed(2)} km</b><br>
-                時　　間：<b>${Math.floor(timeDiff/3600000)} 小時 ${Math.floor((timeDiff%3600000)/60000)} 分鐘</b><br>
+                時　　間：<b>${timeText}</b><br>
                 移動方位：<span style="color:#007bff; font-weight:bold;">往 ${bearing.name} (${bearing.deg}°)</span>`;
         }
 
@@ -10596,10 +10820,13 @@ function updateABUI() {
 				            <b style="color:#28a745;">區間分析 (A ↔ B)</b><br>
 				            ${analysisContent}
 				
-                            ${window.ENABLE_ROUTE_PLANNING === true ? `
-                                <div style="margin-top:8px; padding-top:6px; border-top:1px solid #eee;">
-                                    ${getABRoutePlanButtonHtml("abPlanRouteBtnTip", true)}
-                                </div>` : ""}
+													${window.ENABLE_ROUTE_PLANNING === true ? `
+													    <div style="margin-top:8px; padding-top:0px; border-top:1px solid #eee;">
+													        ${getABViaPointsHtml(true)}
+													        <div style="margin-top:8px; margin-bottom:6px;">
+													            ${getABRoutePlanButtonHtml("abPlanRouteBtnTip", true)}
+													        </div>
+													    </div>` : ""}
 
 				            <div style="margin-top:8px; border-top:1px solid #eee; padding-top:6px; text-align:right;">
 				                <a href="javascript:void(0);" onclick="event.stopPropagation(); clearABSettings();" 
@@ -10657,7 +10884,7 @@ function getABRoutePlanButtonHtml(buttonId = "abPlanRouteBtn", compact = false) 
             </div>`;
 
     return `
-        <div class="ab-route-planning-ui" style="margin-top:0px; padding-bottom:0px;">
+        <div class="ab-route-planning-ui" style="margin-top:6px; padding-bottom:0px;">
             <button type="button"
                 id="${buttonId}"
                 class="ab-plan-route-btn"
@@ -10950,7 +11177,7 @@ function convertOrsDataToTrackPoints(data) {
             ele: Number.isFinite(ele) ? ele : 0,
             time: now.toISOString(),
             timeLocal: typeof formatDate === "function" ? formatDate(now) : "無時間資訊",
-            timeUTC: 0,
+            timeUTC: now.getTime(),
             distance: 0,
             idx: idx
         };
@@ -11521,8 +11748,122 @@ function removePlannedRouteCreatedFile(createdFile, fileIndex) {
     }
 }
 
+
+function collectRouteSegmentsForBackground(file) {
+    const segments = [];
+
+    if (!file) return segments;
+
+    if (Array.isArray(file.routes) && file.routes.length > 0) {
+        const combinedRoute = file.routes.find(function(route) {
+            return route && route.isCombined === true;
+        });
+
+        if (
+            combinedRoute &&
+            Array.isArray(combinedRoute.segments) &&
+            combinedRoute.segments.length > 0
+        ) {
+            combinedRoute.segments.forEach(function(seg) {
+                if (Array.isArray(seg) && seg.length > 0) {
+                    segments.push(seg);
+                }
+            });
+
+            return segments;
+        }
+
+        file.routes.forEach(function(route) {
+            if (!route || route.isCombined === true) return;
+
+            if (Array.isArray(route.segments) && route.segments.length > 0) {
+                route.segments.forEach(function(seg) {
+                    if (Array.isArray(seg) && seg.length > 0) {
+                        segments.push(seg);
+                    }
+                });
+            } else if (Array.isArray(route.points) && route.points.length > 0) {
+                const latlngs = route.points
+                    .map(function(p) {
+                        return [Number(p.lat), Number(p.lon)];
+                    })
+                    .filter(function(pt) {
+                        return Number.isFinite(pt[0]) && Number.isFinite(pt[1]);
+                    });
+
+                if (latlngs.length > 0) {
+                    segments.push(latlngs);
+                }
+            }
+        });
+
+        return segments;
+    }
+
+    if (Array.isArray(file.segments) && file.segments.length > 0) {
+        file.segments.forEach(function(seg) {
+            if (Array.isArray(seg) && seg.length > 0) {
+                segments.push(seg);
+            }
+        });
+    } else if (Array.isArray(file.points) && file.points.length > 0) {
+        const latlngs = file.points
+            .map(function(p) {
+                return [Number(p.lat), Number(p.lon)];
+            })
+            .filter(function(pt) {
+                return Number.isFinite(pt[0]) && Number.isFinite(pt[1]);
+            });
+
+        if (latlngs.length > 0) {
+            segments.push(latlngs);
+        }
+    }
+
+    return segments;
+}
+
+function ensureBackgroundLayerForFile(file) {
+    if (!file || typeof L === "undefined" || typeof map === "undefined" || !map) {
+        return;
+    }
+
+    const backgroundSegments = collectRouteSegmentsForBackground(file);
+
+    if (!backgroundSegments || backgroundSegments.length === 0) {
+        return;
+    }
+
+    if (!(file.layer instanceof L.Polyline)) {
+        file.layer = L.polyline(backgroundSegments, {
+            color: file.color || "#0000FF",
+            weight: 4,
+            opacity: 0.4,
+            dashArray: null,
+            interactive: true
+        }).addTo(map);
+    } else {
+        file.layer.setLatLngs(backgroundSegments);
+        file.layer.setStyle({
+            color: file.color || "#0000FF",
+            weight: 4,
+            opacity: file.visible === false ? 0 : 0.4,
+            dashArray: null,
+            interactive: true
+        });
+
+        if (!map.hasLayer(file.layer)) {
+            file.layer.addTo(map);
+        }
+    }
+}
+
 function refreshAfterPlannedRouteChange(currentFile, targetTrack, routeIdx) {
     if (!currentFile) return;
+
+    if (typeof ensureBackgroundLayerForFile === "function") {
+        ensureBackgroundLayerForFile(currentFile);
+    }
 
     let safeRouteIdx = Number.isFinite(Number(routeIdx)) ? Number(routeIdx) : 0;
 
@@ -12811,7 +13152,17 @@ document.addEventListener('fullscreenchange', () => {
     }, 200);
 });
 
-function formatDate(d) { return d.toISOString().replace("T", " ").substring(0, 19); }
+function formatDate(d) {
+    const date = d instanceof Date ? d : new Date(d);
+
+    if (isNaN(date.getTime())) {
+        return "";
+    }
+
+    const pad = (n) => String(n).padStart(2, "0");
+
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 
 let peakAbortController = null; 
 
@@ -15131,6 +15482,14 @@ window.createBlankGpxProject = function() {
 
         const currentFile =
             window.multiGpxStack[safeIdx];
+
+        if (typeof ensureBackgroundLayerForFile === "function") {
+            window.multiGpxStack.forEach(function(file, idx) {
+                if (idx !== safeIdx) {
+                    ensureBackgroundLayerForFile(file);
+                }
+            });
+        }
 
         if (
             currentFile &&
@@ -30178,6 +30537,58 @@ window.findClickedRouteByPriority = function(latlng) {
     
     const currentFile =
         stack[currentFileIdx];
+
+    const currentRouteIdx =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    if (
+        currentFile &&
+        currentFile.visible !== false
+    ) {
+        let activeRoute = null;
+        let activeRouteIdx = 0;
+
+        if (
+            Array.isArray(currentFile.routes) &&
+            currentFile.routes[currentRouteIdx]
+        ) {
+            activeRoute = currentFile.routes[currentRouteIdx];
+            activeRouteIdx = currentRouteIdx;
+        } else if (Array.isArray(currentFile.points)) {
+            activeRoute = currentFile;
+            activeRouteIdx = 0;
+        }
+
+        if (
+            activeRoute &&
+            activeRoute.visible !== false &&
+            activeRoute.isCombined !== true
+        ) {
+            const currentActiveHit =
+                findNearestInRouteList(
+                    currentFileIdx,
+                    [activeRoute],
+                    {
+                        skipCombined: true
+                    }
+                );
+
+            if (currentActiveHit) {
+                currentActiveHit.routeIdx =
+                    activeRouteIdx;
+
+                currentActiveHit.route =
+                    activeRoute;
+
+                currentActiveHit.priority =
+                    "current-active-route";
+
+                return currentActiveHit;
+            }
+        }
+    }
 
     if (
         currentFile &&
