@@ -162,7 +162,7 @@ function updateRoutePlanningToggleButtons() {
         btn.style.opacity = isOn ? "1" : "0.75";
         btn.style.background = isOn ? "#e8f0fe" : "#f5f5f5";
         btn.style.color = isOn ? "#1a73e8" : "#555";
-        btn.textContent = isOn ? "關閉測試自動繪製" : "啟動測試自動繪製";
+        btn.textContent = isOn ? "關閉自動繪製(測試版)" : "啟動自動繪製(測試版)";
     });
 }
 
@@ -10627,7 +10627,7 @@ function getABRoutePlanningToggleButtonHtml(compact = false) {
     const isOn = window.ENABLE_ROUTE_PLANNING === true;
     const padding = compact ? "5px 9px" : "5px 10px";
     const fontSize = "12px";
-    const text = isOn ? "關閉測試自動繪製" : "啟動測試自動繪製";
+    const text = isOn ? "關閉自動繪製(測試版)" : "啟動自動繪製(測試版)";
     const bg = isOn ? "#e8f0fe" : "#f5f5f5";
     const color = isOn ? "#1a73e8" : "#555";
 
