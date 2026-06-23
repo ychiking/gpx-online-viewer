@@ -6685,14 +6685,18 @@ function extractPoints(pts) {
       let localTime = "無時間資訊";
       let rawTime = null; 
       
-      if (timeNode && timeNode.textContent.trim() !== "") {
-        rawTime = timeNode.textContent.trim(); 
-        const d = new Date(rawTime);
-        if (!isNaN(d.getTime())) {
-          utc = d;
-          localTime = formatDate(new Date(utc.getTime() + 8*3600*1000));
-        }
-      }
+			if (timeNode && timeNode.textContent.trim() !== "") {
+			    rawTime = timeNode.textContent.trim(); 
+			    
+			    const utcTimestamp = Date.parse(rawTime);
+			    
+			    if (!isNaN(utcTimestamp)) {
+			        const localTimestamp = utcTimestamp + (8 * 3600 * 1000);
+			        const localDate = new Date(localTimestamp);
+			        localTime = formatDate(localDate); 
+			        utc = new Date(utcTimestamp);
+			    }
+			}
 
       if (res.length > 0) {
         const a = res[res.length-1], R = 6371;
@@ -12037,8 +12041,15 @@ function renderRouteInfo() {
       .map(p => p.ele)
       .filter(e => e !== undefined);
 
-    displayMaxEle = trackEles.length > 0 ? Math.max(...trackEles) : 0;
-    displayMinEle = trackEles.length > 0 ? Math.min(...trackEles) : 0;
+		displayMaxEle =
+		    trackEles.length > 0
+		        ? trackEles.reduce((a, b) => Math.max(a, b), -Infinity)
+		        : 0;
+		
+		displayMinEle =
+		    trackEles.length > 0
+		        ? trackEles.reduce((a, b) => Math.min(a, b), Infinity)
+		        : 0;
 
     displayDur =
       (l.timeUTC && f.timeUTC)
@@ -13161,7 +13172,8 @@ function formatDate(d) {
 
     const pad = (n) => String(n).padStart(2, "0");
 
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+           `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
 }
 
 let peakAbortController = null; 
