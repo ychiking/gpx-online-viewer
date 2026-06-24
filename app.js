@@ -12124,7 +12124,36 @@ function startHeightOnlyTimer() {
 
 window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
     map.closePopup();
-    map.setView([lat, lon], 16);
+
+    const targetLatLng = L.latLng(lat, lon);
+    const currentZoom =
+        map && typeof map.getZoom === "function"
+            ? map.getZoom()
+            : 16;
+
+    const targetIsVisible =
+        map &&
+        typeof map.getBounds === "function" &&
+        map.getBounds().contains(targetLatLng);
+
+    // ChatGPT v26:
+    // 點浮動航點面板的航點列時，如果航點已經在目前可視範圍內，
+    // 不要再強制 setView 到 zoom 16，避免地圖突然縮放。
+    // 若航點在邊緣，使用 panInside 保持目前 zoom，只做必要平移。
+    if (targetIsVisible) {
+        if (typeof map.panInside === "function") {
+            map.panInside(targetLatLng, {
+                paddingTopLeft: [40, 40],
+                paddingBottomRight: [40, 140],
+                animate: true
+            });
+        }
+    } else {
+        map.setView(
+            [lat, lon],
+            Math.max(currentZoom || 0, 16)
+        );
+    }
     
     let minD = Infinity, idx = 0;
     
@@ -12136,7 +12165,16 @@ window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
     }
 
     if (hoverMarker) { 
-        hoverMarker.setLatLng([lat, lon]).bringToFront(); 
+        hoverMarker.setLatLng([lat, lon]).addTo(map).bringToFront(); 
+    } else {
+        hoverMarker = L.circleMarker([lat, lon], {
+            radius: 7,
+            color: '#ffffff',
+            fillColor: '#1a73e8',
+            fillOpacity: 1,
+            weight: 2,
+            interactive: true
+        }).addTo(map).bringToFront();
     }
     
     showCustomPopup(idx, name, ele, lat, lon);
@@ -12146,7 +12184,9 @@ window.focusWaypoint = function(lat, lon, name, distToTrack = 0, ele = null) {
         chart.update('none');
     }
     
-    document.getElementById("map").scrollIntoView({ behavior: 'smooth' });
+    if (!targetIsVisible) {
+        document.getElementById("map").scrollIntoView({ behavior: 'smooth' });
+    }
 };
 
 window.setAB = function(type, idx, forcedLat = null, forcedLon = null) {
@@ -14409,6 +14449,792 @@ window.closePopupBeforeWaypointListSelection = function() {
     } catch (err) {}
 };
 
+
+// ChatGPT v20: Optional floating waypoint panel, preserving original inline layout by default
+(function installFloatingWaypointPanelSystem() {
+    if (window.__floatingWaypointPanelSystemInstalled) return;
+    window.__floatingWaypointPanelSystemInstalled = true;
+
+    window.floatingWaypointPanelOpen = false;
+    window.floatingWaypointPanelLastTarget = "anchorWpt";
+    window.floatingWaypointPanelPosition = null;
+    window.floatingWaypointPanelMobileHeight = null;
+
+    function isMobileFloatingWptPanel() {
+        return (
+            window.matchMedia &&
+            window.matchMedia("(max-width: 768px)").matches
+        );
+    }
+
+    function clampNumber(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    function clearFloatingInlineStyles(panel) {
+        if (!panel) return;
+
+        [
+            "position",
+            "left",
+            "right",
+            "top",
+            "bottom",
+            "width",
+            "height",
+            "maxHeight",
+            "overflow",
+            "background",
+            "border",
+            "borderRadius",
+            "boxShadow",
+            "zIndex",
+            "padding",
+            "boxSizing",
+            "resize",
+            "touchAction",
+            "webkitOverflowScrolling"
+        ].forEach(function(prop) {
+            try {
+                panel.style[prop] = "";
+            } catch (err) {}
+        });
+    }
+
+    function removeFloatingWaypointPanelHeader() {
+        const header = document.getElementById("floatingWptPanelHeader");
+        if (header && header.parentNode) {
+            header.parentNode.removeChild(header);
+        }
+    }
+
+
+    function rememberFloatingWaypointPanelOriginalParent(panel) {
+        if (!panel || window.floatingWaypointPanelOriginalParent) return;
+
+        window.floatingWaypointPanelOriginalParent = panel.parentNode || null;
+        window.floatingWaypointPanelOriginalNextSibling = panel.nextSibling || null;
+    }
+
+    function getFloatingWaypointPanelFullscreenParent() {
+        return (
+            document.fullscreenElement ||
+            document.webkitFullscreenElement ||
+            null
+        );
+    }
+
+    function moveFloatingWaypointPanelToFullscreenRoot(panel) {
+        if (!panel) return;
+
+        rememberFloatingWaypointPanelOriginalParent(panel);
+
+        const fsRoot = getFloatingWaypointPanelFullscreenParent();
+        if (fsRoot && panel.parentNode !== fsRoot) {
+            fsRoot.appendChild(panel);
+        }
+    }
+
+    function restoreFloatingWaypointPanelOriginalParent(panel) {
+        if (!panel) return;
+
+        const originalParent = window.floatingWaypointPanelOriginalParent;
+        const originalNextSibling = window.floatingWaypointPanelOriginalNextSibling;
+
+        if (!originalParent || panel.parentNode === originalParent) return;
+
+        try {
+            if (originalNextSibling && originalNextSibling.parentNode === originalParent) {
+                originalParent.insertBefore(panel, originalNextSibling);
+            } else {
+                originalParent.appendChild(panel);
+            }
+        } catch (err) {
+            try {
+                document.body.appendChild(panel);
+            } catch (err2) {}
+        }
+    }
+
+    window.ensureFloatingWaypointPanelStyle = function() {
+        if (document.getElementById("floatingWaypointPanelStyle")) return;
+
+        const style = document.createElement("style");
+        style.id = "floatingWaypointPanelStyle";
+        style.innerHTML = `
+            #wptList.floating-wpt-panel {
+                position: fixed !important;
+                top: 92px;
+                right: 14px;
+                left: auto;
+                bottom: auto;
+                width: min(680px, calc(100vw - 28px));
+                height: min(66vh, calc(100vh - 128px));
+                max-height: min(78vh, calc(100vh - 96px));
+                overflow-y: auto;
+                overflow-x: hidden;
+                background: rgba(255, 255, 255, 0.98);
+                border: 1px solid rgba(0,0,0,0.16);
+                border-radius: 14px;
+                box-shadow: 0 8px 28px rgba(0,0,0,0.22);
+                z-index: 2147483000;
+                padding: 0 12px 12px 12px;
+                box-sizing: border-box;
+                min-width: min(680px, calc(100vw - 28px));
+                resize: both;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            #floatingWptPanelHeader {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                padding: 10px 2px 8px 2px;
+                margin: 0 -2px 8px -2px;
+                background: rgba(255, 255, 255, 0.98);
+                border-bottom: 1px solid rgba(0,0,0,0.08);
+                cursor: grab;
+                user-select: none;
+                touch-action: none;
+            }
+
+            #floatingWptPanelHeader:active {
+                cursor: grabbing;
+            }
+
+            .floating-wpt-title {
+                font-weight: 700;
+                color: #2c3e50;
+                font-size: 14px;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                white-space: nowrap;
+            }
+
+            .floating-wpt-actions {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: nowrap;
+            }
+
+            .floating-wpt-action-btn {
+                border: 1px solid #ddd;
+                background: #fff;
+                color: #333;
+                border-radius: 999px;
+                height: 28px;
+                min-width: 28px;
+                padding: 0 9px;
+                cursor: pointer;
+                font-size: 13px;
+                line-height: 26px;
+                white-space: nowrap;
+            }
+
+            .floating-wpt-action-btn:hover {
+                background: #f1f3f4;
+            }
+
+            #wptList.floating-wpt-panel #anchorWpt {
+                display: none !important;
+                margin-top: 0 !important;
+            }
+
+            #wptList.floating-wpt-panel table,
+            #wptList.floating-wpt-panel .wpt-table {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+                box-sizing: border-box;
+            }
+
+            #wptList.floating-wpt-panel .wpt-table th,
+            #wptList.floating-wpt-panel .wpt-table td {
+                white-space: normal !important;
+                word-break: break-word;
+                overflow-wrap: anywhere;
+                box-sizing: border-box;
+            }
+
+            #wptList.floating-wpt-panel .wpt-table button,
+            #wptList.floating-wpt-panel .wpt-table input,
+            #wptList.floating-wpt-panel .wpt-table select {
+                max-width: 100%;
+                box-sizing: border-box;
+            }
+
+            .floating-wpt-restore-btn {
+                font-size: 18px;
+                font-weight: 700;
+                padding: 0 8px;
+                line-height: 24px;
+            }
+
+            @media (max-width: 768px) {
+                #wptList.floating-wpt-panel {
+                    left: 8px !important;
+                    right: 8px !important;
+                    top: auto !important;
+                    bottom: 8px !important;
+                    width: auto !important;
+                    min-width: 0 !important;
+                    height: min(46vh, 440px);
+                    max-height: 78vh;
+                    min-height: 220px;
+                    border-radius: 16px 16px 10px 10px;
+                    padding: 0 10px 10px 10px;
+                    z-index: 2147483000;
+                    resize: none;
+                }
+
+                #floatingWptPanelHeader {
+                    justify-content: space-between;
+                    padding-top: 9px;
+                }
+
+                #floatingWptPanelHeader::before {
+                    content: "";
+                    position: absolute;
+                    top: 4px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 42px;
+                    height: 4px;
+                    border-radius: 999px;
+                    background: rgba(0,0,0,0.18);
+                }
+
+            }
+        `;
+        document.head.appendChild(style);
+    };
+
+    function stopFloatingWaypointPanelEventPropagation(panel) {
+        if (!panel || panel.dataset.floatingWptPanelPropagationGuard === "1") return;
+        panel.dataset.floatingWptPanelPropagationGuard = "1";
+
+        try {
+            if (typeof L !== "undefined" && L.DomEvent) {
+                if (typeof L.DomEvent.disableClickPropagation === "function") {
+                    L.DomEvent.disableClickPropagation(panel);
+                }
+                if (typeof L.DomEvent.disableScrollPropagation === "function") {
+                    L.DomEvent.disableScrollPropagation(panel);
+                }
+            }
+        } catch (err) {}
+
+        [
+            "click",
+            "dblclick",
+            "mousedown",
+            "mouseup",
+            "pointerdown",
+            "pointerup",
+            "touchstart",
+            "touchend",
+            "wheel",
+            "contextmenu"
+        ].forEach(function(eventName) {
+            panel.addEventListener(eventName, function(ev) {
+                if (!ev) return;
+                ev.stopPropagation();
+            }, false);
+        });
+    }
+
+    function updateFloatingWaypointPanelTitle() {
+        const title = document.getElementById("floatingWptPanelTitle");
+        if (!title) return;
+
+        const anchor = document.getElementById("anchorWpt");
+        const text = anchor && anchor.textContent
+            ? anchor.textContent.trim()
+            : "📍 航點列表";
+
+        title.textContent = text || "📍 航點列表";
+    }
+
+    window.updateFloatingWaypointPanelTitleFromAnchor = updateFloatingWaypointPanelTitle;
+
+    window.decorateFloatingWaypointPanel = function() {
+        const panel = document.getElementById("wptList");
+        if (!panel) return;
+
+        if (!document.getElementById("floatingWptPanelHeader")) {
+            const header = document.createElement("div");
+            header.id = "floatingWptPanelHeader";
+            header.innerHTML = `
+                <div class="floating-wpt-title" id="floatingWptPanelTitle">📍 航點列表</div>
+                <div class="floating-wpt-actions">
+                    <button type="button" class="floating-wpt-action-btn" title="捲到航點列表" onclick="event.stopPropagation(); window.scrollFloatingWaypointPanelTo('anchorWpt');">航點</button>
+                    <button type="button" class="floating-wpt-action-btn" title="捲到沿途山岳" onclick="event.stopPropagation(); window.scrollFloatingWaypointPanelTo('anchorPeak');">山岳</button>
+                    <button type="button" class="floating-wpt-action-btn floating-wpt-restore-btn" title="還原到下方列表" aria-label="還原到下方列表" onclick="event.stopPropagation(); window.restoreFloatingWaypointPanel(window.floatingWaypointPanelLastTarget || 'anchorWpt', true);">×</button>
+                </div>
+            `;
+            panel.insertBefore(header, panel.firstChild);
+        }
+
+        stopFloatingWaypointPanelEventPropagation(panel);
+        updateFloatingWaypointPanelTitle();
+    };
+
+    window.applyFloatingWaypointPanelState = function(isFullscreen = false) {
+        const panel = document.getElementById("wptList");
+        if (!panel) return;
+
+        window.ensureFloatingWaypointPanelStyle();
+
+        if (!window.floatingWaypointPanelOpen) {
+            panel.classList.remove("floating-wpt-panel");
+            removeFloatingWaypointPanelHeader();
+            clearFloatingInlineStyles(panel);
+            panel.style.display = isFullscreen ? "none" : "block";
+
+            if (!isFullscreen) {
+                restoreFloatingWaypointPanelOriginalParent(panel);
+            }
+
+            return;
+        }
+
+        if (isFullscreen) {
+            moveFloatingWaypointPanelToFullscreenRoot(panel);
+        } else {
+            restoreFloatingWaypointPanelOriginalParent(panel);
+        }
+
+        panel.classList.add("floating-wpt-panel");
+        panel.style.display = "block";
+        panel.style.zIndex = "2147483000";
+        stopFloatingWaypointPanelEventPropagation(panel);
+
+        if (isMobileFloatingWptPanel()) {
+            panel.style.left = "8px";
+            panel.style.right = "8px";
+            panel.style.top = "auto";
+            panel.style.bottom = "8px";
+            panel.style.width = "auto";
+            panel.style.resize = "none";
+
+            if (window.floatingWaypointPanelMobileHeight) {
+                panel.style.height = window.floatingWaypointPanelMobileHeight + "px";
+            }
+        } else {
+            panel.style.resize = "both";
+            panel.style.width = "min(680px, calc(100vw - 28px))";
+            panel.style.minWidth = "min(680px, calc(100vw - 28px))";
+
+            if (window.floatingWaypointPanelPosition) {
+                panel.style.left = window.floatingWaypointPanelPosition.left + "px";
+                panel.style.top = window.floatingWaypointPanelPosition.top + "px";
+                panel.style.right = "auto";
+                panel.style.bottom = "auto";
+            } else {
+                panel.style.left = "auto";
+                panel.style.right = "14px";
+                panel.style.top = "92px";
+                panel.style.bottom = "auto";
+            }
+        }
+
+        window.decorateFloatingWaypointPanel();
+
+        setTimeout(function() {
+            window.scrollFloatingWaypointPanelTo(window.floatingWaypointPanelLastTarget || "anchorWpt", true);
+        }, 30);
+    };
+
+    window.scrollFloatingWaypointPanelTo = function(targetId, quiet = false) {
+        const panel = document.getElementById("wptList");
+        const target = targetId ? document.getElementById(targetId) : null;
+        if (!panel || !target) return;
+
+        window.floatingWaypointPanelLastTarget = targetId;
+
+        const panelRect = panel.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const header = document.getElementById("floatingWptPanelHeader");
+        const headerHeight = header ? header.offsetHeight : 0;
+
+        const nextScrollTop =
+            panel.scrollTop +
+            (targetRect.top - panelRect.top) -
+            headerHeight -
+            8;
+
+        panel.scrollTo({
+            top: Math.max(0, nextScrollTop),
+            behavior: quiet ? "auto" : "smooth"
+        });
+    };
+
+    window.openFloatingWaypointPanel = function(targetId = "anchorWpt") {
+        window.floatingWaypointPanelOpen = true;
+        window.floatingWaypointPanelLastTarget = targetId || "anchorWpt";
+        window.applyFloatingWaypointPanelState(false);
+    };
+
+    window.restoreFloatingWaypointPanel = function(targetId = "anchorWpt", keepCurrentViewport = false) {
+        window.floatingWaypointPanelOpen = false;
+        window.floatingWaypointPanelLastTarget = targetId || "anchorWpt";
+        window.applyFloatingWaypointPanelState(false);
+
+        if (keepCurrentViewport === true) {
+            return;
+        }
+
+        setTimeout(function() {
+            const target = document.getElementById(window.floatingWaypointPanelLastTarget || "anchorWpt");
+            if (target && typeof target.scrollIntoView === "function") {
+                target.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
+            }
+        }, 40);
+    };
+
+    window.closeFloatingWaypointPanel = function() {
+        window.restoreFloatingWaypointPanel(window.floatingWaypointPanelLastTarget || "anchorWpt", true);
+    };
+
+    window.toggleFloatingWaypointPanel = function(targetId = "anchorWpt") {
+        const panel = document.getElementById("wptList");
+        const isOpen =
+            window.floatingWaypointPanelOpen === true &&
+            panel &&
+            panel.style.display !== "none";
+
+        if (isOpen) {
+            window.restoreFloatingWaypointPanel(targetId || "anchorWpt");
+            return;
+        }
+
+        window.openFloatingWaypointPanel(targetId || "anchorWpt");
+    };
+
+    window.scrollFloatingWaypointPanelToSelectedWaypoint = function() {
+        const panel = document.getElementById("wptList");
+        if (!panel || !window.floatingWaypointPanelOpen) return;
+
+        const selectedRow = panel.querySelector(".wpt-table tr.wpt-selected-row");
+        if (!selectedRow) return;
+
+        const panelRect = panel.getBoundingClientRect();
+        const rowRect = selectedRow.getBoundingClientRect();
+        const header = document.getElementById("floatingWptPanelHeader");
+        const headerHeight = header ? header.offsetHeight : 0;
+
+        const nextScrollTop =
+            panel.scrollTop +
+            (rowRect.top - panelRect.top) -
+            headerHeight -
+            12;
+
+        panel.scrollTo({
+            top: Math.max(0, nextScrollTop),
+            behavior: "smooth"
+        });
+    };
+
+    let dragState = null;
+
+    document.addEventListener("pointerdown", function(e) {
+        const header = e.target && e.target.closest
+            ? e.target.closest("#floatingWptPanelHeader")
+            : null;
+
+        if (!header) return;
+
+        if (
+            e.target.closest &&
+            e.target.closest("button, input, select, textarea, a")
+        ) {
+            return;
+        }
+
+        const panel = document.getElementById("wptList");
+        if (!panel) return;
+
+        const rect = panel.getBoundingClientRect();
+
+        dragState = {
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            startLeft: rect.left,
+            startTop: rect.top,
+            startHeight: rect.height,
+            mobile: isMobileFloatingWptPanel()
+        };
+
+        try {
+            header.setPointerCapture(e.pointerId);
+        } catch (err) {}
+
+        e.preventDefault();
+        e.stopPropagation();
+    }, true);
+
+    document.addEventListener("pointermove", function(e) {
+        if (!dragState) return;
+
+        const panel = document.getElementById("wptList");
+        if (!panel) return;
+
+        if (dragState.mobile) {
+            const minHeight = Math.min(220, window.innerHeight * 0.36);
+            const maxHeight = window.innerHeight * 0.78;
+            const nextHeight = clampNumber(window.innerHeight - e.clientY - 8, minHeight, maxHeight);
+
+            window.floatingWaypointPanelMobileHeight = Math.round(nextHeight);
+            panel.style.height = Math.round(nextHeight) + "px";
+
+        } else {
+            const dx = e.clientX - dragState.startX;
+            const dy = e.clientY - dragState.startY;
+
+            const nextLeft = clampNumber(
+                dragState.startLeft + dx,
+                8,
+                Math.max(8, window.innerWidth - panel.offsetWidth - 8)
+            );
+
+            const nextTop = clampNumber(
+                dragState.startTop + dy,
+                8,
+                Math.max(8, window.innerHeight - 80)
+            );
+
+            panel.style.left = Math.round(nextLeft) + "px";
+            panel.style.top = Math.round(nextTop) + "px";
+            panel.style.right = "auto";
+            panel.style.bottom = "auto";
+
+            window.floatingWaypointPanelPosition = {
+                left: Math.round(nextLeft),
+                top: Math.round(nextTop)
+            };
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+    }, true);
+
+    document.addEventListener("pointerup", function(e) {
+        if (!dragState) return;
+        dragState = null;
+        e.stopPropagation();
+    }, true);
+})();
+
+// ChatGPT v25: prevent floating waypoint panel clicks from leaking to the map/fullscreen map container.
+(function installFloatingWaypointPanelMapClickSuppressor() {
+    if (window.__floatingWaypointPanelMapClickSuppressorInstalled) return;
+    window.__floatingWaypointPanelMapClickSuppressorInstalled = true;
+
+    function isInsideFloatingWaypointPanel(target) {
+        return !!(
+            target &&
+            target.closest &&
+            target.closest('#wptList.floating-wpt-panel')
+        );
+    }
+
+    ['pointerdown', 'mousedown', 'touchstart', 'click', 'dblclick', 'mouseup', 'touchend'].forEach(function(eventName) {
+        document.addEventListener(eventName, function(ev) {
+            if (!ev || !isInsideFloatingWaypointPanel(ev.target)) return;
+
+            window.pdfSuppressMapClickUntil = Date.now() + 600;
+            window.suppressFreeClickPopupUntil = Date.now() + 600;
+            window.ignoreMapClickUntil = Date.now() + 600;
+        }, true);
+    });
+})();
+
+
+window.installWaypointListRowFocusHandlers = function(container) {
+    container = container || document.getElementById("wptList");
+    if (!container) return;
+
+    const rows = container.querySelectorAll(".wpt-table tr[data-idx]");
+
+    rows.forEach(function(row) {
+        if (row.dataset.wptRowFocusInstalled === "1") return;
+        row.dataset.wptRowFocusInstalled = "1";
+
+        row.addEventListener("click", function(event) {
+            if (
+                event &&
+                event.target &&
+                event.target.closest &&
+                event.target.closest("input, button, select, textarea, a, .wpt-action-icon")
+            ) {
+                return;
+            }
+
+            if (event && typeof event.stopPropagation === "function") {
+                event.stopPropagation();
+            }
+
+            const idx = Number(row.getAttribute("data-idx"));
+            if (!Number.isFinite(idx)) return;
+
+            let name = "航點";
+            const fileIdx = typeof window.currentMultiIndex === "number" ? window.currentMultiIndex : 0;
+            const file = window.multiGpxStack && window.multiGpxStack[fileIdx];
+            const wpt = file && Array.isArray(file.waypoints) ? file.waypoints[idx] : null;
+
+            if (wpt && wpt.name) {
+                name = String(wpt.name).replace(/'/g, "\\'");
+            }
+
+            if (typeof window.focusWaypointWithLog === "function") {
+                window.focusWaypointWithLog(idx, name);
+            }
+        }, false);
+    });
+};
+
+
+
+// ==========================================
+// 沿途山岳偵測結果快取：避免點地圖、編輯航點或重繪航點列表時被清空
+// ==========================================
+window.peakDetectionCache = window.peakDetectionCache || {};
+
+function getCurrentPeakCacheKey(route = null) {
+    const fileIdx =
+        typeof window.currentMultiIndex === "number"
+            ? window.currentMultiIndex
+            : 0;
+
+    const routeIdx =
+        typeof window.currentActiveIndex === "number"
+            ? window.currentActiveIndex
+            : 0;
+
+    return [fileIdx, routeIdx].join("|");
+}
+
+function escapePeakHtml(value) {
+    return String(value === undefined || value === null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function escapePeakJsString(value) {
+    return String(value === undefined || value === null ? "" : value)
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+        .replace(/\r?\n/g, " ");
+}
+
+function getPeakReadyPanelHtml() {
+    return `
+        <div style="padding:15px; text-align:center; background:#f8f9fa; border:1px dashed #ccc; border-radius:8px; margin:10px;">
+            <p style="margin-bottom:8px; color:#666; font-size:13px;">📍 已準備好偵測此路線周圍山岳</p>
+            <button onclick="detectPeaksAlongRoute(true)" style="padding: 10px 25px; background: #1a73e8; color: white; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: inline-flex; align-items: center; justify-content: center;">🔍 偵測此路線山岳</button>
+        </div>`;
+}
+
+function getPeakNoResultPanelHtml() {
+    return `<div style="padding:20px; color:#999; font-size:13px; text-align:center;">ℹ️ 沿途 200m 內未偵測到額外的山峰標記。</div>`;
+}
+
+function getPeakErrorPanelHtml() {
+    return `
+        <div style="padding:20px; color:#721c24; background-color:#f8d7da; border:1px solid #f5c6cb; border-radius:8px; text-align:center; margin:10px 0;">
+            <p style="margin-bottom:10px;">❌ 山岳偵測失敗 (API 忙碌中或網路逾時)</p>
+            <button onclick="detectPeaksAlongRoute(true)" style="padding: 8px 20px; background: #d35400; color: white; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.15); outline: none;">🔄 重新嘗試</button>
+        </div>`;
+}
+
+function getPeakTableHtml(peaks) {
+    if (!Array.isArray(peaks) || peaks.length === 0) {
+        return getPeakNoResultPanelHtml();
+    }
+
+    let html = `<table class="wpt-table"><thead><tr><th style="width:10%">#</th><th style="width:40%">日期與時間</th><th style="width:50%">山名 (海拔)</th></tr></thead><tbody>`;
+
+    peaks.forEach((p, i) => {
+        const distToTrack = Number(p.distToTrack);
+        const safeDist = Number.isFinite(distToTrack) ? distToTrack : 0;
+        const timeDisplay = safeDist > 100 ? "------" : (p.time || "");
+        const safeNameForJs = escapePeakJsString(p.name || "未命名山峰");
+        const safeNameForHtml = escapePeakHtml(p.name || "未命名山峰");
+        const safeEleForJs = escapePeakJsString(p.ele || "未知");
+        const safeEleForHtml = escapePeakHtml(p.ele || "未知");
+        const lat = Number(p.lat);
+        const lon = Number(p.lon);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            return;
+        }
+
+        html += `<tr><td><span class="wpt-link" onclick="focusWaypoint(${lat}, ${lon}, '${safeNameForJs}', ${safeDist}, '${safeEleForJs}')">${i + 1}</span></td><td>${escapePeakHtml(timeDisplay)}</td><td style="font-weight: bold; color: #007bff;">${safeNameForHtml} (${safeEleForHtml}m)</td></tr>`;
+    });
+
+    html += `</tbody></table>`;
+    return html;
+}
+
+function getPeakCacheContentHtml(cacheEntry) {
+    if (!cacheEntry) {
+        return getPeakReadyPanelHtml();
+    }
+
+    if (cacheEntry.state === "results") {
+        return getPeakTableHtml(cacheEntry.peaks || []);
+    }
+
+    if (cacheEntry.state === "empty") {
+        return getPeakNoResultPanelHtml();
+    }
+
+    return getPeakReadyPanelHtml();
+}
+
+function savePeakDetectionCacheForCurrentRoute(state, peaks = []) {
+    window.peakDetectionCache = window.peakDetectionCache || {};
+
+    const cacheKey =
+        typeof getCurrentPeakCacheKey === "function"
+            ? getCurrentPeakCacheKey()
+            : "default";
+
+    window.peakDetectionCache[cacheKey] = {
+        state: state,
+        peaks: Array.isArray(peaks)
+            ? peaks.map(function(p) { return { ...p }; })
+            : [],
+        updatedAt: Date.now()
+    };
+
+    return cacheKey;
+}
+
+function getPeakDetectionCacheForCurrentRoute(route = null) {
+    const cacheKey =
+        typeof getCurrentPeakCacheKey === "function"
+            ? getCurrentPeakCacheKey(route)
+            : "default";
+
+    return window.peakDetectionCache && window.peakDetectionCache[cacheKey]
+        ? window.peakDetectionCache[cacheKey]
+        : null;
+}
+
 window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
     
     const wptListContainer = document.getElementById("wptList");
@@ -14507,9 +15333,9 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
             ? "visibility_off"
             : "visibility";
 
-    if (!isFS) {
+    if (!isFS || window.floatingWaypointPanelOpen === true) {
         if (uniqueWpts.length > 0) {
-            shortcutsHtml += `<button type="button" class="shortcut-btn" onmousedown="L.DomEvent.stopPropagation(event)" onclick="window.restoreAndJump('anchorWpt'); L.DomEvent.stopPropagation(event);">📍 航點列表</button>`;
+            shortcutsHtml += `<button type="button" class="shortcut-btn" onmousedown="L.DomEvent.stopPropagation(event)" onclick="window.toggleFloatingWaypointPanel('anchorWpt'); L.DomEvent.stopPropagation(event);">📍 航點列表</button>`;
         }
 
         shortcutsHtml += `<button type="button" class="shortcut-btn" onmousedown="L.DomEvent.stopPropagation(event)" onclick="window.restoreAndJump('anchorPeak'); L.DomEvent.stopPropagation(event);">⛰️ 沿途山岳</button>`;
@@ -14726,12 +15552,19 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
         listHtml += `</tbody></table>`;
     }
 
+    const peakCacheForRoute =
+        typeof getPeakDetectionCacheForCurrentRoute === "function"
+            ? getPeakDetectionCacheForCurrentRoute(route)
+            : null;
+
+    const peakContentHtml =
+        typeof getPeakCacheContentHtml === "function"
+            ? getPeakCacheContentHtml(peakCacheForRoute)
+            : "";
+
     listHtml += `<h4 id="anchorPeak" style="margin: 30px 0 10px 0; font-size: 16px; color: #2c3e50; border-left: 5px solid #d35400; padding-left: 10px;">⛰️ 沿途山岳(200公尺內)</h4>
     <div id="aiPeaksSection">
-        <div style="padding:15px; text-align:center; background:#f8f9fa; border:1px dashed #ccc; border-radius:8px; margin:10px;">
-            <p style="margin-bottom:8px; color:#666; font-size:13px;">📍 已準備好偵測此路線周圍山岳</p>
-            <button onclick="detectPeaksAlongRoute(true)" style="padding: 10px 25px; background: #1a73e8; color: white; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: inline-flex; align-items: center; justify-content: center;">🔍 偵測此路線山岳</button>
-        </div>
+        ${peakContentHtml}
     </div>`;
 
     if (navShortcuts) {
@@ -14742,8 +15575,19 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
     wptListContainer.innerHTML =
         listHtml;
 
-    wptListContainer.style.display =
-        isFS ? "none" : "block";
+    if (typeof window.installWaypointListRowFocusHandlers === "function") {
+        window.installWaypointListRowFocusHandlers(wptListContainer);
+    }
+
+    if (typeof window.applyFloatingWaypointPanelState === "function") {
+        window.applyFloatingWaypointPanelState(isFS);
+        if (typeof window.updateFloatingWaypointPanelTitleFromAnchor === "function") {
+            window.updateFloatingWaypointPanelTitleFromAnchor();
+        }
+    } else {
+        wptListContainer.style.display =
+            isFS ? "none" : "block";
+    }
 
 		const toggleAllWptDisplay =
 		    document.getElementById("toggleAllWptDisplay");
@@ -14780,6 +15624,12 @@ window.renderWaypointsAndPeaks = function(currentRoute, forceFS = null) {
         typeof updateWptIconStatus === 'function'
     ) {
         updateWptIconStatus();
+    }
+
+    if (typeof window.scrollFloatingWaypointPanelToSelectedWaypoint === "function") {
+        setTimeout(function() {
+            window.scrollFloatingWaypointPanelToSelectedWaypoint();
+        }, 80);
     }
 
 };
@@ -14828,34 +15678,17 @@ async function detectPeaksAlongRoute(isManual = false) {
     }
 
     if (!isManual) {
-        aiSection.innerHTML = `
-            <div style="padding:20px; text-align:center; background:#f9f9f9; border:1px dashed #ccc; border-radius:8px; margin:10px 0;">
-                <p style="margin-bottom:10px; color:#666; font-size:14px;">📍 路線已載入：準備好偵測此範圍內之山岳</p>
-				<button onclick="detectPeaksAlongRoute(true)" 
-        style="padding: 10px 25px; 
-               background: #1a73e8; 
-               color: white; 
-               border: none; 
-               
-               
-               border-radius: 50px; 
-               
-               cursor: pointer; 
-               font-weight: bold; 
-               font-size: 14px; 
-               box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-               
-               
-               display: inline-flex;
-               align-items: center;
-               justify-content: center;
-               vertical-align: middle;
-               outline: none;
-               -webkit-tap-highlight-color: transparent;">
-   						 🔍 開始偵測沿途山岳
-				</button>
-            </div>`;
-        return; 
+        const cachedPeaks =
+            typeof getPeakDetectionCacheForCurrentRoute === "function"
+                ? getPeakDetectionCacheForCurrentRoute()
+                : null;
+
+        aiSection.innerHTML =
+            typeof getPeakCacheContentHtml === "function"
+                ? getPeakCacheContentHtml(cachedPeaks)
+                : "";
+
+        return;
     }
     
     peakAbortController = new AbortController();
@@ -14893,7 +15726,15 @@ async function detectPeaksAlongRoute(isManual = false) {
         const data = await response.json();
         
         if (!data.elements || data.elements.length === 0) {
-            aiSection.innerHTML = `<div style="padding:20px; color:#999; font-size:13px; text-align:center;">ℹ️ 沿途 200m 內未偵測到額外的山峰標記。</div>`;
+            if (typeof savePeakDetectionCacheForCurrentRoute === "function") {
+                savePeakDetectionCacheForCurrentRoute("empty", []);
+            }
+
+            aiSection.innerHTML =
+                typeof getPeakNoResultPanelHtml === "function"
+                    ? getPeakNoResultPanelHtml()
+                    : `<div style="padding:20px; color:#999; font-size:13px; text-align:center;">ℹ️ 沿途 200m 內未偵測到額外的山峰標記。</div>`;
+
             return;
         }
 
@@ -14931,6 +15772,10 @@ async function detectPeaksAlongRoute(isManual = false) {
 
         uniquePeaks.sort((a, b) => a.idx - b.idx);
         
+        if (typeof savePeakDetectionCacheForCurrentRoute === "function") {
+            savePeakDetectionCacheForCurrentRoute("results", uniquePeaks);
+        }
+
         if (typeof renderPeakTable === 'function') {
             renderPeakTable(uniquePeaks);
         }
@@ -14938,22 +15783,10 @@ async function detectPeaksAlongRoute(isManual = false) {
     } catch (error) {
         if (error.name === 'AbortError') {
           } else {
-            aiSection.innerHTML = `
-                <div style="padding:20px; color:#721c24; background-color:#f8d7da; border:1px solid #f5c6cb; border-radius:8px; text-align:center; margin:10px 0;">
-                    <p style="margin-bottom:10px;">❌ 山岳偵測失敗 (API 忙碌中或網路逾時)</p>
-									<button onclick="detectPeaksAlongRoute(true)" 
-					        style="padding: 8px 20px; 
-					               background: #d35400; 
-					               color: white; 
-					               border: none; 
-					               border-radius: 50px; 
-					               cursor: pointer; 
-					               font-weight: bold;
-					               box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-					               outline: none;">
-					  					  🔄 重新嘗試
-							  	</button>
-                </div>`;
+            aiSection.innerHTML =
+                typeof getPeakErrorPanelHtml === "function"
+                    ? getPeakErrorPanelHtml()
+                    : `<div style="padding:20px; color:#721c24; background-color:#f8d7da; border:1px solid #f5c6cb; border-radius:8px; text-align:center; margin:10px 0;"><p style="margin-bottom:10px;">❌ 山岳偵測失敗 (API 忙碌中或網路逾時)</p><button onclick="detectPeaksAlongRoute(true)" style="padding: 8px 20px; background: #d35400; color: white; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.15); outline: none;">🔄 重新嘗試</button></div>`;
         }
     }
 }
@@ -14963,13 +15796,12 @@ async function detectPeaksAlongRoute(isManual = false) {
 
 function renderPeakTable(peaks) {
     const aiSection = document.getElementById("aiPeaksSection");
-    if (!aiSection || peaks.length === 0) return;
-		let html = `<table class="wpt-table"><thead><tr><th style="width:10%">#</th><th style="width:40%">日期與時間</th><th style="width:50%">山名 (海拔)</th></tr></thead><tbody>`;
-    peaks.forEach((p, i) => {
-        const timeDisplay = p.distToTrack > 100 ? "------" : p.time;
-        html += `<tr><td><span class="wpt-link" onclick="focusWaypoint(${p.lat}, ${p.lon}, '${p.name}', ${p.distToTrack}, '${p.ele}')">${i+1}</span></td><td>${timeDisplay}</td><td style="font-weight: bold; color: #007bff;">${p.name} (${p.ele}m)</td></tr>`;
-    });
-    aiSection.innerHTML = html + `</tbody></table>`;
+    if (!aiSection) return;
+
+    aiSection.innerHTML =
+        typeof getPeakTableHtml === "function"
+            ? getPeakTableHtml(peaks)
+            : "";
 }
 
 let gUrl = "#";
@@ -23882,6 +24714,9 @@ window.focusWaypointWithLog = function(originalIdx, name) {
 
     if (selectedRow) {
         selectedRow.classList.add("wpt-selected-row");
+        if (typeof window.scrollFloatingWaypointPanelToSelectedWaypoint === "function") {
+            window.scrollFloatingWaypointPanelToSelectedWaypoint();
+        }
     }
 
     if (typeof window.renderRouteToolControl === "function") {
@@ -23920,6 +24755,34 @@ window.focusWaypointWithLog = function(originalIdx, name) {
             0,
             wpt.ele
         );
+
+        setTimeout(function() {
+            try {
+                if (
+                    typeof hoverMarker === 'undefined' ||
+                    !hoverMarker
+                ) {
+                    hoverMarker = L.circleMarker(
+                        [wpt.lat, wpt.lon],
+                        {
+                            radius: 7,
+                            color: '#ffffff',
+                            fillColor: '#1a73e8',
+                            fillOpacity: 1,
+                            weight: 2,
+                            interactive: true
+                        }
+                    ).addTo(map);
+                } else {
+                    hoverMarker.setLatLng([wpt.lat, wpt.lon]);
+                    if (!map.hasLayer(hoverMarker)) {
+                        hoverMarker.addTo(map);
+                    }
+                }
+
+                hoverMarker.bringToFront();
+            } catch (err) {}
+        }, 180);
     }
 
     
@@ -24022,6 +24885,9 @@ window.handleWptEditByIndex = function(originalIdx) {
 
     if (selectedRow) {
         selectedRow.classList.add("wpt-selected-row");
+        if (typeof window.scrollFloatingWaypointPanelToSelectedWaypoint === "function") {
+            window.scrollFloatingWaypointPanelToSelectedWaypoint();
+        }
     }
 
     if (typeof window.renderRouteToolControl === "function") {
@@ -25348,6 +26214,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.restoreAndJump = async function(targetId) {
+    if (
+        (targetId === "anchorWpt" || targetId === "anchorPeak") &&
+        window.floatingWaypointPanelOpen === true &&
+        typeof window.scrollFloatingWaypointPanelTo === "function"
+    ) {
+        window.scrollFloatingWaypointPanelTo(targetId);
+        return;
+    }
     
     if (document.fullscreenElement || document.body.classList.contains('iphone-fullscreen')) {
         
@@ -39033,3 +39907,5 @@ function buildWindyUrl(lat, lon, overlay = "rain", zoom = 14) {
     );
 }
 
+
+// ChatGPT v28: closing floating waypoint panel with X keeps current viewport; shortcut restore behavior remains unchanged.
