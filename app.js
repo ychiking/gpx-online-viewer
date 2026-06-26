@@ -1,4 +1,5 @@
 
+
 const map = L.map("map", { tap: true, doubleClickZoom: false}).setView([25.03, 121.56], 12);
 
 map.getContainer().style.touchAction = "none";
@@ -146,6 +147,25 @@ let ignoreMapClickUntil = 0;
 
 const ROUTE_PROXY_URL = "https://ychiking-proxy.ychiking.workers.dev/route";
 let isCreatingABPlannedRoute = false;
+
+
+function getABPlanningFriendlyErrorMessage(err) {
+    const msg = err && err.message ? String(err.message) : String(err || "");
+
+    if (
+        (typeof navigator !== "undefined" && navigator.onLine === false) ||
+        msg.includes("Load failed") ||
+        msg.includes("Failed to fetch") ||
+        msg.includes("NetworkError") ||
+        msg.includes("Network request failed") ||
+        msg.includes("The Internet connection appears to be offline") ||
+        msg.includes("無法連線")
+    ) {
+        return "無法連線";
+    }
+
+    return msg || "未知錯誤";
+}
 
 window.ENABLE_ROUTE_PLANNING = false;
 
@@ -6007,6 +6027,78 @@ function clearABViaMarkers() {
     abViaMarkers = [];
 }
 
+
+function installWaypointMobileDragFix(marker) {
+    if (!marker || marker._ycMobileDragFixInstalled) return;
+    marker._ycMobileDragFixInstalled = true;
+
+    const apply = function() {
+        const iconEl =
+            typeof marker.getElement === "function"
+                ? marker.getElement()
+                : marker._icon;
+
+        if (!iconEl) return;
+
+        iconEl.classList.add("custom-wpt-icon");
+        iconEl.style.touchAction = "none";
+        iconEl.style.pointerEvents = "auto";
+        iconEl.style.webkitUserDrag = "none";
+        iconEl.style.webkitTouchCallout = "none";
+
+        const stopMapTouch = function(ev) {
+            if (!ev) return;
+
+            // 不讓地圖的 touchstart/touchmove 或手繪模式搶走航點拖曳
+            if (typeof L !== "undefined" && L.DomEvent) {
+                L.DomEvent.stopPropagation(ev);
+            } else if (ev.stopPropagation) {
+                ev.stopPropagation();
+            }
+        };
+
+        ["touchstart", "pointerdown", "mousedown"].forEach(function(eventName) {
+            iconEl.addEventListener(eventName, stopMapTouch, { passive: false });
+        });
+    };
+
+    marker.on("add", function() {
+        setTimeout(apply, 0);
+    });
+
+    marker.on("dragstart", function() {
+        window.isDraggingWpt = true;
+
+        if (map && map.dragging && map.dragging.enabled && map.dragging.enabled()) {
+            marker._ycMapDraggingWasEnabled = true;
+            map.dragging.disable();
+        } else {
+            marker._ycMapDraggingWasEnabled = false;
+        }
+    });
+
+    marker.on("dragend", function() {
+        if (
+            marker._ycMapDraggingWasEnabled &&
+            map &&
+            map.dragging &&
+            typeof map.dragging.enable === "function" &&
+            !isDrawingMode
+        ) {
+            map.dragging.enable();
+        }
+
+        marker._ycMapDraggingWasEnabled = false;
+
+        setTimeout(function() {
+            window.isDraggingWpt = false;
+        }, 120);
+    });
+
+    setTimeout(apply, 0);
+}
+
+
 function renderABViaMarkers() {
     clearABViaMarkers();
 
@@ -6024,6 +6116,10 @@ function renderABViaMarkers() {
                 className: ''
             })
         }).addTo(map);
+
+        if (typeof installWaypointMobileDragFix === "function") {
+            installWaypointMobileDragFix(marker);
+        }
 
         marker.bindTooltip(
             `<div style="font-size:12px; line-height:1.4;">
@@ -6184,20 +6280,21 @@ routeSelect.addEventListener("change", (e) => {
     }, 0);
 });
 
+// ChatGPT v18: 起點 / 終點 / 預設航點 marker 改成本地內嵌 SVG，離線模式不再依賴 GitHub / CDN 圖片
 const startIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [18, 30], iconAnchor: [9, 30], popupAnchor: [1, -25], shadowSize: [30, 30]
+  iconUrl: 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2264%22%20viewBox%3D%220%200%2040%2064%22%3E%0A%20%20%3Cpath%20d%3D%22M20%202C10.1%202%202%2010.1%202%2020c0%2013.5%2018%2042%2018%2042s18-28.5%2018-42C38%2010.1%2029.9%202%2020%202z%22%20fill%3D%22%2334a853%22%20stroke%3D%22%231b7f3a%22%20stroke-width%3D%223%22/%3E%0A%20%20%3Ccircle%20cx%3D%2220%22%20cy%3D%2220%22%20r%3D%227%22%20fill%3D%22%23ffffff%22%20stroke%3D%22%231b7f3a%22%20stroke-width%3D%221.2%22/%3E%0A%3C/svg%3E',
+  shadowUrl: 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2264%22%20height%3D%2264%22%20viewBox%3D%220%200%2064%2064%22%3E%0A%20%20%3Cellipse%20cx%3D%2233%22%20cy%3D%2249%22%20rx%3D%2220%22%20ry%3D%228%22%20fill%3D%22rgba%280%2C0%2C0%2C0.25%29%22/%3E%0A%3C/svg%3E',
+  iconSize: [20, 32], iconAnchor: [10, 32], popupAnchor: [1, -28], shadowSize: [32, 32], shadowAnchor: [16, 32]
 });
 const endIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [18, 30], iconAnchor: [9, 30], popupAnchor: [1, -25], shadowSize: [30, 30]
+  iconUrl: 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2264%22%20viewBox%3D%220%200%2040%2064%22%3E%0A%20%20%3Cpath%20d%3D%22M20%202C10.1%202%202%2010.1%202%2020c0%2013.5%2018%2042%2018%2042s18-28.5%2018-42C38%2010.1%2029.9%202%2020%202z%22%20fill%3D%22%23ea4335%22%20stroke%3D%22%23a52714%22%20stroke-width%3D%223%22/%3E%0A%20%20%3Ccircle%20cx%3D%2220%22%20cy%3D%2220%22%20r%3D%227%22%20fill%3D%22%23ffffff%22%20stroke%3D%22%23a52714%22%20stroke-width%3D%221.2%22/%3E%0A%3C/svg%3E',
+  shadowUrl: 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2264%22%20height%3D%2264%22%20viewBox%3D%220%200%2064%2064%22%3E%0A%20%20%3Cellipse%20cx%3D%2233%22%20cy%3D%2249%22%20rx%3D%2220%22%20ry%3D%228%22%20fill%3D%22rgba%280%2C0%2C0%2C0.25%29%22/%3E%0A%3C/svg%3E',
+  iconSize: [20, 32], iconAnchor: [10, 32], popupAnchor: [1, -28], shadowSize: [32, 32], shadowAnchor: [16, 32]
 });
 const wptIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [20, 32], iconAnchor: [10, 32], popupAnchor: [1, -28], shadowSize: [32, 32]
+  iconUrl: 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2264%22%20viewBox%3D%220%200%2040%2064%22%3E%0A%20%20%3Cpath%20d%3D%22M20%202C10.1%202%202%2010.1%202%2020c0%2013.5%2018%2042%2018%2042s18-28.5%2018-42C38%2010.1%2029.9%202%2020%202z%22%20fill%3D%22%231a73e8%22%20stroke%3D%22%230b57d0%22%20stroke-width%3D%223%22/%3E%0A%20%20%3Ccircle%20cx%3D%2220%22%20cy%3D%2220%22%20r%3D%227%22%20fill%3D%22%23ffffff%22%20stroke%3D%22%230b57d0%22%20stroke-width%3D%221.2%22/%3E%0A%3C/svg%3E',
+  shadowUrl: 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2264%22%20height%3D%2264%22%20viewBox%3D%220%200%2064%2064%22%3E%0A%20%20%3Cellipse%20cx%3D%2233%22%20cy%3D%2249%22%20rx%3D%2220%22%20ry%3D%228%22%20fill%3D%22rgba%280%2C0%2C0%2C0.25%29%22/%3E%0A%3C/svg%3E',
+  iconSize: [20, 32], iconAnchor: [10, 32], popupAnchor: [1, -28], shadowSize: [32, 32], shadowAnchor: [16, 32]
 });
 
 
@@ -6208,6 +6305,28 @@ function ensureWaypointIconStyle() {
     const waypointIconStyle = document.createElement("style");
     waypointIconStyle.id = "waypointIconStyle";
     waypointIconStyle.innerHTML = `
+        .leaflet-marker-icon.custom-wpt-icon {
+            pointer-events: auto !important;
+            touch-action: none !important;
+            -webkit-user-drag: none !important;
+            -webkit-touch-callout: none !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            background: transparent !important;
+            border: none !important;
+        }
+
+        .leaflet-marker-icon.custom-wpt-icon .wpt-map-icon,
+        .leaflet-marker-icon.custom-wpt-icon .material-icons,
+        .leaflet-marker-icon.custom-wpt-icon .wpt-anchor-dot {
+            pointer-events: auto !important;
+            touch-action: none !important;
+            -webkit-user-drag: none !important;
+            -webkit-touch-callout: none !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
         .wpt-map-icon {
             width: 32px;
             height: 32px;
@@ -6218,6 +6337,7 @@ function ensureWaypointIconStyle() {
             border: none !important;
             box-shadow: none !important;
             filter: none !important;
+            touch-action: none !important;
         }
 
         .wpt-map-icon .material-icons {
@@ -6580,7 +6700,7 @@ window.createWaypointDivIcon = function(wpt) {
             : "#1a73e8";
 
     return L.divIcon({
-        className: "",
+        className: "custom-wpt-icon",
         html:
             '<div class="wpt-map-icon' + extraClass + '" style="--wpt-icon-color:' + iconColor + '; --wpt-icon-border-color:' + (window.defaultWaypointIconBorderColor || "#ffffff") + ';">' +
                 '<span class="material-icons">' +
@@ -6940,6 +7060,10 @@ function setupProgressBar() {
     const fsCheckbox = document.getElementById("fsShowTipCheckbox");
 
     if (!barContainer || !progressBar) return;
+
+    if (typeof window.refreshProgressBarButtonState === "function") {
+        window.refreshProgressBarButtonState();
+    }
 
     L.DomEvent.disableClickPropagation(barContainer);
     L.DomEvent.disableScrollPropagation(barContainer);
@@ -7565,6 +7689,11 @@ window.setActiveFocusCircleAt = function(latlng, options = {}) {
 
         if (focusEl) {
             focusEl.style.pointerEvents = "auto";
+            focusEl.style.touchAction = "none";
+            focusEl.style.webkitTouchCallout = "none";
+            focusEl.style.webkitUserSelect = "none";
+            focusEl.style.userSelect = "none";
+            focusEl.classList.add("yc-focus-circle-touch-target");
         }
     } catch (err) {}
 
@@ -7773,10 +7902,41 @@ window.panMapDuringFocusCircleDrag = function(clientPoint) {
     }
 };
 
+
+function ensureActiveFocusCircleMobileStyle() {
+    if (document.getElementById("ycActiveFocusCircleMobileStyle")) return;
+
+    const style = document.createElement("style");
+    style.id = "ycActiveFocusCircleMobileStyle";
+    style.textContent = `
+        .yc-focus-circle-touch-target {
+            pointer-events: auto !important;
+            touch-action: none !important;
+            -webkit-touch-callout: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+            cursor: grab;
+        }
+        .yc-focus-circle-touch-target:active {
+            cursor: grabbing;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 window.ensureActiveFocusCircleDragEnabled = function() {
+    ensureActiveFocusCircleMobileStyle();
+
     const circle = window.activeFocusCircle;
 
-    if (!circle || circle._ycDragEnabled === true) {
+    if (!circle) {
+        return;
+    }
+
+    if (circle._ycDragEnabled === true) {
+        if (typeof window.applyActiveFocusCircleMobileTouchFix === "function") {
+            window.applyActiveFocusCircleMobileTouchFix(circle);
+        }
         return;
     }
 
@@ -7839,6 +7999,110 @@ window.ensureActiveFocusCircleDragEnabled = function() {
             map.dragging.disable();
         }
     };
+
+    circle._ycFocusStartDrag = startDrag;
+
+    window.applyActiveFocusCircleMobileTouchFix = function(targetCircle) {
+        const c = targetCircle || window.activeFocusCircle;
+
+        if (!c || c._ycMobileTouchFixInstalled === true) {
+            return;
+        }
+
+        const el =
+            typeof c.getElement === "function"
+                ? c.getElement()
+                : c._path;
+
+        if (!el) {
+            setTimeout(function() {
+                if (c) {
+                    c._ycMobileTouchFixInstalled = false;
+                    window.applyActiveFocusCircleMobileTouchFix(c);
+                }
+            }, 0);
+            return;
+        }
+
+        c._ycMobileTouchFixInstalled = true;
+
+        el.classList.add("yc-focus-circle-touch-target");
+        el.style.pointerEvents = "auto";
+        el.style.touchAction = "none";
+        el.style.webkitTouchCallout = "none";
+        el.style.webkitUserSelect = "none";
+        el.style.userSelect = "none";
+
+        const startFromDomEvent = function(ev) {
+            if (!ev) return;
+
+            if (
+                window._ycFreeClickFocusActive === true ||
+                (
+                    window.activeFocusCircle &&
+                    window.activeFocusCircle._ycIsFreeClickFocus === true
+                )
+            ) {
+                return;
+            }
+
+            if (ev.cancelable) {
+                ev.preventDefault();
+            }
+
+            if (typeof L !== "undefined" && L.DomEvent) {
+                L.DomEvent.stopPropagation(ev);
+            } else if (ev.stopPropagation) {
+                ev.stopPropagation();
+            }
+
+            const touch =
+                ev.touches && ev.touches.length > 0
+                    ? ev.touches[0]
+                    : (
+                        ev.changedTouches && ev.changedTouches.length > 0
+                            ? ev.changedTouches[0]
+                            : null
+                    );
+
+            const clientX = touch ? touch.clientX : ev.clientX;
+            const clientY = touch ? touch.clientY : ev.clientY;
+
+            let latlng =
+                c && typeof c.getLatLng === "function"
+                    ? c.getLatLng()
+                    : null;
+
+            if (
+                Number.isFinite(Number(clientX)) &&
+                Number.isFinite(Number(clientY)) &&
+                typeof map !== "undefined" &&
+                map &&
+                typeof map.getContainer === "function" &&
+                typeof map.containerPointToLatLng === "function"
+            ) {
+                const rect = map.getContainer().getBoundingClientRect();
+                latlng = map.containerPointToLatLng(
+                    L.point(clientX - rect.left, clientY - rect.top)
+                );
+            }
+
+            const fakeEvent = {
+                latlng: latlng,
+                originalEvent: ev
+            };
+
+            if (typeof c._ycFocusStartDrag === "function") {
+                c._ycFocusStartDrag(fakeEvent);
+            }
+        };
+
+        ["touchstart", "pointerdown", "mousedown"].forEach(function(eventName) {
+            el.addEventListener(eventName, startFromDomEvent, { passive: false });
+        });
+    };
+
+    window.applyActiveFocusCircleMobileTouchFix(circle);
 
     circle.on("mousedown", startDrag);
     circle.on("touchstart", startDrag);
@@ -7992,6 +8256,10 @@ window.ensureActiveFocusCircleDragEnabled = function() {
 
         if (ev.cancelable) {
             ev.preventDefault();
+        }
+
+        if (ev.stopPropagation) {
+            ev.stopPropagation();
         }
 
         if (typeof window.suppressNextMapClickAfterFocusDrag === "function") {
@@ -9266,6 +9534,10 @@ function loadRoute(index, customColor = null, focusPos = null) {
                         zIndexOffset: isFocusTarget ? 2000 : 0
                     }
                 ).addTo(map);
+
+            if (typeof installWaypointMobileDragFix === "function") {
+                installWaypointMobileDragFix(wm);
+            }
 
             let previousLatLng =
                 wm.getLatLng();
@@ -12648,7 +12920,7 @@ window.createPlannedRouteFromAB = async function() {
 
     } catch (err) {
         console.error("A-B 規劃路線失敗：", err);
-        alert("A-B 路線產生失敗：" + err.message);
+        alert("A-B 路線產生失敗：" + getABPlanningFriendlyErrorMessage(err));
 
     } finally {
         isCreatingABPlannedRoute = false;
@@ -19665,25 +19937,65 @@ mapSizeCtrl.onAdd = function(map) {
     const barToggleBtn = L.DomUtil.create('a', '', barBtnWrapper);
     barToggleBtn.innerHTML = '<span class="material-icons" style="font-size:20px; display:flex; align-items:center; justify-content:center; height:30px;">linear_scale</span>';
 
+    function hasProgressTrackForButton() {
+        return (
+            typeof trackPoints !== "undefined" &&
+            Array.isArray(trackPoints) &&
+            trackPoints.length > 1
+        );
+    }
+
     function refreshBarBtnStyle() {
+        const hasTracks =
+            hasProgressTrackForButton();
+
+        if (!hasTracks) {
+            window.manualShowBar = false;
+
+            barToggleBtn.style.color = "#aaa";
+            barToggleBtn.style.backgroundColor = "#f3f3f3";
+            barToggleBtn.style.opacity = "0.45";
+            barToggleBtn.style.filter = "grayscale(1)";
+            barToggleBtn.style.cursor = "not-allowed";
+
+            barBtnWrapper.style.backgroundColor = "#f3f3f3";
+            barBtnWrapper.style.opacity = "0.75";
+            barBtnWrapper.style.cursor = "not-allowed";
+            barBtnWrapper.title = "請先匯入 GPX 或選取路線";
+
+            return;
+        }
+
+        barToggleBtn.style.opacity = "1";
+        barToggleBtn.style.filter = "none";
+        barToggleBtn.style.cursor = "pointer";
+
+        barBtnWrapper.style.backgroundColor = "white";
+        barBtnWrapper.style.opacity = "1";
+        barBtnWrapper.style.cursor = "pointer";
+        barBtnWrapper.title = window.manualShowBar
+            ? "關閉軌跡進度軸"
+            : "顯示軌跡進度軸";
+
         if (window.manualShowBar) {
-            barToggleBtn.style.color = '#1a73e8';
-            barToggleBtn.style.backgroundColor = '#e8f0fe';
+            barToggleBtn.style.color = "#1a73e8";
+            barToggleBtn.style.backgroundColor = "#e8f0fe";
         } else {
-            barToggleBtn.style.color = '#666';
-            barToggleBtn.style.backgroundColor = 'white';
+            barToggleBtn.style.color = "#666";
+            barToggleBtn.style.backgroundColor = "white";
         }
     }
-    
+
+    window.refreshProgressBarButtonState =
+        refreshBarBtnStyle;
+
     refreshBarBtnStyle();
 
 		L.DomEvent.on(barToggleBtn, 'click', function(e) {
 		    L.DomEvent.stop(e);
-		
+
 		    const hasTracks =
-		        typeof trackPoints !== "undefined" &&
-		        Array.isArray(trackPoints) &&
-		        trackPoints.length > 0;
+		        hasProgressTrackForButton();
 		
 		    
 		    if (!hasTracks) {
@@ -30978,6 +31290,17 @@ window.renderRouteToolControl = function() {
 
         refreshPanelState();
 
+        if (mainBtn.classList.contains("disabled")) {
+            control.classList.remove("open");
+            mainBtn.classList.remove("active");
+
+            if (typeof showMapToast === "function") {
+                showMapToast("請先匯入 GPX 或選取路線");
+            }
+
+            return;
+        }
+
         control.classList.toggle("open");
 
         if (control.classList.contains("open")) {
@@ -31141,6 +31464,22 @@ window.renderRouteToolControl = function() {
 
     refreshPanelState();
 };
+
+(function installInitialRouteToolControl() {
+    const run = function() {
+        if (typeof window.renderRouteToolControl === "function") {
+            window.renderRouteToolControl();
+        }
+    };
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", function() {
+            setTimeout(run, 0);
+        });
+    } else {
+        setTimeout(run, 0);
+    }
+})();
 
 window.refreshGpxManagerIfOpen = function() {
     const modal =
@@ -39909,3 +40248,1398 @@ function buildWindyUrl(lat, lon, overlay = "rain", zoom = 14) {
 
 
 // ChatGPT v28: closing floating waypoint panel with X keeps current viewport; shortcut restore behavior remains unchanged.
+
+/* ============================================================
+ * YC Hiking Offline Map Feature
+ * - PWA app-shell cache is handled by service-worker.js
+ * - Tile cache is stored in Cache Storage and reused offline
+ * ============================================================ */
+(function installYCHikingOfflineMapFeature() {
+    if (window.ycOfflineMapFeatureInstalled) return;
+    window.ycOfflineMapFeatureInstalled = true;
+
+    const OFFLINE_TILE_CACHE = "ychiking-offline-tiles-v1";
+    const OFFLINE_AREA_INDEX_KEY = "ychiking-offline-area-index-v1";
+
+
+    let ycOfflineCurrentDownload = null;
+    let ycOfflineLastDownloadOptions = null;
+
+    function ycOfflineIsOnline() {
+        return !(typeof navigator !== "undefined" && navigator.onLine === false);
+    }
+
+    function ycOfflineSetDownloadControlVisible(id, visible) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = visible ? "" : "none";
+    }
+
+    function ycOfflineShowCancelButton(visible) {
+        ycOfflineSetDownloadControlVisible("ycOfflineCancelBtn", visible);
+    }
+
+    function ycOfflineShowRetryButton(visible) {
+        ycOfflineSetDownloadControlVisible("ycOfflineRetryBtn", visible);
+    }
+
+    function ycOfflineAbortCurrentDownload(reason) {
+        const state = ycOfflineCurrentDownload;
+        if (!state || state.done) return;
+
+        state.cancelled = true;
+        state.reason = reason || "cancelled";
+
+        if (state.controllers && typeof state.controllers.forEach === "function") {
+            state.controllers.forEach(function(controller) {
+                try { controller.abort(); } catch (err) {}
+            });
+        }
+    }
+
+    window.addEventListener("offline", function() {
+        ycOfflineAbortCurrentDownload("offline");
+        ycOfflineShowCancelButton(false);
+        ycOfflineShowRetryButton(true);
+        ycOfflineSetStatus("下載中斷：無法連線。可按「重新下載」繼續下載尚未完成的 tiles。");
+    });
+
+    const OFFLINE_TILE_PROVIDERS = {
+        osm: {
+            label: "標準地圖 OSM",
+            url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            subdomains: ["a", "b", "c"],
+            minZoom: 0,
+            maxZoom: 19
+        },
+        opentopo: {
+            label: "OpenTopoMap",
+            url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+            subdomains: ["a", "b", "c"],
+            minZoom: 0,
+            maxZoom: 17
+        },
+        rudy: {
+            label: "魯地圖",
+            url: "https://tile.happyman.idv.tw/map/moi_osm/{z}/{x}/{y}.png",
+            subdomains: [""],
+            minZoom: 0,
+            maxZoom: 18
+        },
+        happyman: {
+            label: "Happyman",
+            url: "https://tile.happyman.idv.tw/map/happyman/{z}/{x}/{y}.png",
+            subdomains: [""],
+            minZoom: 0,
+            maxZoom: 18
+        },
+        emap: {
+            label: "內政部電子地圖",
+            url: "https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}",
+            subdomains: [""],
+            minZoom: 7,
+            maxZoom: 19
+        },
+        photo2: {
+            label: "正射影像圖",
+            url: "https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}",
+            subdomains: [""],
+            minZoom: 7,
+            maxZoom: 19
+        },
+        topo3rd: {
+            label: "經建三版",
+            url: "https://gis.sinica.edu.tw/tileserver/file-exists.php?img=TM25K_2001-jpg-{z}-{x}-{y}",
+            subdomains: [""],
+            minZoom: 7,
+            maxZoom: 16
+        }
+    };
+
+    function ycOfflineEnsureStyle() {
+        if (document.getElementById("ycOfflineMapStyle")) return;
+
+        const style = document.createElement("style");
+        style.id = "ycOfflineMapStyle";
+        style.textContent = `
+            .yc-offline-map-control {
+                position: absolute !important;
+                left: 12px !important;
+                top: 268px !important;
+                margin: 0 !important;
+                border: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                z-index: 10006 !important;
+                pointer-events: auto !important;
+            }
+            .yc-offline-map-control a,
+            .yc-offline-map-control a:first-child,
+            .yc-offline-map-control a:last-child {
+                width: 30px !important;
+                height: 30px !important;
+                line-height: 30px !important;
+                text-align: center !important;
+                font-size: 18px !important;
+                font-weight: 700 !important;
+                text-decoration: none !important;
+                color: #444 !important;
+                background: #fff !important;
+                border-radius: 8px !important;
+                border: 1px solid rgba(0,0,0,0.15) !important;
+                box-shadow: 0 3px 10px rgba(0,0,0,0.22) !important;
+                box-sizing: border-box !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            .yc-offline-map-control a:hover {
+                filter: brightness(0.96);
+            }
+            .yc-offline-map-control .yc-offline-cloud-icon {
+                display: block;
+                width: 22px;
+                height: 22px;
+                flex: 0 0 auto;
+            }
+            .iphone-fullscreen .yc-offline-map-control {
+                top: 268px !important;
+                z-index: 20006 !important;
+            }
+            @media (max-width: 768px) {
+                .yc-offline-map-control {
+                    top: 268px !important;
+                }
+            }
+            #ycOfflineMapPanel {
+                position: fixed;
+                z-index: 60000;
+                right: 14px;
+                top: 78px;
+                width: min(420px, calc(100vw - 28px));
+                max-height: min(78vh, 620px);
+                background: #fff;
+                border: 1px solid #ddd;
+                border-radius: 14px;
+                box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28);
+                display: none;
+                overflow: hidden;
+                font-size: 14px;
+            }
+            #ycOfflineMapPanel .yc-offline-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                padding: 10px 12px;
+                background: #f6f8fa;
+                border-bottom: 1px solid #e5e5e5;
+                cursor: move;
+                user-select: none;
+                touch-action: none;
+            }
+            #ycOfflineMapPanel .yc-offline-title {
+                font-weight: 700;
+                color: #333;
+            }
+            #ycOfflineMapPanel .yc-offline-close {
+                border: 0;
+                background: #e9ecef;
+                color: #555;
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                cursor: pointer;
+                font-size: 18px;
+                line-height: 1;
+            }
+            #ycOfflineMapPanel .yc-offline-body {
+                padding: 12px;
+                overflow: auto;
+                max-height: calc(min(78vh, 620px) - 50px);
+            }
+            #ycOfflineMapPanel label {
+                display: block;
+                margin: 9px 0 4px;
+                color: #555;
+                font-size: 13px;
+            }
+            #ycOfflineMapPanel select,
+            #ycOfflineMapPanel input {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 7px 8px;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                font-size: 14px;
+                background: #fff;
+            }
+            #ycOfflineMapPanel .yc-offline-row {
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 8px;
+            }
+            #ycOfflineMapPanel .yc-offline-actions {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 8px;
+                margin-top: 12px;
+            }
+            #ycOfflineMapPanel .yc-offline-btn {
+                border: 0;
+                border-radius: 10px;
+                padding: 9px 10px;
+                font-weight: 700;
+                cursor: pointer;
+                color: #fff;
+                background: #1a73e8;
+            }
+            #ycOfflineMapPanel .yc-offline-btn.secondary {
+                background: #5f6368;
+            }
+            #ycOfflineMapPanel .yc-offline-btn.danger {
+                background: #d93025;
+            }
+            #ycOfflineMapPanel .yc-offline-btn:disabled {
+                opacity: 0.55;
+                cursor: not-allowed;
+            }
+            #ycOfflineMapPanel .yc-offline-status {
+                margin-top: 10px;
+                padding: 8px;
+                min-height: 20px;
+                background: #f8f9fa;
+                border: 1px dashed #ccc;
+                border-radius: 8px;
+                line-height: 1.5;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+            #ycOfflineMapPanel .yc-offline-progress {
+                width: 100%;
+                height: 8px;
+                border-radius: 999px;
+                background: #e5e5e5;
+                margin-top: 8px;
+                overflow: hidden;
+            }
+            #ycOfflineMapPanel .yc-offline-progress > div {
+                width: 0%;
+                height: 100%;
+                background: #1a73e8;
+                transition: width .15s linear;
+            }
+
+            #ycOfflineMapPanel .yc-offline-saved-title {
+                margin-top: 10px;
+                font-weight: 800;
+                font-size: 13px;
+                color: #333;
+            }
+            #ycOfflineMapPanel .yc-offline-saved-list {
+                margin-top: 6px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                max-height: 180px;
+                overflow-y: auto;
+                border: 1px solid #eee;
+                border-radius: 8px;
+                padding: 6px;
+                background: #fafafa;
+            }
+            #ycOfflineMapPanel .yc-offline-saved-empty {
+                color: #888;
+                font-size: 12px;
+                padding: 6px 2px;
+            }
+            #ycOfflineMapPanel .yc-offline-saved-item {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                grid-template-areas:
+                    "main main"
+                    "meta actions";
+                gap: 4px 8px;
+                align-items: end;
+                background: white;
+                border: 1px solid #e6e6e6;
+                border-radius: 8px;
+                padding: 7px;
+                font-size: 12px;
+            }
+            #ycOfflineMapPanel .yc-offline-saved-main {
+                grid-area: main;
+                min-width: 0;
+            }
+            #ycOfflineMapPanel .yc-offline-saved-name {
+                font-weight: 800;
+                color: #222;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            #ycOfflineMapPanel .yc-offline-saved-meta {
+                grid-area: meta;
+                color: #777;
+                margin-top: 2px;
+                font-size: 11px;
+                line-height: 1.35;
+                min-width: 0;
+            }
+            #ycOfflineMapPanel .yc-offline-saved-actions {
+                grid-area: actions;
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+                gap: 6px;
+                white-space: nowrap;
+            }
+            #ycOfflineMapPanel .yc-offline-small-btn {
+                border: 1px solid #1a73e8;
+                background: white;
+                color: #1a73e8;
+                border-radius: 999px;
+                padding: 4px 8px;
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+                white-space: nowrap;
+            }
+            #ycOfflineMapPanel .yc-offline-small-btn.danger {
+                border-color: #d93025;
+                color: #d93025;
+            }
+
+            #ycOfflineMapPanel .yc-offline-note {
+                color: #666;
+                font-size: 12px;
+                line-height: 1.5;
+                margin-top: 10px;
+            }
+            @media (max-width: 768px) {
+                #ycOfflineMapPanel {
+                    left: 10px;
+                    right: 10px;
+                    top: auto;
+                    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+                    width: auto;
+                    max-height: 72vh;
+                    border-radius: 16px;
+                }
+                #ycOfflineMapPanel .yc-offline-header {
+                    cursor: default;
+                }
+                #ycOfflineMapPanel .yc-offline-body {
+                    max-height: calc(72vh - 50px);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function ycOfflineGetTileXY(lat, lon, zoom) {
+        const latRad = lat * Math.PI / 180;
+        const n = Math.pow(2, zoom);
+        const x = Math.floor((lon + 180) / 360 * n);
+        const y = Math.floor(
+            (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n
+        );
+        return {
+            x: Math.max(0, Math.min(n - 1, x)),
+            y: Math.max(0, Math.min(n - 1, y))
+        };
+    }
+
+    function ycOfflineClampLat(lat) {
+        return Math.max(-85.05112878, Math.min(85.05112878, lat));
+    }
+
+    function ycOfflineExpandBounds(bounds, km) {
+        if (!bounds || !Number.isFinite(Number(km)) || Number(km) <= 0) {
+            return bounds;
+        }
+
+        const center = bounds.getCenter();
+        const latPad = Number(km) / 111;
+        const cosLat = Math.max(0.2, Math.cos(center.lat * Math.PI / 180));
+        const lonPad = Number(km) / (111 * cosLat);
+
+        return L.latLngBounds(
+            L.latLng(
+                ycOfflineClampLat(bounds.getSouth() - latPad),
+                Math.max(-180, bounds.getWest() - lonPad)
+            ),
+            L.latLng(
+                ycOfflineClampLat(bounds.getNorth() + latPad),
+                Math.min(180, bounds.getEast() + lonPad)
+            )
+        );
+    }
+
+    function ycOfflineGetCurrentTrackBounds(bufferKm) {
+        let bounds = null;
+
+        try {
+            const pts =
+                Array.isArray(trackPoints) && trackPoints.length > 1
+                    ? trackPoints
+                    : (
+                        window.trackPoints &&
+                        Array.isArray(window.trackPoints) &&
+                        window.trackPoints.length > 1
+                            ? window.trackPoints
+                            : []
+                    );
+
+            if (pts.length > 1) {
+                const latlngs = pts
+                    .map(function(p) {
+                        return L.latLng(Number(p.lat), Number(p.lon));
+                    })
+                    .filter(function(ll) {
+                        return Number.isFinite(ll.lat) && Number.isFinite(ll.lng);
+                    });
+
+                if (latlngs.length > 1) {
+                    bounds = L.latLngBounds(latlngs);
+                }
+            }
+        } catch (err) {}
+
+        if (!bounds && typeof map !== "undefined" && map && typeof map.getBounds === "function") {
+            bounds = map.getBounds();
+        }
+
+        if (!bounds) return null;
+        return ycOfflineExpandBounds(bounds, Number(bufferKm) || 0);
+    }
+
+    function ycOfflineTileUrl(providerKey, z, x, y) {
+        const provider = OFFLINE_TILE_PROVIDERS[providerKey] || OFFLINE_TILE_PROVIDERS.osm;
+        const subs = provider.subdomains || [""];
+        const s = subs.length > 0 ? subs[Math.abs(x + y + z) % subs.length] : "";
+
+        return provider.url
+            .replace("{s}", s)
+            .replace("{z}", z)
+            .replace("{x}", x)
+            .replace("{y}", y);
+    }
+
+    function ycOfflineCountTiles(bounds, minZoom, maxZoom) {
+        let total = 0;
+
+        for (let z = minZoom; z <= maxZoom; z++) {
+            const nw = ycOfflineGetTileXY(bounds.getNorth(), bounds.getWest(), z);
+            const se = ycOfflineGetTileXY(bounds.getSouth(), bounds.getEast(), z);
+            const minX = Math.min(nw.x, se.x);
+            const maxX = Math.max(nw.x, se.x);
+            const minY = Math.min(nw.y, se.y);
+            const maxY = Math.max(nw.y, se.y);
+            total += (maxX - minX + 1) * (maxY - minY + 1);
+        }
+
+        return total;
+    }
+
+    async function ycOfflineCacheTile(url, downloadState) {
+        if (downloadState && downloadState.cancelled) {
+            throw new Error("__YC_OFFLINE_CANCELLED__");
+        }
+
+        if (!ycOfflineIsOnline()) {
+            if (downloadState) {
+                downloadState.cancelled = true;
+                downloadState.reason = "offline";
+            }
+            throw new Error("__YC_OFFLINE_OFFLINE__");
+        }
+
+        const cache = await caches.open(OFFLINE_TILE_CACHE);
+        const cached = await cache.match(url, { ignoreVary: true });
+
+        if (cached) {
+            return "cached";
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(function() {
+            try { controller.abort(); } catch (err) {}
+        }, 15000);
+
+        if (downloadState && downloadState.controllers) {
+            downloadState.controllers.add(controller);
+        }
+
+        try {
+            const response = await fetch(url, {
+                mode: "no-cors",
+                cache: "reload",
+                signal: controller.signal
+            });
+
+            if (downloadState && downloadState.cancelled) {
+                throw new Error("__YC_OFFLINE_CANCELLED__");
+            }
+
+            await cache.put(url, response.clone());
+            return "downloaded";
+        } catch (err) {
+            if (downloadState && downloadState.cancelled) {
+                throw new Error("__YC_OFFLINE_CANCELLED__");
+            }
+
+            if (!ycOfflineIsOnline()) {
+                if (downloadState) {
+                    downloadState.cancelled = true;
+                    downloadState.reason = "offline";
+                }
+                throw new Error("__YC_OFFLINE_OFFLINE__");
+            }
+
+            if (err && err.name === "AbortError") {
+                throw new Error("tile 下載逾時");
+            }
+
+            throw err;
+        } finally {
+            clearTimeout(timeoutId);
+            if (downloadState && downloadState.controllers) {
+                downloadState.controllers.delete(controller);
+            }
+        }
+    }
+
+    async function ycOfflineRunLimited(tasks, limit, onProgress, downloadState) {
+        let index = 0;
+        let done = 0;
+        let failed = 0;
+        let cached = 0;
+        let downloaded = 0;
+
+        async function worker() {
+            while (index < tasks.length) {
+                if (downloadState && downloadState.cancelled) break;
+
+                const current = index++;
+                try {
+                    const result = await tasks[current]();
+                    if (result === "cached") cached++;
+                    else downloaded++;
+                } catch (err) {
+                    const msg = err && err.message ? String(err.message) : String(err || "");
+
+                    if (msg === "__YC_OFFLINE_CANCELLED__") {
+                        if (downloadState) downloadState.reason = downloadState.reason || "cancelled";
+                        break;
+                    }
+
+                    if (msg === "__YC_OFFLINE_OFFLINE__") {
+                        if (downloadState) {
+                            downloadState.cancelled = true;
+                            downloadState.reason = "offline";
+                        }
+                        break;
+                    }
+
+                    failed++;
+                }
+
+                done++;
+                if (typeof onProgress === "function") {
+                    onProgress({ done, total: tasks.length, failed, cached, downloaded });
+                }
+            }
+        }
+
+        const workers = [];
+        const workerCount = Math.max(1, Math.min(limit || 4, tasks.length));
+        for (let i = 0; i < workerCount; i++) {
+            workers.push(worker());
+        }
+
+        await Promise.all(workers);
+        return {
+            done,
+            failed,
+            cached,
+            downloaded,
+            cancelled: !!(downloadState && downloadState.cancelled),
+            reason: downloadState && downloadState.reason ? downloadState.reason : ""
+        };
+    }
+
+    function ycOfflineFormatBytes(bytes) {
+        if (!Number.isFinite(Number(bytes))) return "未知";
+        const units = ["B", "KB", "MB", "GB"];
+        let value = Number(bytes);
+        let unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024;
+            unit++;
+        }
+        return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    }
+
+    function ycOfflineSetStatus(text) {
+        const status = document.getElementById("ycOfflineStatus");
+        if (status) status.textContent = text;
+    }
+
+    function ycOfflineSetProgress(percent) {
+        const bar = document.getElementById("ycOfflineProgressBar");
+        if (bar) {
+            bar.style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
+        }
+    }
+
+    function ycOfflineSetBusy(isBusy) {
+        document.querySelectorAll("#ycOfflineMapPanel button, #ycOfflineMapPanel select, #ycOfflineMapPanel input")
+            .forEach(function(el) {
+                if (el.classList.contains("yc-offline-close")) return;
+                if (el.id === "ycOfflineCancelBtn") {
+                    el.disabled = !isBusy;
+                    return;
+                }
+                if (el.id === "ycOfflineRetryBtn") {
+                    el.disabled = isBusy;
+                    return;
+                }
+                el.disabled = isBusy;
+            });
+    }
+
+
+    function ycOfflineGetSavedAreas() {
+        try {
+            const raw = localStorage.getItem(OFFLINE_AREA_INDEX_KEY);
+            const data = raw ? JSON.parse(raw) : [];
+            return Array.isArray(data) ? data : [];
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function ycOfflineSaveAreas(areas) {
+        try {
+            localStorage.setItem(
+                OFFLINE_AREA_INDEX_KEY,
+                JSON.stringify(Array.isArray(areas) ? areas : [])
+            );
+        } catch (err) {}
+    }
+
+    function ycOfflineBoundsToArray(bounds) {
+        if (!bounds || typeof bounds.getSouth !== "function") return null;
+        return [
+            [bounds.getSouth(), bounds.getWest()],
+            [bounds.getNorth(), bounds.getEast()]
+        ];
+    }
+
+    function ycOfflineAreaName(provider, useRouteBounds) {
+        const now = new Date();
+        const pad = function(n) { return String(n).padStart(2, "0"); };
+        const stamp =
+            now.getFullYear() +
+            pad(now.getMonth() + 1) +
+            pad(now.getDate()) +
+            "_" +
+            pad(now.getHours()) +
+            pad(now.getMinutes());
+
+        let routeName = "";
+
+        try {
+            const fileIdx =
+                typeof window.currentMultiIndex === "number"
+                    ? window.currentMultiIndex
+                    : 0;
+            const routeIdx =
+                typeof window.currentActiveIndex === "number"
+                    ? window.currentActiveIndex
+                    : 0;
+            const file =
+                window.multiGpxStack &&
+                window.multiGpxStack[fileIdx];
+            const route =
+                file &&
+                Array.isArray(file.routes) &&
+                file.routes[routeIdx]
+                    ? file.routes[routeIdx]
+                    : file;
+
+            routeName =
+                route &&
+                (
+                    route.routeDisplayName ||
+                    route.displayName ||
+                    route.name ||
+                    file.displayName ||
+                    file.name
+                )
+                    ? (
+                        route.routeDisplayName ||
+                        route.displayName ||
+                        route.name ||
+                        file.displayName ||
+                        file.name
+                    )
+                    : "";
+        } catch (err) {}
+
+        if (!routeName) routeName = useRouteBounds ? "目前路線" : "目前畫面";
+        return `${routeName}_${provider.label || "離線地圖"}_${stamp}`;
+    }
+
+    function ycOfflineSaveAreaRecord(record) {
+        if (!record || !record.id) return;
+
+        let areas = ycOfflineGetSavedAreas()
+            .filter(function(item) {
+                return item && item.id !== record.id;
+            });
+
+        areas.unshift(record);
+        if (areas.length > 80) areas = areas.slice(0, 80);
+
+        ycOfflineSaveAreas(areas);
+        ycOfflineRenderSavedAreas();
+    }
+
+    function ycOfflineDeleteArea(id) {
+        if (!id) return;
+
+        const ok = confirm("確定要刪除此離線範圍紀錄嗎？\n\n注意：這只會刪除清單紀錄，不會刪除已快取的 tiles。");
+        if (!ok) return;
+
+        const areas = ycOfflineGetSavedAreas()
+            .filter(function(item) {
+                return item && item.id !== id;
+            });
+
+        ycOfflineSaveAreas(areas);
+        ycOfflineRenderSavedAreas();
+    }
+
+    function ycOfflineGoToArea(id) {
+        const area = ycOfflineGetSavedAreas()
+            .find(function(item) {
+                return item && item.id === id;
+            });
+
+        if (!area || !area.bounds) {
+            ycOfflineSetStatus("找不到此離線範圍。");
+            return;
+        }
+
+        try {
+            const bounds = L.latLngBounds(area.bounds);
+
+            if (map && typeof map.fitBounds === "function") {
+                map.fitBounds(bounds, {
+                    padding: [20, 20],
+                    maxZoom: area.maxZoom || undefined
+                });
+            }
+
+            ycOfflineSetStatus(
+                `已前往：${area.name}\n` +
+                `Zoom ${area.minZoom} - ${area.maxZoom}｜${(area.tileCount || 0).toLocaleString()} 張 tiles`
+            );
+        } catch (err) {
+            ycOfflineSetStatus("切換到離線範圍失敗。");
+        }
+    }
+
+
+    function ycOfflineRenderSavedAreas() {
+        const list = document.getElementById("ycOfflineSavedAreasList");
+        if (!list) return;
+
+        const areas = ycOfflineGetSavedAreas();
+
+        if (!areas.length) {
+            list.innerHTML =
+                '<div class="yc-offline-saved-empty">尚未儲存離線範圍。下載完成後會出現在這裡。</div>';
+            return;
+        }
+
+        list.innerHTML = areas.map(function(area) {
+            const name = area.name || "未命名離線範圍";
+            const provider = area.providerLabel || area.providerKey || "";
+            const created = area.createdAt ? new Date(area.createdAt).toLocaleString() : "";
+            const tileCount = Number(area.tileCount || 0).toLocaleString();
+
+            return `
+                <div class="yc-offline-saved-item" data-id="${area.id}">
+                    <div class="yc-offline-saved-main">
+                        <div class="yc-offline-saved-name" title="${String(name).replace(/"/g, "&quot;")}">${name}</div>
+                    </div>
+                    <div class="yc-offline-saved-meta">${provider}｜Z ${area.minZoom}-${area.maxZoom}｜${tileCount} 張<br>${created}</div>
+                    <div class="yc-offline-saved-actions">
+                        <button type="button" class="yc-offline-small-btn" data-action="goto" data-id="${area.id}">前往</button>
+                        <button type="button" class="yc-offline-small-btn danger" data-action="delete" data-id="${area.id}">刪除</button>
+                    </div>
+                </div>
+            `;
+        }).join("");
+// "
+        list.querySelectorAll("button[data-action]").forEach(function(btn) {
+            btn.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const action = btn.getAttribute("data-action");
+                const id = btn.getAttribute("data-id");
+
+                if (action === "goto") {
+                    ycOfflineGoToArea(id);
+                } else if (action === "delete") {
+                    ycOfflineDeleteArea(id);
+                }
+            };
+        });
+    }
+
+
+    function ycOfflineOptionsToBounds(options) {
+        if (!options || !options.boundsArray || typeof L === "undefined") return null;
+        try {
+            return L.latLngBounds(options.boundsArray);
+        } catch (err) {
+            return null;
+        }
+    }
+
+    async function ycOfflineDownload(useRouteBounds, retryOptions) {
+        if (ycOfflineCurrentDownload && !ycOfflineCurrentDownload.done) {
+            ycOfflineSetStatus("目前已有離線地圖正在下載，可先取消或等待完成。");
+            return;
+        }
+
+        if (!ycOfflineIsOnline()) {
+            ycOfflineSetStatus("無法下載，請確認連線狀態。");
+            ycOfflineShowRetryButton(!!ycOfflineLastDownloadOptions);
+            return;
+        }
+
+        const isRetry = !!retryOptions;
+        const providerKey = isRetry
+            ? retryOptions.providerKey
+            : (document.getElementById("ycOfflineProvider").value || "osm");
+
+        const provider = OFFLINE_TILE_PROVIDERS[providerKey] || OFFLINE_TILE_PROVIDERS.osm;
+
+        let minZoom = isRetry
+            ? retryOptions.minZoom
+            : parseInt(document.getElementById("ycOfflineMinZoom").value || "12", 10);
+
+        let maxZoom = isRetry
+            ? retryOptions.maxZoom
+            : parseInt(document.getElementById("ycOfflineMaxZoom").value || "16", 10);
+
+        const bufferKm = isRetry
+            ? (retryOptions.bufferKm || 0)
+            : (useRouteBounds ? parseFloat(document.getElementById("ycOfflineBufferKm").value || "2") : 0);
+
+        useRouteBounds = isRetry ? retryOptions.useRouteBounds === true : useRouteBounds === true;
+
+        minZoom = Math.max(provider.minZoom, Math.min(provider.maxZoom, minZoom));
+        maxZoom = Math.max(provider.minZoom, Math.min(provider.maxZoom, maxZoom));
+
+        if (minZoom > maxZoom) {
+            const tmp = minZoom;
+            minZoom = maxZoom;
+            maxZoom = tmp;
+        }
+
+        const bounds = isRetry
+            ? ycOfflineOptionsToBounds(retryOptions)
+            : (
+                useRouteBounds
+                    ? ycOfflineGetCurrentTrackBounds(bufferKm)
+                    : (map && map.getBounds ? map.getBounds() : null)
+            );
+
+        if (!bounds) {
+            ycOfflineSetStatus("目前無法取得地圖範圍。");
+            return;
+        }
+
+        const total = ycOfflineCountTiles(bounds, minZoom, maxZoom);
+
+        if (total <= 0) {
+            ycOfflineSetStatus("目前範圍沒有需要下載的地圖。");
+            return;
+        }
+
+        const boundsArray = ycOfflineBoundsToArray(bounds);
+
+        ycOfflineLastDownloadOptions = {
+            useRouteBounds: useRouteBounds,
+            providerKey: providerKey,
+            minZoom: minZoom,
+            maxZoom: maxZoom,
+            bufferKm: bufferKm,
+            boundsArray: boundsArray
+        };
+
+        if (!isRetry && total > 5000) {
+            const ok = confirm(
+                `預估需要下載 ${total.toLocaleString()} 張 tiles，可能很久也可能占用很多容量。\n\n建議縮小範圍或降低最大 zoom。\n\n仍要繼續嗎？`
+            );
+            if (!ok) return;
+        }
+
+        const downloadState = {
+            cancelled: false,
+            reason: "",
+            done: false,
+            controllers: new Set()
+        };
+
+        ycOfflineCurrentDownload = downloadState;
+
+        ycOfflineSetBusy(true);
+        ycOfflineShowCancelButton(true);
+        ycOfflineShowRetryButton(false);
+        ycOfflineSetProgress(0);
+        ycOfflineSetStatus(
+            `${isRetry ? "重新下載" : "準備下載"} ${provider.label}，共約 ${total.toLocaleString()} 張 tiles...\n` +
+            `若中途中斷，可按「重新下載」繼續；已下載的 tiles 會自動略過。`
+        );
+
+        const tasks = [];
+
+        for (let z = minZoom; z <= maxZoom; z++) {
+            const nw = ycOfflineGetTileXY(bounds.getNorth(), bounds.getWest(), z);
+            const se = ycOfflineGetTileXY(bounds.getSouth(), bounds.getEast(), z);
+            const minX = Math.min(nw.x, se.x);
+            const maxX = Math.max(nw.x, se.x);
+            const minY = Math.min(nw.y, se.y);
+            const maxY = Math.max(nw.y, se.y);
+
+            for (let x = minX; x <= maxX; x++) {
+                for (let y = minY; y <= maxY; y++) {
+                    const url = ycOfflineTileUrl(providerKey, z, x, y);
+                    tasks.push(function() {
+                        return ycOfflineCacheTile(url, downloadState);
+                    });
+                }
+            }
+        }
+
+        try {
+            const result = await ycOfflineRunLimited(tasks, 6, function(p) {
+                ycOfflineSetProgress((p.done / p.total) * 100);
+                ycOfflineSetStatus(
+                    `下載中：${p.done.toLocaleString()} / ${p.total.toLocaleString()}\n` +
+                    `新增：${p.downloaded.toLocaleString()}，已存在：${p.cached.toLocaleString()}，失敗：${p.failed.toLocaleString()}\n` +
+                    `需要中止可按「取消下載」。`
+                );
+            }, downloadState);
+
+            if (result.cancelled) {
+                const offline = result.reason === "offline";
+                ycOfflineShowRetryButton(true);
+                ycOfflineSetStatus(
+                    offline
+                        ? "下載中斷：無法連線。可按「重新下載」繼續下載尚未完成的 tiles。"
+                        : "已取消下載。已經完成的 tiles 會保留，可按「重新下載」繼續補下載。"
+                );
+                return;
+            }
+
+            ycOfflineSetProgress(100);
+            const areaRecord = {
+                id: "offline_area_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+                name: ycOfflineAreaName(provider, useRouteBounds),
+                providerKey: providerKey,
+                providerLabel: provider.label,
+                minZoom: minZoom,
+                maxZoom: maxZoom,
+                bufferKm: bufferKm,
+                tileCount: total,
+                downloaded: result.downloaded,
+                cached: result.cached,
+                failed: result.failed,
+                bounds: boundsArray,
+                center: bounds && typeof bounds.getCenter === "function"
+                    ? [bounds.getCenter().lat, bounds.getCenter().lng]
+                    : null,
+                createdAt: new Date().toISOString()
+            };
+
+            ycOfflineSaveAreaRecord(areaRecord);
+
+            ycOfflineShowRetryButton(result.failed > 0);
+
+            ycOfflineSetStatus(
+                `完成，已儲存離線範圍：${areaRecord.name}\n` +
+                `新增：${result.downloaded.toLocaleString()} 張\n` +
+                `已存在：${result.cached.toLocaleString()} 張\n` +
+                `失敗：${result.failed.toLocaleString()} 張\n\n` +
+                (
+                    result.failed > 0
+                        ? "有部分 tiles 失敗，可按「重新下載」補下載；已存在的 tiles 會自動略過。"
+                        : "之後沒有網路時，可在「已下載範圍」按「前往」快速切換。"
+                )
+            );
+        } catch (err) {
+            console.error("離線地圖下載失敗：", err);
+            ycOfflineShowRetryButton(true);
+
+            const msg = err && err.message ? String(err.message) : String(err || "");
+            ycOfflineSetStatus(
+                (
+                    !ycOfflineIsOnline() ||
+                    msg.includes("Load failed") ||
+                    msg.includes("Failed to fetch") ||
+                    msg.includes("NetworkError")
+                )
+                    ? "下載中斷：無法連線。可按「重新下載」繼續下載尚未完成的 tiles。"
+                    : "下載失敗：" + msg + "\n可按「重新下載」再試一次，已下載的 tiles 會自動略過。"
+            );
+        } finally {
+            downloadState.done = true;
+            ycOfflineCurrentDownload = null;
+            ycOfflineShowCancelButton(false);
+            ycOfflineSetBusy(false);
+        }
+    }
+
+    async function ycOfflineEstimateTileCacheBytes(cache, keys) {
+        let bytes = 0;
+        let readable = 0;
+
+        for (const request of keys) {
+            try {
+                const response = await cache.match(request, { ignoreVary: true });
+                if (!response) continue;
+
+                const contentLength = response.headers && response.headers.get
+                    ? parseInt(response.headers.get("content-length") || "0", 10)
+                    : 0;
+
+                if (Number.isFinite(contentLength) && contentLength > 0) {
+                    bytes += contentLength;
+                    readable++;
+                    continue;
+                }
+
+                if (response.type !== "opaque" && typeof response.clone === "function") {
+                    const blob = await response.clone().blob();
+                    if (blob && Number.isFinite(blob.size)) {
+                        bytes += blob.size;
+                        readable++;
+                    }
+                }
+            } catch (err) {}
+        }
+
+        return {
+            bytes: bytes,
+            readable: readable
+        };
+    }
+
+    async function ycOfflineShowStorage() {
+        const tileCache = await caches.open(OFFLINE_TILE_CACHE);
+        const keys = await tileCache.keys();
+        let usageText = "";
+
+        if (navigator.storage && navigator.storage.estimate) {
+            const estimate = await navigator.storage.estimate();
+            usageText =
+                `此網站在瀏覽器目前使用：約 ${ycOfflineFormatBytes(estimate.usage)}\n` +
+                `可用配額：約 ${ycOfflineFormatBytes(estimate.quota)}\n`;
+        }
+
+        const tileEstimate = await ycOfflineEstimateTileCacheBytes(tileCache, keys);
+        const tileSizeText = tileEstimate.readable > 0
+            ? `\n可讀取的離線 tile 約：${ycOfflineFormatBytes(tileEstimate.bytes)}`
+            : "";
+
+        ycOfflineSetStatus(
+            `${usageText}離線地圖 tiles：約 ${keys.length.toLocaleString()} 張${tileSizeText}\n\n` +
+            `說明：「此網站在瀏覽器目前使用」是整個網站來源的儲存用量，包含離線地圖、App 快取、瀏覽器快取與之前下載過的資料，不一定全部都是這次下載的地圖。`
+        );
+    }
+
+    async function ycOfflineClearTiles() {
+        const ok = confirm("確定要清除已下載的離線地圖 tiles 嗎？");
+        if (!ok) return;
+
+        await caches.delete(OFFLINE_TILE_CACHE);
+        ycOfflineSaveAreas([]);
+        ycOfflineRenderSavedAreas();
+        ycOfflineSetProgress(0);
+        ycOfflineSetStatus("已清除離線地圖快取與已下載範圍清單。");
+    }
+
+    function ycOfflineBuildPanel() {
+        if (document.getElementById("ycOfflineMapPanel")) return;
+
+        const panel = document.createElement("div");
+        panel.id = "ycOfflineMapPanel";
+        panel.innerHTML = `
+            <div class="yc-offline-header" id="ycOfflineHeader">
+                <div class="yc-offline-title">離線地圖</div>
+                <button type="button" class="yc-offline-close" id="ycOfflineCloseBtn" title="關閉">×</button>
+            </div>
+            <div class="yc-offline-body">
+                <label for="ycOfflineProvider">地圖來源</label>
+                <select id="ycOfflineProvider"></select>
+
+                <div class="yc-offline-row">
+                    <div>
+                        <label for="ycOfflineMinZoom">最小 Zoom</label>
+                        <input id="ycOfflineMinZoom" type="number" min="0" max="19" value="12">
+                    </div>
+                    <div>
+                        <label for="ycOfflineMaxZoom">最大 Zoom</label>
+                        <input id="ycOfflineMaxZoom" type="number" min="0" max="19" value="16">
+                    </div>
+                    <div>
+                        <label for="ycOfflineBufferKm">路線外擴 km</label>
+                        <input id="ycOfflineBufferKm" type="number" min="0" max="20" step="0.5" value="2">
+                    </div>
+                </div>
+
+                <div class="yc-offline-actions">
+                    <button type="button" class="yc-offline-btn" id="ycOfflineDownloadRouteBtn">下載目前路線周圍地圖</button>
+                    <button type="button" class="yc-offline-btn secondary" id="ycOfflineDownloadViewBtn">下載目前畫面</button>
+                    <button type="button" class="yc-offline-btn secondary" id="ycOfflineStorageBtn">查看離線地圖容量</button>
+                    <button type="button" class="yc-offline-btn danger" id="ycOfflineCancelBtn" style="display:none;">取消下載</button>
+                    <button type="button" class="yc-offline-btn secondary" id="ycOfflineRetryBtn" style="display:none;">重新下載</button>
+                    <button type="button" class="yc-offline-btn danger" id="ycOfflineClearBtn">清除離線地圖</button>
+                </div>
+
+                <div class="yc-offline-progress"><div id="ycOfflineProgressBar"></div></div>
+                <div class="yc-offline-saved-title">已下載範圍</div>
+                <div class="yc-offline-saved-list" id="ycOfflineSavedAreasList">
+                    <div class="yc-offline-saved-empty">尚未儲存離線範圍。下載完成後會出現在這裡。</div>
+                </div>
+                <div class="yc-offline-status" id="ycOfflineStatus">先在線上下載地圖；沒有網路時，可在「已下載範圍」按「前往」快速切換。容量顯示是整個網站來源用量，不一定全是離線地圖。</div>
+                <div class="yc-offline-note">
+                    提醒：大量下載線上圖資可能受到各圖台使用規範限制。建議只下載登山路線周圍需要的範圍與 zoom。
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(panel);
+
+        const providerSelect = document.getElementById("ycOfflineProvider");
+        Object.keys(OFFLINE_TILE_PROVIDERS).forEach(function(key) {
+            const opt = document.createElement("option");
+            opt.value = key;
+            opt.textContent = OFFLINE_TILE_PROVIDERS[key].label;
+            providerSelect.appendChild(opt);
+        });
+
+        const closeBtn = document.getElementById("ycOfflineCloseBtn");
+        closeBtn.onclick = function(e) {
+            e.stopPropagation();
+            ycOfflineTogglePanel(false);
+        };
+
+        document.getElementById("ycOfflineDownloadRouteBtn").onclick = function() {
+            ycOfflineDownload(true);
+        };
+
+        document.getElementById("ycOfflineDownloadViewBtn").onclick = function() {
+            ycOfflineDownload(false);
+        };
+
+        document.getElementById("ycOfflineStorageBtn").onclick = function() {
+            ycOfflineShowStorage();
+        };
+
+        document.getElementById("ycOfflineCancelBtn").onclick = function() {
+            ycOfflineAbortCurrentDownload("cancelled");
+            ycOfflineSetStatus("正在取消下載...");
+        };
+
+        document.getElementById("ycOfflineRetryBtn").onclick = function() {
+            if (!ycOfflineLastDownloadOptions) {
+                ycOfflineSetStatus("沒有可重新下載的範圍。");
+                return;
+            }
+
+            ycOfflineDownload(ycOfflineLastDownloadOptions.useRouteBounds, ycOfflineLastDownloadOptions);
+        };
+
+        document.getElementById("ycOfflineClearBtn").onclick = function() {
+            ycOfflineClearTiles();
+        };
+
+        ycOfflineRenderSavedAreas();
+
+        L.DomEvent.disableClickPropagation(panel);
+        L.DomEvent.disableScrollPropagation(panel);
+
+        ycOfflineMakePanelDraggable(panel);
+    }
+
+    function ycOfflineMakePanelDraggable(panel) {
+        const header = document.getElementById("ycOfflineHeader");
+        if (!header || !panel) return;
+
+        let dragging = false;
+        let startX = 0;
+        let startY = 0;
+        let startLeft = 0;
+        let startTop = 0;
+
+        const start = function(clientX, clientY) {
+            if (window.innerWidth <= 768) return;
+            dragging = true;
+            const rect = panel.getBoundingClientRect();
+            startX = clientX;
+            startY = clientY;
+            startLeft = rect.left;
+            startTop = rect.top;
+            panel.style.left = `${startLeft}px`;
+            panel.style.top = `${startTop}px`;
+            panel.style.right = "auto";
+            document.body.style.userSelect = "none";
+        };
+
+        const move = function(clientX, clientY) {
+            if (!dragging) return;
+
+            const nextLeft = Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, startLeft + clientX - startX));
+            const nextTop = Math.max(8, Math.min(window.innerHeight - 80, startTop + clientY - startY));
+
+            panel.style.left = `${nextLeft}px`;
+            panel.style.top = `${nextTop}px`;
+        };
+
+        const end = function() {
+            dragging = false;
+            document.body.style.userSelect = "";
+        };
+
+        header.addEventListener("mousedown", function(e) {
+            if (e.target && e.target.closest && e.target.closest("button")) return;
+            start(e.clientX, e.clientY);
+            e.preventDefault();
+        });
+
+        document.addEventListener("mousemove", function(e) {
+            move(e.clientX, e.clientY);
+        });
+
+        document.addEventListener("mouseup", end);
+
+        header.addEventListener("touchstart", function(e) {
+            if (!e.touches || e.touches.length !== 1) return;
+            if (e.target && e.target.closest && e.target.closest("button")) return;
+            start(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        document.addEventListener("touchmove", function(e) {
+            if (!dragging || !e.touches || e.touches.length !== 1) return;
+            move(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        document.addEventListener("touchend", end);
+        document.addEventListener("touchcancel", end);
+    }
+
+    function ycOfflineTogglePanel(forceOpen) {
+        ycOfflineBuildPanel();
+
+        const panel = document.getElementById("ycOfflineMapPanel");
+        if (!panel) return;
+
+        const shouldOpen =
+            typeof forceOpen === "boolean"
+                ? forceOpen
+                : panel.style.display === "none" || !panel.style.display;
+
+        panel.style.display = shouldOpen ? "block" : "none";
+
+        if (shouldOpen) {
+            ycOfflineRenderSavedAreas();
+            ycOfflineShowStorage().catch(function() {});
+        }
+    }
+
+    function ycOfflineInstallLeafletControl() {
+        if (typeof map === "undefined" || !map || window.ycOfflineMapControlInstalled) return;
+        window.ycOfflineMapControlInstalled = true;
+
+        const mapEl =
+            map && typeof map.getContainer === "function"
+                ? map.getContainer()
+                : document.getElementById("map");
+
+        if (!mapEl) return;
+
+        let div = document.getElementById("ycOfflineMapControl");
+
+        if (!div) {
+            div = document.createElement("div");
+            div.id = "ycOfflineMapControl";
+            div.className = "yc-offline-map-control";
+
+            const a = document.createElement("a");
+            a.href = "#";
+            a.title = "離線地圖";
+            a.innerHTML = `
+                <svg class="yc-offline-cloud-icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                        d="M19.2 18.5H8.2C5.9 18.5 4 16.7 4 14.4C4 12.3 5.6 10.6 7.6 10.3C8.3 7.6 10.7 5.6 13.6 5.6C16.4 5.6 18.8 7.5 19.5 10.1C21.5 10.4 23 12.1 23 14.2C23 16.6 21.3 18.5 19.2 18.5Z"
+                        fill="#1a73e8"
+                        stroke="#0b3d91"
+                        stroke-width="1.2"
+                        stroke-linejoin="round"
+                    />
+                    <path
+                        d="M13.5 10.1V15.2"
+                        stroke="#ffffff"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                    />
+                    <path
+                        d="M10.9 12.9L13.5 15.5L16.1 12.9"
+                        fill="none"
+                        stroke="#ffffff"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    />
+                </svg>
+            `;
+            a.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                ycOfflineTogglePanel();
+            };
+
+            div.appendChild(a);
+            mapEl.appendChild(div);
+        }
+
+        if (typeof L !== "undefined" && L.DomEvent) {
+            L.DomEvent.disableClickPropagation(div);
+            L.DomEvent.disableScrollPropagation(div);
+        }
+    }
+
+    window.ycOfflineMap = {
+        open: function() { ycOfflineTogglePanel(true); },
+        close: function() { ycOfflineTogglePanel(false); },
+        clearTiles: ycOfflineClearTiles,
+        showStorage: ycOfflineShowStorage
+    };
+
+    ycOfflineEnsureStyle();
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", ycOfflineInstallLeafletControl);
+    } else {
+        setTimeout(ycOfflineInstallLeafletControl, 0);
+    }
+})();

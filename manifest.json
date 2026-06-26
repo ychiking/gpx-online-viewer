@@ -1,28 +1,25 @@
 {
-  "name": "YCHiking GPX 檢視器",
-  "short_name": "YCHiking",
-  "start_url": "/",
+  "name": "YCHiking GPX 路線檢視工具",
+  "short_name": "YCHiking GPX",
+  "description": "GPX 路線檢視、航點、海拔圖與離線地圖快取工具",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#f6f6f6",
+  "theme_color": "#1a73e8",
+  "orientation": "any",
   "icons": [
     {
       "src": "https://ychiking.github.io/gpx-online-viewer/webicon.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://ychiking.github.io/gpx-online-viewer/webicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
-  ],
-  "share_target": {
-    "action": "/receive-gpx",
-    "method": "POST",
-    "enctype": "multipart/form-data",
-    "params": {
-      "files": [
-        {
-          "name": "gpx_file",
-          "accept": [".gpx", "application/gpx+xml"]
-        }
-      ]
-    }
-  }
+  ]
 }

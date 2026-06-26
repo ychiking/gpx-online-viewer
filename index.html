@@ -8,13 +8,58 @@
   <link rel="icon" type="image/png" href="https://ychiking.github.io/gpx-online-viewer/webicon.png">
   <link rel="apple-touch-icon" href="https://ychiking.github.io/gpx-online-viewer/webicon.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <meta name="theme-color" content="#1a73e8">
+  <link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
   <script src="https://unpkg.com/leaflet-tilelayer-wmts/dist/leaflet-tilelayer-wmts.js"></script>
+
+
+  <style id="local-material-icons-font">
+    @font-face {
+      font-family: 'Material Icons';
+      font-style: normal;
+      font-weight: 400;
+      src:
+        url('./fonts/MaterialIcons-Regular.woff2') format('woff2'),
+        url('./fonts/MaterialIcons-Regular.woff') format('woff'),
+        url('./fonts/MaterialIcons-Regular.ttf') format('truetype'),
+        url('./fonts/MaterialIcons-Regular.eot');
+    }
+
+    .material-icons {
+      font-family: 'Material Icons' !important;
+      font-weight: normal;
+      font-style: normal;
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      display: inline-block;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-feature-settings: 'liga';
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: 'liga';
+      text-rendering: optimizeLegibility;
+    }
+  
+
+.leaflet-control-layers-toggle {
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2244%22%20height%3D%2244%22%20viewBox%3D%220%200%2044%2044%22%3E%0A%20%20%3Crect%20width%3D%2244%22%20height%3D%2244%22%20rx%3D%226%22%20fill%3D%22white%22/%3E%0A%20%20%3Cpath%20d%3D%22M22%208.5%208.5%2015.2%2022%2021.9l13.5-6.7L22%208.5z%22%20fill%3D%22%23f8f9fa%22%20stroke%3D%22%236f6f6f%22%20stroke-width%3D%221.6%22%20stroke-linejoin%3D%22round%22/%3E%0A%20%20%3Cpath%20d%3D%22M9.5%2021.5%2022%2027.8l12.5-6.3%22%20fill%3D%22none%22%20stroke%3D%22%236f6f6f%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%0A%20%20%3Cpath%20d%3D%22M9.5%2027%2022%2033.3%2034.5%2027%22%20fill%3D%22none%22%20stroke%3D%22%236f6f6f%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%0A%20%20%3Ccircle%20cx%3D%2222%22%20cy%3D%2215.2%22%20r%3D%222.1%22%20fill%3D%22%231a73e8%22/%3E%0A%3C/svg%3E") !important;
+    background-size: 30px 30px !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    width: 35px !important;
+    height: 35px !important;
+    border-radius: 4px !important;
+}
+
+  </style>
 
   <style>
 
@@ -1910,12 +1955,33 @@
 .weather-windy-text-link:hover {
     text-decoration: underline;
 }
+  
+/* ChatGPT v4: 預設路線工具灰色但可見 */
+.route-tool-main-btn.disabled,
+.route-tool-main-btn.disabled.active {
+    background: #f5f5f5 !important;
+    color: #aaa !important;
+    opacity: 0.65 !important;
+    filter: grayscale(1) !important;
+    cursor: not-allowed !important;
+}
+
+  
+
+/* ChatGPT v10: 不改原本 Material Icons，只限制字型沒載到時文字不要爆版 */
+.material-icons {
+    max-width: 1.35em;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
   </style>
 </head>
 
 <body>
   <div id="header">
-    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2606242</strong>
+    <strong style="font-size: 12px; color: #333;">YCHiking-GPX 路線檢視工具 v2606261</strong>
     <div class="upload-row">
       <input type="file" id="gpxInput" accept=".gpx" style="display: none;" />
       <input type="file" id="multiGpxInput" accept=".gpx" multiple style="display: none;" />
@@ -2232,6 +2298,38 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 	<script src="app.js"></script>
+<script>
+(function registerYCHikingServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  const externalAssets = [
+    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+    "https://cdn.jsdelivr.net/npm/chart.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js",
+    "https://unpkg.com/leaflet-tilelayer-wmts/dist/leaflet-tilelayer-wmts.js",
+    "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
+    "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"
+  ];
+
+  window.addEventListener("load", function() {
+    navigator.serviceWorker.register("service-worker.js").then(function(reg) {
+      return navigator.serviceWorker.ready.then(function(readyReg) {
+        const sw = readyReg.active || reg.active || reg.waiting || reg.installing;
+        if (sw) {
+          sw.postMessage({
+            type: "PRECACHE_URLS",
+            urls: externalAssets
+          });
+        }
+      });
+    }).catch(function(err) {
+      console.warn("Service Worker registration failed:", err);
+    });
+  });
+})();
+</script>
 </body>
 
 </html>
