@@ -1,5 +1,10 @@
 
 
+
+
+
+
+
 const map = L.map("map", { tap: true, doubleClickZoom: false}).setView([25.03, 121.56], 12);
 
 map.getContainer().style.touchAction = "none";
@@ -18997,7 +19002,12 @@ function renderMultiGpxButtons() {
 
     closeBtn.onclick = (e) => {
         if (e) {
-            L.DomEvent.stopPropagation(e);
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (typeof L !== "undefined" && L.DomEvent && typeof L.DomEvent.stop === "function") {
+                L.DomEvent.stop(e);
+            }
         }
 
         const liveStack =
@@ -19011,22 +19021,9 @@ function renderMultiGpxButtons() {
                 : 0;
 
         if (totalCount <= 0) {
-            return;
-        }
-
-        if (totalCount === 1) {
-            window.confirmIfChanged(
-                () => {
-                    if (typeof window.closeAllGpxFilesDirect === "function") {
-                        window.closeAllGpxFilesDirect();
-                    } else {
-                        console.warn("找不到 closeAllGpxFilesDirect");
-                        location.reload();
-                    }
-                },
-                "確定關閉檔案？"
-            );
-
+            if (typeof window.closeAllGpxFilesDirect === "function") {
+                window.closeAllGpxFilesDirect();
+            }
             return;
         }
 
@@ -19035,9 +19032,11 @@ function renderMultiGpxButtons() {
         } else {
             console.warn("找不到 showCloseFileChoiceModal");
 
-            alert(
-                "找不到 showCloseFileChoiceModal，請確認三按鈕關閉視窗 function 已經貼上。"
-            );
+            if (typeof window.closeAllGpxFilesDirect === "function") {
+                window.closeAllGpxFilesDirect();
+            } else {
+                location.reload();
+            }
         }
     };
 
@@ -28033,6 +28032,180 @@ function rebuildAndRefreshManagedTrack(fileIdx, routeIdx, shouldSwitchToFile = f
     }
 }
 
+
+window.ycFileHasAnyRouteData = function(file) {
+    if (!file) return false;
+
+    const routeHasData = function(route) {
+        if (!route) return false;
+        if (route.isCombined === true) return false;
+
+        return (
+            (Array.isArray(route.points) && route.points.length > 0) ||
+            (Array.isArray(route.segments) && route.segments.length > 0) ||
+            route.isDrawTrack === true ||
+            route.isHandDrawRoute === true ||
+            route.isMergedRoute === true
+        );
+    };
+
+    if (routeHasData(file)) return true;
+
+    if (Array.isArray(file.routes)) {
+        return file.routes.some(routeHasData);
+    }
+
+    return false;
+};
+
+window.ycClearNoRouteVisualState = function(file) {
+    [
+        "activeRouteHaloLayer",
+        "activeRouteLayer",
+        "splitRouteHitLayer",
+        "activeFocusCircle"
+    ].forEach(function(key) {
+        const layer = window[key];
+        if (layer && typeof map !== "undefined" && map && typeof map.hasLayer === "function" && map.hasLayer(layer)) {
+            map.removeLayer(layer);
+        }
+        window[key] = null;
+    });
+
+    if (Array.isArray(window.routePreviewLayers)) {
+        window.routePreviewLayers.forEach(function(layer) {
+            if (layer && typeof map !== "undefined" && map && typeof map.hasLayer === "function" && map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+        });
+        window.routePreviewLayers = [];
+    }
+
+    if (typeof polyline !== "undefined" && polyline && typeof polyline.setLatLngs === "function") {
+        polyline.setLatLngs([]);
+    }
+
+    if (typeof markers !== "undefined" && Array.isArray(markers)) {
+        markers.forEach(function(m) {
+            if (m && typeof map !== "undefined" && map && typeof map.hasLayer === "function" && map.hasLayer(m)) {
+                map.removeLayer(m);
+            }
+        });
+        markers = [];
+    }
+
+    if (typeof hoverMarker !== "undefined" && hoverMarker) {
+        if (typeof map !== "undefined" && map && typeof map.hasLayer === "function" && map.hasLayer(hoverMarker)) {
+            map.removeLayer(hoverMarker);
+        }
+        hoverMarker = null;
+    }
+
+    try {
+        if (typeof chart !== "undefined" && chart && typeof chart.destroy === "function") {
+            chart.destroy();
+        }
+    } catch (err) {}
+    try { chart = null; } catch (err) {}
+
+    try {
+        if (window.chart && typeof window.chart.destroy === "function") {
+            window.chart.destroy();
+        }
+    } catch (err) {}
+    window.chart = null;
+
+    const chartContainer = document.getElementById("chartContainer");
+    if (chartContainer) {
+        chartContainer.style.setProperty("display", "none", "important");
+        if (!document.getElementById("elevationChart")) {
+            chartContainer.innerHTML = '<canvas id="elevationChart"></canvas>';
+        }
+    }
+
+    const toggleBtn = document.getElementById("toggleChartBtn");
+    if (toggleBtn) {
+        toggleBtn.style.setProperty("display", "none", "important");
+        toggleBtn.textContent = "展開/收合高度表";
+    }
+
+    const tipLabel = document.getElementById("chartTipToggleLabel");
+    if (tipLabel) {
+        tipLabel.style.setProperty("display", "none", "important");
+    }
+
+    const progressBar = document.getElementById("gpxProgressBar");
+    if (progressBar) {
+        progressBar.value = 0;
+        progressBar.max = 0;
+    }
+
+    const progressBarInfo = document.getElementById("progressBarInfo");
+    if (progressBarInfo) {
+        progressBarInfo.textContent = "0.00 km";
+    }
+
+    const mapControlBar = document.getElementById("map-control-bar");
+    if (mapControlBar) {
+        mapControlBar.style.setProperty("display", "none", "important");
+    }
+
+    window.trackPoints = [];
+    try { trackPoints = []; } catch (err) {}
+
+    window.allTracks = [];
+    try { allTracks = []; } catch (err) {}
+
+    window.currentActiveIndex = 0;
+    window.currentToolTarget = {
+        type: "route",
+        fileIdx: typeof window.currentMultiIndex === "number" ? window.currentMultiIndex : 0,
+        routeIdx: 0,
+        wptIdx: null
+    };
+
+    const routeSelect = document.getElementById("routeSelect");
+    if (routeSelect) {
+        routeSelect.innerHTML = "";
+        routeSelect.value = "";
+        routeSelect.selectedIndex = -1;
+    }
+
+    const routeSelectContainer = document.getElementById("routeSelectContainer");
+    if (routeSelectContainer) {
+        routeSelectContainer.style.display = "none";
+    }
+
+    const routeSummary = document.getElementById("routeSummary");
+    if (routeSummary) {
+        routeSummary.innerHTML = file && Array.isArray(file.waypoints) && file.waypoints.length > 0
+            ? "目前只有航點，沒有路線資料"
+            : "目前沒有路線資料";
+    }
+
+    if (typeof window.refreshProgressBarButtonState === "function") {
+        window.refreshProgressBarButtonState();
+    }
+    if (typeof window.renderRouteToolControl === "function") {
+        window.renderRouteToolControl();
+    }
+    if (typeof window.updateLoadedGpxCountDisplay === "function") {
+        window.updateLoadedGpxCountDisplay();
+    }
+    const multiBar = document.getElementById("multiGpxBtnBar");
+    if (
+        multiBar &&
+        window.multiGpxStack &&
+        Array.isArray(window.multiGpxStack) &&
+        window.multiGpxStack.length > 0
+    ) {
+        multiBar.style.setProperty("display", "flex", "important");
+        multiBar.style.setProperty("pointer-events", "auto", "important");
+    }
+
+};
+
+
 window.deleteSubRoute = function(fileIdx, routeIdx, options = {}) {
 	  if (
 		    window.activeRouteHaloLayer &&
@@ -28409,6 +28582,10 @@ window.deleteSubRoute = function(fileIdx, routeIdx, options = {}) {
 		    }
 		
 		    window.trackPoints = [];
+
+            if (typeof window.ycClearNoRouteVisualState === "function") {
+                window.ycClearNoRouteVisualState(file);
+            }
 		};
 
     const cleanupFileAfterDelete = function(file) {
@@ -28688,6 +28865,10 @@ window.deleteSubRoute = function(fileIdx, routeIdx, options = {}) {
                     window.currentMultiIndex = fileIdx;
                     window.currentActiveIndex = 0;
 
+                    if (typeof window.ycClearNoRouteVisualState === "function") {
+                        window.ycClearNoRouteVisualState(currentFile);
+                    }
+
                     if (typeof renderMultiGpxButtons === "function") {
                         renderMultiGpxButtons();
                     }
@@ -28698,6 +28879,14 @@ window.deleteSubRoute = function(fileIdx, routeIdx, options = {}) {
 
                     if (typeof window.refreshWaypointMarkersOnly === "function") {
                         window.refreshWaypointMarkersOnly(0, null);
+                    }
+
+                    if (typeof window.renderRouteToolControl === "function") {
+                        window.renderRouteToolControl();
+                    }
+
+                    if (typeof window.refreshGpxManagerIfOpen === "function") {
+                        window.refreshGpxManagerIfOpen();
                     }
 
                     
@@ -35506,147 +35695,163 @@ window.updateLoadedGpxCountDisplay = function() {
 };
 
 window.closeAllGpxFilesDirect = function() {
-	  if (
-		    window.activeRouteHaloLayer &&
-		    typeof map !== "undefined" &&
-		    map.hasLayer(window.activeRouteHaloLayer)
-		) {
-		    map.removeLayer(window.activeRouteHaloLayer);
-		}
-		
-		window.activeRouteHaloLayer =
-		    null;
-		
-		if (
-		    window.activeRouteLayer &&
-		    typeof map !== "undefined" &&
-		    map.hasLayer(window.activeRouteLayer)
-		) {
-		    map.removeLayer(window.activeRouteLayer);
-		}
-		
-		window.activeRouteLayer =
-		    null;
-		
-		if (
-		    window.splitRouteHitLayer &&
-		    typeof map !== "undefined" &&
-		    map.hasLayer(window.splitRouteHitLayer)
-		) {
-		    map.removeLayer(window.splitRouteHitLayer);
-		}
-		
-		window.splitRouteHitLayer =
-		    null;
-		
-		if (Array.isArray(window.routePreviewLayers)) {
-		    window.routePreviewLayers.forEach(function(layer) {
-		        if (
-		            layer &&
-		            typeof map !== "undefined" &&
-		            map.hasLayer(layer)
-		        ) {
-		            map.removeLayer(layer);
-		        }
-		    });
-		
-		    window.routePreviewLayers =
-		        [];
-		}
-		
-		if (
-		    typeof polyline !== "undefined" &&
-		    polyline &&
-		    typeof polyline.setLatLngs === "function"
-		) {
-		    polyline.setLatLngs([]);
-		}
-		
-		if (
-		    typeof markers !== "undefined" &&
-		    Array.isArray(markers)
-		) {
-		    markers.forEach(function(m) {
-		        if (
-		            m &&
-		            typeof map !== "undefined" &&
-		            map.hasLayer(m)
-		        ) {
-		            map.removeLayer(m);
-		        }
-		    });
-		
-		    markers =
-		        [];
-		}
-		
-		if (
-		    typeof hoverMarker !== "undefined" &&
-		    hoverMarker &&
-		    typeof map !== "undefined" &&
-		    map.hasLayer(hoverMarker)
-		) {
-		    map.removeLayer(hoverMarker);
-		}
-		
-		if (typeof hoverMarker !== "undefined") {
-		    hoverMarker =
-		        null;
-		}
+    // ChatGPT v24:
+    // 保留原本「自訂確認視窗 → 確認 → location.reload()」的關閉方式。
+    // 但 reload 前的清理改成安全版，避免最後一條路線已刪除後，
+    // clearAllMultiGPX / map.removeLayer(null) 類似錯誤讓流程中斷，導致沒有真正 reload。
+    window.isClosingGpxFile = true;
     window.skipUnsavedCheck = true;
 
-    if (typeof clearAllMultiGPX === 'function') {
-        clearAllMultiGPX();
-    }
-
-    if (window.historyManager) {
-        historyManager.clear();
-    }
-
-    if (
-        typeof polyline !== 'undefined' &&
-        polyline
-    ) {
-        map.removeLayer(polyline);
-    }
-
-    if (
-        typeof isDrawingMode !== "undefined" &&
-        isDrawingMode
-    ) {
-        isDrawingMode =
-            false;
-
-        map.dragging.enable();
-        map.boxZoom.enable();
-    }
-
-    window.multiGpxStack =
-        [];
+    const safeRemoveLayer = function(layer) {
+        try {
+            if (
+                layer &&
+                typeof map !== "undefined" &&
+                map &&
+                typeof map.hasLayer === "function" &&
+                map.hasLayer(layer)
+            ) {
+                map.removeLayer(layer);
+            }
+        } catch (err) {}
+    };
 
     try {
-        multiGpxStack =
-            window.multiGpxStack;
-    } catch (err) {}
+        const stack =
+            window.multiGpxStack ||
+            multiGpxStack ||
+            [];
 
-    window.allTracks =
-        [];
+        if (Array.isArray(stack)) {
+            stack.forEach(function(item) {
+                if (!item) return;
 
-    try {
-        allTracks =
-            window.allTracks;
-    } catch (err) {}
+                safeRemoveLayer(item.layer);
+                safeRemoveLayer(item.layerGroup);
+                safeRemoveLayer(item.hitLayer);
 
-    window.trackPoints =
-        [];
+                if (Array.isArray(item.routes)) {
+                    item.routes.forEach(function(route) {
+                        if (!route) return;
 
-    try {
-        trackPoints =
-            window.trackPoints;
-    } catch (err) {}
-    	
-    location.reload();
+                        safeRemoveLayer(route.layer);
+                        safeRemoveLayer(route.hitLayer);
+                    });
+                }
+            });
+        }
+
+        safeRemoveLayer(window.activeRouteHaloLayer);
+        safeRemoveLayer(window.activeRouteLayer);
+        safeRemoveLayer(window.splitRouteHitLayer);
+        safeRemoveLayer(window.activeFocusCircle);
+
+        if (typeof hoverMarker !== "undefined") {
+            safeRemoveLayer(hoverMarker);
+            hoverMarker = null;
+        }
+
+        window.activeRouteHaloLayer = null;
+        window.activeRouteLayer = null;
+        window.splitRouteHitLayer = null;
+        window.activeFocusCircle = null;
+
+        if (Array.isArray(window.routePreviewLayers)) {
+            window.routePreviewLayers.forEach(safeRemoveLayer);
+            window.routePreviewLayers = [];
+        }
+
+        if (typeof polyline !== "undefined" && polyline) {
+            safeRemoveLayer(polyline);
+
+            if (typeof polyline.setLatLngs === "function") {
+                try {
+                    polyline.setLatLngs([]);
+                } catch (err) {}
+            }
+        }
+
+        if (typeof markers !== "undefined" && Array.isArray(markers)) {
+            markers.forEach(safeRemoveLayer);
+            markers = [];
+        }
+
+        if (typeof wptMarkers !== "undefined" && Array.isArray(wptMarkers)) {
+            wptMarkers.forEach(safeRemoveLayer);
+            wptMarkers = [];
+        }
+
+        if (typeof chart !== "undefined" && chart && typeof chart.destroy === "function") {
+            try {
+                chart.destroy();
+            } catch (err) {}
+        }
+
+        try {
+            chart = null;
+        } catch (err) {}
+
+        if (window.chart && typeof window.chart.destroy === "function") {
+            try {
+                window.chart.destroy();
+            } catch (err) {}
+        }
+
+        window.chart = null;
+
+        window.multiGpxStack = [];
+        window.allTracks = [];
+        window.trackPoints = [];
+        window.currentMultiIndex = 0;
+        window.currentActiveIndex = 0;
+        window.currentToolTarget = {
+            type: "route",
+            fileIdx: 0,
+            routeIdx: 0,
+            wptIdx: null
+        };
+
+        try {
+            multiGpxStack = window.multiGpxStack;
+        } catch (err) {}
+
+        try {
+            allTracks = window.allTracks;
+        } catch (err) {}
+
+        try {
+            trackPoints = window.trackPoints;
+        } catch (err) {}
+
+        if (
+            typeof historyManager !== "undefined" &&
+            historyManager
+        ) {
+            if (typeof historyManager.clear === "function") {
+                historyManager.clear();
+            } else {
+                historyManager.undoStack = [];
+                historyManager.redoStack = [];
+                if (typeof historyManager.updateUI === "function") {
+                    historyManager.updateUI();
+                }
+            }
+        }
+
+    } catch (err) {
+        console.warn("closeAllGpxFilesDirect cleanup skipped before reload:", err);
+    }
+
+    // 關鍵：仍然照原本方式 reload，讓畫面、航點列表、各種暫存 DOM 全部回到初始狀態。
+    setTimeout(function() {
+        try {
+            window.location.reload();
+        } catch (err) {
+            location.href = location.pathname + location.search;
+        }
+    }, 0);
 };
+
 
 window.closeCurrentGpxFileDirect = function() {
 	  window.isClosingGpxFile = true;
@@ -35660,6 +35865,7 @@ window.closeCurrentGpxFileDirect = function() {
         !Array.isArray(stack) ||
         stack.length === 0
     ) {
+        window.isClosingGpxFile = false;
         return;
     }
 
@@ -35681,6 +35887,7 @@ window.closeCurrentGpxFileDirect = function() {
         stack[safeCloseIdx];
 
     if (!target) {
+        window.isClosingGpxFile = false;
         return;
     }
 
@@ -36032,6 +36239,34 @@ window.showCloseFileChoiceModal = function() {
     }
 
     
+    const closeAllBtnForMode =
+        modal.querySelector("#closeAllFilesBtn");
+
+    const closeCurrentBtnForMode =
+        modal.querySelector("#closeCurrentFileBtn");
+
+    if (totalCount === 1) {
+        if (closeAllBtnForMode) {
+            closeAllBtnForMode.textContent = "關閉檔案";
+            closeAllBtnForMode.style.display = "block";
+        }
+
+        if (closeCurrentBtnForMode) {
+            closeCurrentBtnForMode.style.display = "none";
+        }
+
+    } else {
+        if (closeAllBtnForMode) {
+            closeAllBtnForMode.textContent = "關閉所有檔案";
+            closeAllBtnForMode.style.display = "block";
+        }
+
+        if (closeCurrentBtnForMode) {
+            closeCurrentBtnForMode.textContent = "關閉目前檔案";
+            closeCurrentBtnForMode.style.display = "block";
+        }
+    }
+
     modal.style.setProperty(
         "display",
         "flex",
@@ -36123,6 +36358,21 @@ window.showCloseFileChoiceModal = function() {
             e.stopPropagation();
 
             closeModal();
+
+            const liveStack =
+                window.multiGpxStack ||
+                multiGpxStack ||
+                [];
+
+            if (
+                Array.isArray(liveStack) &&
+                liveStack.length <= 1
+            ) {
+                if (typeof window.closeAllGpxFilesDirect === "function") {
+                    window.closeAllGpxFilesDirect();
+                }
+                return;
+            }
 
             if (typeof window.closeCurrentGpxFileDirect === "function") {
                 window.closeCurrentGpxFileDirect();
@@ -41083,7 +41333,9 @@ function buildWindyUrl(lat, lon, overlay = "rain", zoom = 14) {
                 </div>
             `;
         }).join("");
+
 // "
+
         list.querySelectorAll("button[data-action]").forEach(function(btn) {
             btn.onclick = function(e) {
                 e.preventDefault();

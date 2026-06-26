@@ -1,6 +1,6 @@
-const APP_CACHE = "ychiking-app-v20";
+const APP_CACHE = "ychiking-app-v24";
 const TILE_CACHE = "ychiking-offline-tiles-v1";
-const RUNTIME_CACHE = "ychiking-runtime-v20";
+const RUNTIME_CACHE = "ychiking-runtime-v24";
 
 const APP_SHELL = [
   "./",
